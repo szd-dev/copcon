@@ -1,0 +1,107 @@
+package tool
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type mockTool struct {
+	name        string
+	description string
+	schema      map[string]any
+	result      *ToolResult
+	execErr     error
+}
+
+func (m *mockTool) Name() string {
+	return m.name
+}
+
+func (m *mockTool) Description() string {
+	return m.description
+}
+
+func (m *mockTool) InputSchema() map[string]any {
+	return m.schema
+}
+
+func (m *mockTool) Execute(ctx context.Context, args map[string]any) (*ToolResult, error) {
+	return m.result, m.execErr
+}
+
+func TestToolManager_Register(t *testing.T) {
+	mgr := NewToolManager()
+
+	tool := &mockTool{
+		name:        "test_tool",
+		description: "A test tool",
+		schema:      map[string]any{"type": "object"},
+	}
+
+	err := mgr.Register(tool)
+	assert.NoError(t, err)
+
+	tools := mgr.List()
+	assert.Len(t, tools, 1)
+	assert.Equal(t, "test_tool", tools[0].Name)
+}
+
+func TestToolManager_Register_Duplicate(t *testing.T) {
+	mgr := NewToolManager()
+
+	tool := &mockTool{name: "test_tool"}
+	err := mgr.Register(tool)
+	require.NoError(t, err)
+
+	err = mgr.Register(tool)
+	assert.ErrorIs(t, err, ErrToolAlreadyExists)
+}
+
+func TestToolManager_Execute(t *testing.T) {
+	mgr := NewToolManager()
+
+	tool := &mockTool{
+		name:   "echo",
+		result: &ToolResult{Success: true, Data: "pong"},
+		schema: map[string]any{"type": "object"},
+	}
+	err := mgr.Register(tool)
+	require.NoError(t, err)
+
+	result, err := mgr.Execute(context.Background(), "echo", map[string]any{})
+
+	assert.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, "pong", result.Data)
+}
+
+func TestToolManager_Execute_NotFound(t *testing.T) {
+	mgr := NewToolManager()
+
+	_, err := mgr.Execute(context.Background(), "nonexistent", map[string]any{})
+	assert.ErrorIs(t, err, ErrToolNotFound)
+}
+
+func TestToolManager_GetOpenAITools(t *testing.T) {
+	mgr := NewToolManager()
+
+	tool := &mockTool{
+		name:        "calculator",
+		description: "Performs calculations",
+		schema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"expression": map[string]any{"type": "string"},
+			},
+		},
+	}
+	err := mgr.Register(tool)
+	require.NoError(t, err)
+
+	tools := mgr.GetOpenAITools()
+
+	assert.Len(t, tools, 1)
+}

@@ -1,0 +1,55 @@
+# LiteLLM 独立部署配置 - 用于开发环境
+# 使用方法:
+#   cd env/litellm
+#   docker compose up -d
+# 
+# 访问:
+#   - API: http://localhost:4000/v1
+#   - Admin UI: http://localhost:4000/ui
+#   - Swagger Docs: http://localhost:4000/docs
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: litellm-dev
+    ports:
+      - "4000:4000"
+    environment:
+      # LiteLLM 主配置
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-dev-key}
+      - LITELLM_SALT_KEY=${LITELLM_SALT_KEY:-sk-litellm-salt-key}
+      
+      # 数据库配置 (可选，用于持久化)
+      - DATABASE_URL=${DATABASE_URL:-}
+      
+      # 启用通过 UI 动态添加模型
+      - STORE_MODEL_IN_DB=${STORE_MODEL_IN_DB:-True}
+      
+      # 日志级别
+      - SET_VERBOSE=${SET_VERBOSE:-false}
+      
+      # UI 配置
+      - UI_USERNAME=${UI_USERNAME:-admin}
+      - UI_PASSWORD=${UI_PASSWORD:-admin123}
+      
+      # ===== LLM Provider API Keys =====
+      
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      
+      # 其他提供商按需添加...
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+      - litellm_logs:/app/logs
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    restart: unless-stopped
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  litellm_logs:

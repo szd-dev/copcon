@@ -1,0 +1,171 @@
+openapi: 3.0.3
+info:
+  title: Agent Infrastructure API
+  description: REST API for Agent Infrastructure - Frontend consumes this API, Agent logic is hidden in backend
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+
+paths:
+  /api/sessions:
+    post:
+      summary: Create a new session
+      operationId: createSession
+      tags: [Sessions]
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+    get:
+      summary: List all sessions
+      operationId: listSessions
+      tags: [Sessions]
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+                  total:
+                    type: integer
+
+  /api/sessions/{sessionId}:
+    get:
+      summary: Get session details
+      operationId: getSession
+      tags: [Sessions]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+    delete:
+      summary: Delete a session
+      operationId: deleteSession
+      tags: [Sessions]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Session deleted
+
+  /api/sessions/{sessionId}/messages:
+    get:
+      summary: Get session messages
+      operationId: getSessionMessages
+      tags: [Messages]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /api/sessions/{sessionId}/chat:
+    post:
+      summary: Send message and get SSE streaming response
+      description: |
+        SSE Event Types: message, tool_call, tool_result, thought, done, error
+      operationId: chat
+      tags: [Chat]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+components:
+  schemas:
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        message_count:
+          type: integer
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, tool]
+        content:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+          format: date-time
+
+tags:
+  - name: Sessions
+  - name: Messages
+  - name: Chat

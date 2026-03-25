@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+go.work
+go.work.sum
+
+# Node
+.npm
+.pnpm-store
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+*.coverprofile
+
+# Storybook
+storybook-static/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Project specific
+server/server
+.sisyphus/evidence/

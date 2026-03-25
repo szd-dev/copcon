@@ -1,0 +1,46 @@
+# LiteLLM 配置文件
+# 文档: https://docs.litellm.ai/docs/proxy/configs
+
+# 模型列表 - 定义可用的模型及其后端
+model_list:
+  # 使用中国区端点 (可选)
+  # - model_name: kimi-k2-cn
+  #   litellm_params:
+  #     model: moonshot/kimi-k2
+  #     api_key: os.environ/MOONSHOT_API_KEY
+  #     api_base: https://api.moonshot.cn/v1
+
+  # ==================== OpenAI ====================
+  
+  - model_name: z-ai/glm-5
+    litellm_params:
+      model: z-ai/glm-5
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: https://api.360.cn/v1
+
+# 通用设置
+litellm_settings:
+  # 启用 Drop-in OpenAI 兼容模式
+  drop_params: True
+  
+  # 设置默认模型参数
+  default_model_params:
+    temperature: 0.7
+    max_tokens: 4096
+  
+  # 成功回调 (可选)
+  # success_callback: ["langfuse", "prometheus"]
+  
+  # 失败回调 (可选)
+  # failure_callback: ["slack"]
+
+# 路由设置 (可选)
+# router_settings:
+#   routing_strategy: "latency-based-routing"
+#   num_retries: 3
+#   timeout: 30
+
+# 速率限制 (可选)
+# rate_limit:
+#   rpm: 100  # 每分钟请求数
+#   tpm: 100000  # 每分钟 token 数
