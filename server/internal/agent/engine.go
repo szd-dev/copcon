@@ -9,9 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
 
-	"github.com/copcon/server/internal/config"
 	contextmgr "github.com/copcon/server/internal/context"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
@@ -78,45 +76,33 @@ type toolCallInfo struct {
 }
 
 type AgentEngine struct {
-	config       *config.Config
-	openaiClient openai.Client
-	sessionMgr   session.SessionManager
-	contextMgr   contextmgr.ContextManager
-	memoryMgr    memory.MemoryManager
-	toolMgr      tool.ToolManager
+	agentRegistry AgentRegistry
+	sessionMgr    session.SessionManager
+	contextMgr    contextmgr.ContextManager
+	memoryMgr     memory.MemoryManager
 }
 
 func NewAgentEngine(
-	cfg *config.Config,
+	agentRegistry AgentRegistry,
 	sessionMgr session.SessionManager,
 	contextMgr contextmgr.ContextManager,
 	memoryMgr memory.MemoryManager,
-	toolMgr tool.ToolManager,
 ) *AgentEngine {
-	opts := []option.RequestOption{
-		option.WithAPIKey(cfg.OpenAI.APIKey),
-	}
-	if cfg.OpenAI.BaseURL != "" {
-		opts = append(opts, option.WithBaseURL(cfg.OpenAI.BaseURL))
-	}
-
 	return &AgentEngine{
-		config:       cfg,
-		openaiClient: openai.NewClient(opts...),
-		sessionMgr:   sessionMgr,
-		contextMgr:   contextMgr,
-		memoryMgr:    memoryMgr,
-		toolMgr:      toolMgr,
+		agentRegistry: agentRegistry,
+		sessionMgr:    sessionMgr,
+		contextMgr:    contextMgr,
+		memoryMgr:     memoryMgr,
 	}
 }
 
-func (e *AgentEngine) Chat(ctx context.Context, sessionID string, userInput string) (<-chan Event, error) {
+func (e *AgentEngine) Chat(ctx context.Context, sessionID string, agentID string, userInput string) (<-chan Event, error) {
 	events := make(chan Event, 100)
 
 	go func() {
 		defer close(events)
 
-		if err := e.runAgentLoop(ctx, sessionID, userInput, events); err != nil {
+		if err := e.runAgentLoop(ctx, sessionID, agentID, userInput, events); err != nil {
 			events <- Event{
 				Type: EventError,
 				Data: ErrorData{Error: err.Error()},
@@ -127,10 +113,29 @@ func (e *AgentEngine) Chat(ctx context.Context, sessionID string, userInput stri
 	return events, nil
 }
 
-func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, userInput string, events chan<- Event) error {
-	_, err := e.sessionMgr.Get(ctx, sessionID)
+func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentID string, userInput string, events chan<- Event) error {
+	sess, err := e.sessionMgr.Get(ctx, sessionID)
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
+	}
+
+	// Determine which agent to use
+	if agentID == "" {
+		agentID = sess.DefaultAgentID
+	}
+	if agentID == "" {
+		// Fall back to default agent from registry
+		defaultAgent, err := e.agentRegistry.Default()
+		if err != nil {
+			return fmt.Errorf("no agent specified and no default agent: %w", err)
+		}
+		agentID = defaultAgent.ID
+	}
+
+	// Get agent definition
+	agentDef, err := e.agentRegistry.Get(agentID)
+	if err != nil {
+		return fmt.Errorf("get agent: %w", err)
 	}
 
 	if err := e.contextMgr.AddMessage(ctx, sessionID, &session.Message{
@@ -141,7 +146,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, userIn
 	}
 
 	for {
-		messages, err := e.contextMgr.BuildContext(ctx, sessionID, "", 256000)
+		messages, err := e.contextMgr.BuildContext(ctx, sessionID, "", 256000, agentDef.SystemPrompt)
 		if err != nil {
 			return fmt.Errorf("build context: %w", err)
 		}
@@ -149,25 +154,26 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, userIn
 		openAIMessages := e.convertMessages(messages)
 
 		log.Printf("========== LLM Request ==========")
-		log.Printf("Model: %s", e.config.OpenAI.Model)
+		log.Printf("Agent: %s", agentDef.Name)
+		log.Printf("Model: %s", agentDef.Model)
 		log.Printf("Message count: %d", len(messages))
 		for i, msg := range messages {
 			log.Printf("  [%d] role=%s content=%s", i, msg.Role, msg.Content)
 		}
-		tools := e.toolMgr.GetOpenAITools()
+		tools := agentDef.ToolManager.GetOpenAITools()
 		if len(tools) > 0 {
 			log.Printf("Tools available: %d", len(tools))
 		}
 		log.Printf("=================================")
 
 		params := openai.ChatCompletionNewParams{
-			Model:             openai.ChatModel(e.config.OpenAI.Model),
+			Model:             openai.ChatModel(agentDef.Model),
 			Messages:          openAIMessages,
 			Tools:             tools,
 			ParallelToolCalls: openai.Bool(true),
 		}
 
-		stream := e.openaiClient.Chat.Completions.NewStreaming(ctx, params)
+		stream := agentDef.OpenAIClient.Chat.Completions.NewStreaming(ctx, params)
 		acc := openai.ChatCompletionAccumulator{}
 
 		var content string
@@ -288,7 +294,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, userIn
 			}
 
 			for _, tc := range toolCalls {
-				if err := e.executeToolCall(ctx, sessionID, tc, events); err != nil {
+				if err := e.executeToolCall(ctx, sessionID, agentDef.ToolManager, tc, events); err != nil {
 					return fmt.Errorf("execute tool call: %w", err)
 				}
 			}
@@ -315,7 +321,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, userIn
 	}
 }
 
-func (e *AgentEngine) executeToolCall(ctx context.Context, sessionID string, tc toolCallInfo, events chan<- Event) error {
+func (e *AgentEngine) executeToolCall(ctx context.Context, sessionID string, toolMgr tool.ToolManager, tc toolCallInfo, events chan<- Event) error {
 	events <- Event{
 		Type: EventToolCall,
 		Data: ToolCallData{
@@ -326,7 +332,7 @@ func (e *AgentEngine) executeToolCall(ctx context.Context, sessionID string, tc 
 	}
 
 	args := parseArgs(tc.Arguments)
-	result, err := e.toolMgr.Execute(ctx, tc.Name, args)
+	result, err := toolMgr.Execute(ctx, tc.Name, args)
 
 	var resultData ToolResultData
 	if err != nil {

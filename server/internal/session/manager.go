@@ -14,7 +14,7 @@ var (
 )
 
 type SessionManager interface {
-	Create(ctx context.Context, title string) (*Session, error)
+	Create(ctx context.Context, title, defaultAgentID string) (*Session, error)
 	Get(ctx context.Context, id string) (*Session, error)
 	List(ctx context.Context, limit, offset int) ([]*Session, int64, error)
 	Delete(ctx context.Context, id string) error
@@ -31,13 +31,14 @@ func NewSessionManager(db *gorm.DB) SessionManager {
 	return &sessionManager{db: db}
 }
 
-func (m *sessionManager) Create(ctx context.Context, title string) (*Session, error) {
+func (m *sessionManager) Create(ctx context.Context, title, defaultAgentID string) (*Session, error) {
 	session := &Session{
-		ID:        uuid.New(),
-		Title:     title,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Metadata:  make(map[string]any),
+		ID:             uuid.New(),
+		Title:          title,
+		DefaultAgentID: defaultAgentID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Metadata:       make(map[string]any),
 	}
 
 	if err := m.db.WithContext(ctx).Create(session).Error; err != nil {

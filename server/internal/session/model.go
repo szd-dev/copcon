@@ -83,12 +83,13 @@ func (ToolCalls) GormDataType() string {
 }
 
 type Session struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Title     string    `gorm:"size:255" json:"title"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-	Metadata  JSONB     `gorm:"type:jsonb" json:"metadata"`
-	Messages  []Message `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE" json:"-"`
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Title          string    `gorm:"size:255" json:"title"`
+	DefaultAgentID string    `gorm:"size:64" json:"default_agent_id"`
+	CreatedAt      time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	Metadata       JSONB     `gorm:"type:jsonb" json:"metadata"`
+	Messages       []Message `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE" json:"-"`
 }
 
 type Message struct {

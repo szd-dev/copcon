@@ -14,21 +14,48 @@ import (
 )
 
 type Handler struct {
-	config     *config.Config
-	sessionMgr session.SessionManager
-	agent      *agent.AgentEngine
+	config        *config.Config
+	sessionMgr    session.SessionManager
+	agent         *agent.AgentEngine
+	agentRegistry agent.AgentRegistry
 }
 
-func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, agentEngine *agent.AgentEngine) *Handler {
+func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) *Handler {
 	return &Handler{
-		config:     cfg,
-		sessionMgr: sessionMgr,
-		agent:      agentEngine,
+		config:        cfg,
+		sessionMgr:    sessionMgr,
+		agent:         agentEngine,
+		agentRegistry: agentRegistry,
 	}
 }
 
 func (h *Handler) CreateSession(c *gin.Context) {
-	sess, err := h.sessionMgr.Create(c.Request.Context(), "New Chat")
+	var req struct {
+		Title          string `json:"title"`
+		DefaultAgentID string `json:"default_agent_id"`
+	}
+
+	// Bind JSON body if present, but allow empty body for backward compatibility
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+			return
+		}
+	}
+
+	// Use provided title or default
+	title := req.Title
+	if title == "" {
+		title = "New Chat"
+	}
+
+	// Use provided agent ID or fall back to config default
+	defaultAgentID := req.DefaultAgentID
+	if defaultAgentID == "" {
+		defaultAgentID = h.config.DefaultAgentID
+	}
+
+	sess, err := h.sessionMgr.Create(c.Request.Context(), title, defaultAgentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -37,11 +64,12 @@ func (h *Handler) CreateSession(c *gin.Context) {
 	count, _ := h.sessionMgr.GetMessageCount(c.Request.Context(), sess.ID.String())
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":            sess.ID.String(),
-		"title":         sess.Title,
-		"created_at":    sess.CreatedAt,
-		"updated_at":    sess.UpdatedAt,
-		"message_count": count,
+		"id":               sess.ID.String(),
+		"title":            sess.Title,
+		"default_agent_id": sess.DefaultAgentID,
+		"created_at":       sess.CreatedAt,
+		"updated_at":       sess.UpdatedAt,
+		"message_count":    count,
 	})
 }
 
@@ -158,13 +186,14 @@ func (h *Handler) Chat(c *gin.Context) {
 
 	var req struct {
 		Content string `json:"content"`
+		AgentID string `json:"agent_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
-	events, err := h.agent.Chat(c.Request.Context(), sessionID, req.Content)
+	events, err := h.agent.Chat(c.Request.Context(), sessionID, req.AgentID, req.Content)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -187,11 +216,28 @@ func (h *Handler) Chat(c *gin.Context) {
 	}
 }
 
-func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionManager, agentEngine *agent.AgentEngine) {
-	handler := NewHandler(cfg, sessionMgr, agentEngine)
+func (h *Handler) ListAgents(c *gin.Context) {
+	agents := h.agentRegistry.List()
+
+	result := make([]gin.H, len(agents))
+	for i, agent := range agents {
+		result[i] = gin.H{
+			"id":    agent.ID,
+			"name":  agent.Name,
+			"model": agent.Model,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"agents": result})
+}
+
+func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) {
+	handler := NewHandler(cfg, sessionMgr, agentEngine, agentRegistry)
 
 	api := r.Group("/api")
 	{
+		api.GET("/agents", handler.ListAgents)
+
 		sessions := api.Group("/sessions")
 		{
 			sessions.POST("", handler.CreateSession)

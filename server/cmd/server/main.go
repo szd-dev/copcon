@@ -37,21 +37,26 @@ func main() {
 	sessionMgr := session.NewSessionManager(db)
 	contextMgr := contextmgr.NewContextManager(db)
 	memoryMgr := memory.NewMemoryManager(nil, "agent_memory")
-	toolMgr := tool.NewToolManager()
 
-	// Register available tools
-	if err := toolMgr.Register(tools.NewCodeExecutor()); err != nil {
+	toolRegistry := tool.NewToolRegistry()
+	if err := toolRegistry.Register(tools.NewCodeExecutor()); err != nil {
 		log.Fatalf("Failed to register code executor: %v", err)
 	}
-	if err := toolMgr.Register(tools.NewShellExecutor()); err != nil {
+	if err := toolRegistry.Register(tools.NewShellExecutor()); err != nil {
 		log.Fatalf("Failed to register shell executor: %v", err)
 	}
-	if err := toolMgr.Register(tools.NewFileOps("")); err != nil {
+	if err := toolRegistry.Register(tools.NewFileOps("")); err != nil {
 		log.Fatalf("Failed to register file ops: %v", err)
 	}
-	log.Printf("Registered %d tools", len(toolMgr.List()))
+	log.Printf("Registered %d tools in registry", len(toolRegistry.List()))
 
-	agentEngine := agent.NewAgentEngine(cfg, sessionMgr, contextMgr, memoryMgr, toolMgr)
+	agentRegistry, err := agent.NewAgentRegistry(cfg, toolRegistry)
+	if err != nil {
+		log.Fatalf("Failed to create agent registry: %v", err)
+	}
+	log.Printf("Loaded %d agents", len(agentRegistry.List()))
+
+	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
 
 	r := gin.Default()
 
@@ -59,7 +64,7 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	api.SetupRoutes(r, cfg, sessionMgr, agentEngine)
+	api.SetupRoutes(r, cfg, sessionMgr, agentEngine, agentRegistry)
 
 	log.Printf("Server starting on :%s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {

@@ -18,7 +18,7 @@ var (
 type ContextManager interface {
 	GetHistory(ctx context.Context, sessionID string, limit int) ([]session.Message, error)
 	AddMessage(ctx context.Context, sessionID string, msg *session.Message) error
-	BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int) ([]MessageForLLM, error)
+	BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error)
 	DeleteBySession(ctx context.Context, sessionID string) error
 }
 
@@ -75,12 +75,16 @@ func (m *contextManager) AddMessage(ctx context.Context, sessionID string, msg *
 	return m.db.WithContext(ctx).Create(msg).Error
 }
 
-func (m *contextManager) BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int) ([]MessageForLLM, error) {
+func (m *contextManager) BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error) {
 	messages := make([]MessageForLLM, 0)
 
+	// Use provided system prompt or default
+	if systemPrompt == "" {
+		systemPrompt = "You are a helpful AI assistant with access to tools for code execution, file operations, and shell commands. Use these tools when appropriate to help the user."
+	}
 	messages = append(messages, MessageForLLM{
 		Role:    "system",
-		Content: "You are a helpful AI assistant with access to tools for code execution, file operations, and shell commands. Use these tools when appropriate to help the user.",
+		Content: systemPrompt,
 	})
 
 	history, err := m.GetHistory(ctx, sessionID, 1024)

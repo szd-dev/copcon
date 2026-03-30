@@ -1,0 +1,342 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+
+	"github.com/copcon/server/internal/agent"
+	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/session"
+)
+
+type mockSessionManager struct {
+	sessions map[string]*session.Session
+	db       *gorm.DB
+}
+
+func newMockSessionManager() *mockSessionManager {
+	return &mockSessionManager{
+		sessions: make(map[string]*session.Session),
+	}
+}
+
+func (m *mockSessionManager) Create(ctx context.Context, title, defaultAgentID string) (*session.Session, error) {
+	sess := &session.Session{
+		ID:             uuid.New(),
+		Title:          title,
+		DefaultAgentID: defaultAgentID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Metadata:       make(map[string]any),
+	}
+	m.sessions[sess.ID.String()] = sess
+	return sess, nil
+}
+
+func (m *mockSessionManager) Get(ctx context.Context, id string) (*session.Session, error) {
+	sess, ok := m.sessions[id]
+	if !ok {
+		return nil, session.ErrSessionNotFound
+	}
+	return sess, nil
+}
+
+func (m *mockSessionManager) List(ctx context.Context, limit, offset int) ([]*session.Session, int64, error) {
+	var list []*session.Session
+	for _, s := range m.sessions {
+		list = append(list, s)
+	}
+	return list, int64(len(list)), nil
+}
+
+func (m *mockSessionManager) Delete(ctx context.Context, id string) error {
+	if _, ok := m.sessions[id]; !ok {
+		return session.ErrSessionNotFound
+	}
+	delete(m.sessions, id)
+	return nil
+}
+
+func (m *mockSessionManager) UpdateTitle(ctx context.Context, id, title string) error {
+	sess, ok := m.sessions[id]
+	if !ok {
+		return session.ErrSessionNotFound
+	}
+	sess.Title = title
+	return nil
+}
+
+func (m *mockSessionManager) GetMessageCount(ctx context.Context, sessionID string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockSessionManager) GetDB() *gorm.DB {
+	return m.db
+}
+
+type mockAgentRegistry struct {
+	agents       map[string]agent.AgentDefinition
+	defaultAgent string
+}
+
+func newMockAgentRegistry(defaultAgent string) *mockAgentRegistry {
+	return &mockAgentRegistry{
+		agents:       make(map[string]agent.AgentDefinition),
+		defaultAgent: defaultAgent,
+	}
+}
+
+func (r *mockAgentRegistry) Get(id string) (agent.AgentDefinition, error) {
+	def, ok := r.agents[id]
+	if !ok {
+		return agent.AgentDefinition{}, agent.ErrAgentNotFound
+	}
+	return def, nil
+}
+
+func (r *mockAgentRegistry) List() []agent.AgentInfo {
+	var list []agent.AgentInfo
+	for id, def := range r.agents {
+		list = append(list, agent.AgentInfo{
+			ID:    id,
+			Name:  def.Name,
+			Model: def.Model,
+		})
+	}
+	return list
+}
+
+func (r *mockAgentRegistry) Default() (agent.AgentDefinition, error) {
+	if r.defaultAgent == "" {
+		return agent.AgentDefinition{}, agent.ErrNoDefaultAgent
+	}
+	return r.Get(r.defaultAgent)
+}
+
+func setupTestHandler(t *testing.T) (*Handler, func()) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{
+		DefaultAgentID: "default-agent",
+		Agents: []config.AgentConfig{
+			{ID: "default-agent", Name: "Default"},
+			{ID: "code-assistant", Name: "Code Assistant"},
+		},
+	}
+
+	sessionMgr := newMockSessionManager()
+	agentRegistry := newMockAgentRegistry("default-agent")
+
+	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
+	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
+
+	handler := NewHandler(cfg, sessionMgr, nil, agentRegistry)
+
+	cleanup := func() {}
+
+	return handler, cleanup
+}
+
+func TestCreateSessionWithAgent(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+
+	reqBody := map[string]string{
+		"title":            "Test Chat",
+		"default_agent_id": "code-assistant",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Test Chat", response["title"])
+	assert.Equal(t, "code-assistant", response["default_agent_id"])
+	assert.NotEmpty(t, response["id"])
+	assert.NotNil(t, response["created_at"])
+	assert.NotNil(t, response["updated_at"])
+}
+
+func TestCreateSessionWithDefaultAgent(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+
+	reqBody := map[string]string{
+		"title": "Test Chat",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Test Chat", response["title"])
+	assert.Equal(t, "default-agent", response["default_agent_id"])
+}
+
+func TestCreateSessionWithEmptyBody(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "New Chat", response["title"])
+	assert.Equal(t, "default-agent", response["default_agent_id"])
+}
+
+func TestCreateSessionOnlyTitle(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+
+	reqBody := map[string]string{
+		"title": "Custom Title",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Custom Title", response["title"])
+	assert.Equal(t, "default-agent", response["default_agent_id"])
+}
+
+func TestCreateSessionOnlyAgentID(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+
+	reqBody := map[string]string{
+		"default_agent_id": "code-assistant",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "New Chat", response["title"])
+	assert.Equal(t, "code-assistant", response["default_agent_id"])
+}
+
+func TestCreateSessionInvalidJSON(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBufferString("{invalid"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Contains(t, response["error"], "invalid")
+}
+
+func TestListAgents(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	router := gin.New()
+	router.GET("/api/agents", handler.ListAgents)
+
+	req, _ := http.NewRequest("GET", "/api/agents", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	agents, ok := response["agents"].([]interface{})
+	require.True(t, ok)
+	assert.Len(t, agents, 2)
+
+	agent0 := agents[0].(map[string]interface{})
+	assert.Equal(t, "default-agent", agent0["id"])
+	assert.Equal(t, "Default", agent0["name"])
+	assert.Equal(t, "gpt-4o", agent0["model"])
+
+	agent1 := agents[1].(map[string]interface{})
+	assert.Equal(t, "code-assistant", agent1["id"])
+	assert.Equal(t, "Code Assistant", agent1["name"])
+	assert.Equal(t, "gpt-4o", agent1["model"])
+}

@@ -8,32 +8,27 @@ database:
   password: "changeme"
   dbname: "copcon"
 
-# 方式一: 通过 LiteLLM 统一网关 (推荐)
-# - 自动处理各模型的工具调用格式差异
-# - 无缝切换不同模型，只需改 model 参数
-# - 部署: docker compose up -d (LiteLLM 会自动启动)
-# openai:
-#   api_key: "${OPENAI_API_KEY}"        # 使用 LiteLLM 时，这里是 LITELLM_MASTER_KEY
-#   base_url: "${OPENAI_BASE_URL}"      # LiteLLM 地址，如 http://localhost:4000/v1
-#   model: "kimi-k2"                    # 可选: kimi-k2, kimi-k2.5, kimi-k2-turbo, gpt-4o, claude-sonnet 等
-
-# 方式二: 直接使用 Moonshot 官方 API (无需 LiteLLM)
-# - 适合简单场景，只需 Kimi 模型
-# openai:
-#   api_key: "REDACTED_API_KEY"
-#   base_url: "http://192.168.31.146:4000/v1"
-#   model: "glm-5"
-
 # 方式三: 直接使用其他 OpenAI 兼容服务
 openai:
   api_key: "REDACTED_API_KEY"
   base_url: "https://api.360.cn/v1"
   model: "z-ai/glm-5"
 
-# openai:
-#   api_key: ""
-#   base_url: "http://192.168.31.56:1234/v1"
-#   model: "qwen/qwen3.5-9b"
 qdrant:
   host: "localhost"
   port: 6333
+
+# Agent configurations
+default_agent_id: "code-assistant"
+
+agents:
+  - id: "code-assistant"
+    name: "Code Assistant"
+    model: "z-ai/glm-5"
+    system_prompt: "You are a helpful coding assistant. You can write, analyze, and debug code. You have access to code execution, shell commands, and file operations. Always provide clear explanations and best practices."
+    tools: ["code_executor", "shell_executor", "file_ops"]
+  - id: "chat-assistant"
+    name: "Chat Assistant"
+    model: "z-ai/glm-5"
+    system_prompt: "You are a friendly chat assistant. You engage in natural conversations, answer questions, and provide helpful information. You don't have access to tools, so focus on text-based responses."
+    tools: []

@@ -43,6 +43,60 @@ type ToolManager interface {
 	GetOpenAITools() []openai.ChatCompletionToolUnionParam
 }
 
+type ToolRegistry interface {
+	Register(tool Tool) error
+	Get(name string) (Tool, error)
+	List() []ToolInfo
+}
+
+type toolRegistry struct {
+	mu    sync.RWMutex
+	tools map[string]Tool
+}
+
+func NewToolRegistry() ToolRegistry {
+	return &toolRegistry{
+		tools: make(map[string]Tool),
+	}
+}
+
+func (r *toolRegistry) Register(tool Tool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	name := tool.Name()
+	r.tools[name] = tool
+	return nil
+}
+
+func (r *toolRegistry) Get(name string) (Tool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tool, exists := r.tools[name]
+	if !exists {
+		return nil, fmt.Errorf("%w: %s", ErrToolNotFound, name)
+	}
+
+	return tool, nil
+}
+
+func (r *toolRegistry) List() []ToolInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tools := make([]ToolInfo, 0, len(r.tools))
+	for _, tool := range r.tools {
+		tools = append(tools, ToolInfo{
+			Name:        tool.Name(),
+			Description: tool.Description(),
+			InputSchema: tool.InputSchema(),
+		})
+	}
+
+	return tools
+}
+
 type toolManager struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
