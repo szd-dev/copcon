@@ -1,32 +1,17 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/session-centric-architecture.md",
-  "started_at": "2026-03-30T14:39:57.336Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/chat-context-refactor.md",
+  "started_at": "2026-03-31T15:31:06.548Z",
   "session_ids": [
-    "ses_2c0e63480ffefZJpU0LFzDW0St",
-    "ses_2c0cd9abfffeigJSqaVZkrQmJV",
-    "ses_2c0ce039affeL2j5oiG6eABNS9",
-    "ses_2c0cb3f37ffeImYielGf33ppx4",
-    "ses_2c0cba59cffegUm80bAuHh9T2I",
-    "ses_2c0af7f49ffemE6LDzpexiE0QQ",
-    "ses_2c0af7f52ffe6QS5eUEUtuautJ",
-    "ses_2c0abfe67ffes10EGtU2QrQG1q",
-    "ses_2c0abfda1ffeKdNm9RWqTLV4fv",
-    "ses_2c0abfe5effeBVJem0ujrj1h9s",
-    "ses_2c0a425fcffeOvIdct4I2R84xA",
-    "ses_2c0868d37ffexo1kBSmIiM2e1D",
-    "ses_2c0868c4bffeLJxd7jEbAZ0y7h"
+    "ses_2bbf1aba4fferBie45tM4oQsL0",
+    "ses_2bb7a0eceffedXOfCNhdrBPJoB",
+    "ses_2bb7841aaffeYtpU0z52j9JErf",
+    "ses_2bb73f9fbffeT0UYjRsN7cFdk2",
+    "ses_2bb73a6f6ffeopOEzZxhHYMAI5",
+    "ses_2bb7326dcffeWw7E4tqUGEzEgt",
+    "ses_2bb6101cbffegN4iXuqYfoCwou",
+    "ses_2bb502572ffelVDHTRZCM6MOEA"
   ],
-  "plan_name": "session-centric-architecture",
+  "plan_name": "chat-context-refactor",
   "agent": "atlas",
-  "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "**AgentConfig结构体 + 配置加载** — `quick`",
-      "session_id": "ses_2c0ce039affeL2j5oiG6eABNS9",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-03-30T14:45:16.758Z"
-    }
-  }
+  "task_sessions": {}
 }

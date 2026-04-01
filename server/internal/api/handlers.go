@@ -10,20 +10,24 @@ import (
 
 	"github.com/copcon/server/internal/agent"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/server/internal/todo"
 )
 
 type Handler struct {
 	config        *config.Config
 	sessionMgr    session.SessionManager
+	todoMgr       todo.TodoManager
 	agent         *agent.AgentEngine
 	agentRegistry agent.AgentRegistry
 }
 
-func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) *Handler {
+func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) *Handler {
 	return &Handler{
 		config:        cfg,
 		sessionMgr:    sessionMgr,
+		todoMgr:       todoMgr,
 		agent:         agentEngine,
 		agentRegistry: agentRegistry,
 	}
@@ -55,13 +59,15 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		defaultAgentID = h.config.DefaultAgentID
 	}
 
-	sess, err := h.sessionMgr.Create(c.Request.Context(), title, defaultAgentID)
+	chatCtx := iface.NewChatContext(c.Request.Context(), "", defaultAgentID)
+	sess, err := h.sessionMgr.Create(chatCtx, title, defaultAgentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	count, _ := h.sessionMgr.GetMessageCount(c.Request.Context(), sess.ID.String())
+	chatCtxForCount := iface.NewChatContext(c.Request.Context(), sess.ID.String(), "")
+	count, _ := h.sessionMgr.GetMessageCount(chatCtxForCount)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"id":               sess.ID.String(),
@@ -84,7 +90,8 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		fmt.Sscanf(o, "%d", &offset)
 	}
 
-	sessions, total, err := h.sessionMgr.List(c.Request.Context(), limit, offset)
+	chatCtx := iface.NewChatContext(c.Request.Context(), "", "")
+	sessions, total, err := h.sessionMgr.List(chatCtx, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -92,7 +99,8 @@ func (h *Handler) ListSessions(c *gin.Context) {
 
 	result := make([]gin.H, len(sessions))
 	for i, sess := range sessions {
-		count, _ := h.sessionMgr.GetMessageCount(c.Request.Context(), sess.ID.String())
+		chatCtxForCount := iface.NewChatContext(c.Request.Context(), sess.ID.String(), "")
+		count, _ := h.sessionMgr.GetMessageCount(chatCtxForCount)
 		result[i] = gin.H{
 			"id":            sess.ID.String(),
 			"title":         sess.Title,
@@ -111,13 +119,14 @@ func (h *Handler) ListSessions(c *gin.Context) {
 func (h *Handler) GetSession(c *gin.Context) {
 	sessionID := c.Param("sessionId")
 
-	sess, err := h.sessionMgr.Get(c.Request.Context(), sessionID)
+	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, "")
+	sess, err := h.sessionMgr.Get(chatCtx)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 		return
 	}
 
-	count, _ := h.sessionMgr.GetMessageCount(c.Request.Context(), sessionID)
+	count, _ := h.sessionMgr.GetMessageCount(chatCtx)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":            sess.ID.String(),
@@ -131,7 +140,8 @@ func (h *Handler) GetSession(c *gin.Context) {
 func (h *Handler) DeleteSession(c *gin.Context) {
 	sessionID := c.Param("sessionId")
 
-	if err := h.sessionMgr.Delete(c.Request.Context(), sessionID); err != nil {
+	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, "")
+	if err := h.sessionMgr.Delete(chatCtx); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 		return
 	}
@@ -193,11 +203,9 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
-	events, err := h.agent.Chat(c.Request.Context(), sessionID, req.AgentID, req.Content)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, req.AgentID)
+
+	go h.agent.Chat(chatCtx, req.Content)
 
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -209,7 +217,7 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
-	for event := range events {
+	for event := range chatCtx.Events() {
 		data, _ := json.Marshal(event)
 		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 		flusher.Flush()
@@ -231,8 +239,8 @@ func (h *Handler) ListAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"agents": result})
 }
 
-func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) {
-	handler := NewHandler(cfg, sessionMgr, agentEngine, agentRegistry)
+func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) {
+	handler := NewHandler(cfg, sessionMgr, todoMgr, agentEngine, agentRegistry)
 
 	api := r.Group("/api")
 	{
@@ -246,6 +254,26 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionMa
 			sessions.DELETE("/:sessionId", handler.DeleteSession)
 			sessions.GET("/:sessionId/messages", handler.GetMessages)
 			sessions.POST("/:sessionId/chat", handler.Chat)
+			sessions.GET("/:sessionId/todos", handler.GetSessionTodos)
 		}
 	}
+}
+
+func (h *Handler) GetSessionTodos(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+
+	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, "")
+	_, err := h.sessionMgr.Get(chatCtx)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	todos, err := h.todoMgr.List(chatCtx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve todos"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"todos": todos})
 }

@@ -1,7 +1,7 @@
 # 下一步规划
 
-[ doing ] 支持多Agent协作 - 从两个角度：1. Agent绑定到session，支持更换Agent， 2. 支持Agent As Tool方式调用
-[ ] 支持todolist
+[ doing ] 支持多Agent协作 - 从两个角度：1. Agent绑定到session，支持更换Agent， 2. 支持Agent As Tool方式调用 - 当前：已经支持多Agent配置和更换，暂不支持Agent As Tool方式调用
+[ doing ] 支持todolist
 [ ] 支持异步Tools调用
 [ ] 支持Skill调用
 [ ] 支持上下文管理

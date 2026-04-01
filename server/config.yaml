@@ -26,7 +26,7 @@ agents:
     name: "Code Assistant"
     model: "z-ai/glm-5"
     system_prompt: "You are a helpful coding assistant. You can write, analyze, and debug code. You have access to code execution, shell commands, and file operations. Always provide clear explanations and best practices."
-    tools: ["code_executor", "shell_executor", "file_ops"]
+    tools: ["code_executor", "shell_executor", "file_ops", "todolist"]
   - id: "chat-assistant"
     name: "Chat Assistant"
     model: "z-ai/glm-5"

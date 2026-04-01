@@ -98,7 +98,167 @@ docker compose logs -f server  # Follow server logs
 
 ---
 
-## Architecture Notes
+## ChatContext Pattern
+
+### Overview
+
+ChatContext is the unified context object that flows through the entire request lifecycle: HTTP Handler → Agent Engine → Manager → Tool. It encapsulates session identity, context, and event streaming.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Request Flow                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   HTTP Handler              Agent Engine               Manager/Tool         │
+│   ┌─────────────┐          ┌─────────────┐           ┌─────────────┐       │
+│   │ Create      │          │ Use         │           │ Extract     │       │
+│   │ ChatContext │ ───────→ │ chatCtx     │ ────────→ │ SessionID() │       │
+│   │             │          │             │           │ Context()   │       │
+│   └─────────────┘          └─────────────┘           └─────────────┘       │
+│          │                        │                     │                   │
+│          │                        ↓                     │                   │
+│          │                 ┌─────────────┐              │                   │
+│          │                 │ Emit Events │              │                   │
+│          │                 │ via chatCtx │              │                   │
+│          │                 └─────────────┘              │                   │
+│          │                        │                     │                   │
+│          │                        │                     │                   │
+│          └────────────────────────┼─────────────────────┘                   │
+│                                   ↓                                         │
+│                          SSE Stream to Client                               │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Package Structure
+
+```
+server/internal/domain/
+├── entity/
+│   └── event.go         # Event, EventType, MessageData, ToolCallData, etc.
+└── iface/
+    └── chat.go          # ChatContextInterface
+```
+
+### ChatContextInterface
+
+```go
+// Defined in: server/internal/domain/iface/chat.go
+type ChatContextInterface interface {
+    Context() context.Context        // Standard context
+    SessionID() string               // Current session ID
+    AgentID() string                 // Current agent ID
+    Events() <-chan entity.Event     // Event stream (receive-only)
+    Emit(event entity.Event)         // Send event to stream
+}
+```
+
+### ChatContext Implementation
+
+```go
+// Defined in: server/internal/context/chat.go
+type ChatContext struct {
+    ctx       context.Context
+    sessionID string
+    agentID   string
+    events    chan entity.Event
+}
+
+func NewChatContext(ctx context.Context, sessionID, agentID string) *ChatContext
+```
+
+### Usage in Managers
+
+All Manager interfaces use `ChatContextInterface` as the first parameter:
+
+```go
+// SessionManager
+type SessionManager interface {
+    Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*Session, error)
+    Get(chatCtx iface.ChatContextInterface) (*Session, error)
+    // ...
+}
+
+// TodoManager
+type TodoManager interface {
+    Create(chatCtx iface.ChatContextInterface, content string, opts ...TodoOption) (*Todo, error)
+    List(chatCtx iface.ChatContextInterface) ([]*Todo, error)
+    // ...
+}
+```
+
+### Usage in Tools
+
+Tools receive `ChatContextInterface` to access session info:
+
+```go
+type Tool interface {
+    Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*ToolResult, error)
+}
+
+// In tool implementation:
+func (t *TodoTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*ToolResult, error) {
+    sessionID := chatCtx.SessionID()
+    ctx := chatCtx.Context()
+    // ...
+}
+```
+
+### Usage in HTTP Handler
+
+```go
+func (h *Handler) Chat(c *gin.Context) {
+    chatCtx := contextpkg.NewChatContext(
+        c.Request.Context(),
+        c.Param("sessionId"),
+        req.AgentID,
+    )
+    
+    go h.agent.Chat(chatCtx, req.Content)
+    
+    // Stream events to client
+    for event := range chatCtx.Events() {
+        data, _ := json.Marshal(event)
+        fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+        c.Writer.(http.Flusher).Flush()
+    }
+}
+```
+
+### Why This Pattern?
+
+| Problem | Solution |
+|---------|----------|
+| `sessionID` passed as string everywhere | Encapsulated in `ChatContext` |
+| Tools cannot access session info | `chatCtx.SessionID()` available |
+| Duplicate interface definitions | Centralized in `domain/iface` |
+| Event types scattered | Centralized in `domain/entity` |
+| Import cycles between packages | Interface defined in `domain/iface`, implementation in `context` |
+
+### Adding a New Manager
+
+When creating a new manager:
+
+1. Define interface in `internal/<package>/manager.go` using `iface.ChatContextInterface`
+2. Extract sessionID via `chatCtx.SessionID()`
+3. Use `chatCtx.Context()` for database operations
+4. DO NOT define local `ChatContextInterface` — import from `domain/iface`
+
+```go
+package mypackage
+
+import "github.com/copcon/server/internal/domain/iface"
+
+type MyManager interface {
+    DoSomething(chatCtx iface.ChatContextInterface, arg string) error
+}
+```
+
+---
+
+## Architecture Notes (Original)
 
 ### Backend Flow
 
@@ -114,10 +274,12 @@ HTTP Request → Gin Handler → AgentEngine → OpenAI API (streaming)
 
 | Package | Responsibility |
 |---------|---------------|
+| `internal/domain` | Shared domain types: entities (`entity.Event`) and interfaces (`iface.ChatContextInterface`) |
 | `internal/agent` | Core agent loop, streaming, tool orchestration |
 | `internal/session` | Session CRUD, message storage (GORM) |
 | `internal/context` | Context window management for LLM |
 | `internal/memory` | Vector memory via Qdrant |
+| `internal/todo` | Todo list management for agents |
 | `internal/tool` | Tool registry and execution |
 | `internal/tools` | Concrete tool implementations |
 

@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
 
-	contextmgr "github.com/copcon/server/internal/context"
+	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/domain/entity"
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
@@ -19,51 +20,6 @@ import (
 var (
 	ErrNoSession = errors.New("session not found")
 )
-
-type EventType string
-
-const (
-	EventMessage    EventType = "message"
-	EventReasoning  EventType = "reasoning"
-	EventToolCall   EventType = "tool_call"
-	EventToolResult EventType = "tool_result"
-	EventThought    EventType = "thought"
-	EventDone       EventType = "done"
-	EventError      EventType = "error"
-)
-
-type Event struct {
-	Type EventType `json:"type"`
-	Data any       `json:"data"`
-}
-
-type MessageData struct {
-	Content string `json:"content"`
-}
-
-type ReasoningData struct {
-	Content string `json:"content"`
-}
-
-type ToolCallData struct {
-	ToolName string         `json:"tool_name"`
-	Args     map[string]any `json:"args"`
-	ID       string         `json:"id"`
-}
-
-type ToolResultData struct {
-	ToolName string `json:"tool_name"`
-	Result   any    `json:"result"`
-	ID       string `json:"id"`
-}
-
-type DoneData struct {
-	MessageID string `json:"message_id"`
-}
-
-type ErrorData struct {
-	Error string `json:"error"`
-}
 
 type deltaExtraFields struct {
 	ReasoningContent string `json:"reasoning_content"`
@@ -78,14 +34,14 @@ type toolCallInfo struct {
 type AgentEngine struct {
 	agentRegistry AgentRegistry
 	sessionMgr    session.SessionManager
-	contextMgr    contextmgr.ContextManager
+	contextMgr    chat_context.ContextManager
 	memoryMgr     memory.MemoryManager
 }
 
 func NewAgentEngine(
 	agentRegistry AgentRegistry,
 	sessionMgr session.SessionManager,
-	contextMgr contextmgr.ContextManager,
+	contextMgr chat_context.ContextManager,
 	memoryMgr memory.MemoryManager,
 ) *AgentEngine {
 	return &AgentEngine{
@@ -96,30 +52,24 @@ func NewAgentEngine(
 	}
 }
 
-func (e *AgentEngine) Chat(ctx context.Context, sessionID string, agentID string, userInput string) (<-chan Event, error) {
-	events := make(chan Event, 100)
-
-	go func() {
-		defer close(events)
-
-		if err := e.runAgentLoop(ctx, sessionID, agentID, userInput, events); err != nil {
-			events <- Event{
-				Type: EventError,
-				Data: ErrorData{Error: err.Error()},
-			}
-		}
-	}()
-
-	return events, nil
+func (e *AgentEngine) Chat(chatCtx iface.ChatContextInterface, userInput string) error {
+	if err := e.runAgentLoop(chatCtx, userInput); err != nil {
+		chatCtx.Emit(entity.Event{
+			Type: entity.EventError,
+			Data: entity.ErrorData{Error: err.Error()},
+		})
+	}
+	return nil
 }
 
-func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentID string, userInput string, events chan<- Event) error {
-	sess, err := e.sessionMgr.Get(ctx, sessionID)
+func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput string) error {
+	sess, err := e.sessionMgr.Get(chatCtx)
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
 	}
 
 	// Determine which agent to use
+	agentID := chatCtx.AgentID()
 	if agentID == "" {
 		agentID = sess.DefaultAgentID
 	}
@@ -138,7 +88,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 		return fmt.Errorf("get agent: %w", err)
 	}
 
-	if err := e.contextMgr.AddMessage(ctx, sessionID, &session.Message{
+	if err := e.contextMgr.AddMessage(chatCtx, &session.Message{
 		Role:    "user",
 		Content: userInput,
 	}); err != nil {
@@ -146,7 +96,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 	}
 
 	for {
-		messages, err := e.contextMgr.BuildContext(ctx, sessionID, "", 256000, agentDef.SystemPrompt)
+		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, agentDef.SystemPrompt)
 		if err != nil {
 			return fmt.Errorf("build context: %w", err)
 		}
@@ -173,7 +123,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 			ParallelToolCalls: openai.Bool(true),
 		}
 
-		stream := agentDef.OpenAIClient.Chat.Completions.NewStreaming(ctx, params)
+		stream := agentDef.OpenAIClient.Chat.Completions.NewStreaming(chatCtx.Context(), params)
 		acc := openai.ChatCompletionAccumulator{}
 
 		var content string
@@ -188,24 +138,24 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 			if len(chunk.Choices) > 0 {
 				delta := chunk.Choices[0].Delta
 
-				log.Printf("Delta: %v", delta.RawJSON())
+				// log.Printf("Delta: %v", delta.RawJSON())
 
 				if delta.Content != "" {
 					content += delta.Content
-					events <- Event{
-						Type: EventMessage,
-						Data: MessageData{Content: delta.Content},
-					}
+					chatCtx.Emit(entity.Event{
+						Type: entity.EventMessage,
+						Data: entity.MessageData{Content: delta.Content},
+					})
 				}
 
 				var extra deltaExtraFields
 				if err := json.Unmarshal([]byte(delta.RawJSON()), &extra); err == nil {
 					if extra.ReasoningContent != "" {
 						reasoningContent += extra.ReasoningContent
-						events <- Event{
-							Type: EventReasoning,
-							Data: ReasoningData{Content: extra.ReasoningContent},
-						}
+						chatCtx.Emit(entity.Event{
+							Type: entity.EventReasoning,
+							Data: entity.ReasoningData{Content: extra.ReasoningContent},
+						})
 					}
 				}
 
@@ -284,7 +234,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 		log.Printf("==================================")
 
 		if len(toolCalls) > 0 {
-			if err := e.contextMgr.AddMessage(ctx, sessionID, &session.Message{
+			if err := e.contextMgr.AddMessage(chatCtx, &session.Message{
 				Role:      "assistant",
 				Content:   content,
 				Reasoning: reasoningContent,
@@ -294,7 +244,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 			}
 
 			for _, tc := range toolCalls {
-				if err := e.executeToolCall(ctx, sessionID, agentDef.ToolManager, tc, events); err != nil {
+				if err := e.executeToolCall(chatCtx, agentDef.ToolManager, tc); err != nil {
 					return fmt.Errorf("execute tool call: %w", err)
 				}
 			}
@@ -303,7 +253,7 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 		}
 
 		messageID := uuid.New().String()
-		if err := e.contextMgr.AddMessage(ctx, sessionID, &session.Message{
+		if err := e.contextMgr.AddMessage(chatCtx, &session.Message{
 			ID:        uuid.MustParse(messageID),
 			Role:      "assistant",
 			Content:   content,
@@ -312,47 +262,47 @@ func (e *AgentEngine) runAgentLoop(ctx context.Context, sessionID string, agentI
 			return fmt.Errorf("add assistant message: %w", err)
 		}
 
-		events <- Event{
-			Type: EventDone,
-			Data: DoneData{MessageID: messageID},
-		}
+		chatCtx.Emit(entity.Event{
+			Type: entity.EventDone,
+			Data: entity.DoneData{MessageID: messageID},
+		})
 
 		return nil
 	}
 }
 
-func (e *AgentEngine) executeToolCall(ctx context.Context, sessionID string, toolMgr tool.ToolManager, tc toolCallInfo, events chan<- Event) error {
-	events <- Event{
-		Type: EventToolCall,
-		Data: ToolCallData{
+func (e *AgentEngine) executeToolCall(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo) error {
+	chatCtx.Emit(entity.Event{
+		Type: entity.EventToolCall,
+		Data: entity.ToolCallData{
 			ToolName: tc.Name,
 			Args:     parseArgs(tc.Arguments),
 			ID:       tc.ID,
 		},
-	}
+	})
 
 	args := parseArgs(tc.Arguments)
-	result, err := toolMgr.Execute(ctx, tc.Name, args)
+	result, err := toolMgr.Execute(chatCtx, tc.Name, args)
 
-	var resultData ToolResultData
+	var resultData entity.ToolResultData
 	if err != nil {
-		resultData = ToolResultData{
+		resultData = entity.ToolResultData{
 			ToolName: tc.Name,
 			Result:   map[string]any{"error": err.Error()},
 			ID:       tc.ID,
 		}
 	} else {
-		resultData = ToolResultData{
+		resultData = entity.ToolResultData{
 			ToolName: tc.Name,
 			Result:   result,
 			ID:       tc.ID,
 		}
 	}
 
-	events <- Event{Type: EventToolResult, Data: resultData}
+	chatCtx.Emit(entity.Event{Type: entity.EventToolResult, Data: resultData})
 
 	resultJSON, _ := json.Marshal(resultData.Result)
-	if err := e.contextMgr.AddMessage(ctx, sessionID, &session.Message{
+	if err := e.contextMgr.AddMessage(chatCtx, &session.Message{
 		Role:       "tool",
 		Content:    string(resultJSON),
 		ToolCallID: tc.ID,
@@ -363,7 +313,7 @@ func (e *AgentEngine) executeToolCall(ctx context.Context, sessionID string, too
 	return nil
 }
 
-func (e *AgentEngine) convertMessages(messages []contextmgr.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
+func (e *AgentEngine) convertMessages(messages []chat_context.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
 	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {

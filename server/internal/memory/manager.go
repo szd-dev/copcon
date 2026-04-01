@@ -1,18 +1,26 @@
 package memory
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+
+	"github.com/copcon/server/internal/domain/iface"
 )
 
 var (
 	ErrMemoryNotFound = errors.New("memory not found")
 )
+
+type MemoryManager interface {
+	Store(chatCtx iface.ChatContextInterface, memory *Memory) error
+	Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*Memory, error)
+	GetBySession(chatCtx iface.ChatContextInterface, limit int) ([]*Memory, error)
+	DeleteBySession(chatCtx iface.ChatContextInterface) error
+}
 
 type Memory struct {
 	ID         string         `json:"id"`
@@ -23,13 +31,6 @@ type Memory struct {
 	MemoryType string         `json:"memory_type"`
 	Metadata   map[string]any `json:"metadata"`
 	Score      float32        `json:"score,omitempty"`
-}
-
-type MemoryManager interface {
-	Store(ctx context.Context, memory *Memory) error
-	Search(ctx context.Context, query []float32, limit int, sessionID string) ([]*Memory, error)
-	GetBySession(ctx context.Context, sessionID string, limit int) ([]*Memory, error)
-	DeleteBySession(ctx context.Context, sessionID string) error
 }
 
 type memoryManager struct {
@@ -44,7 +45,7 @@ func NewMemoryManager(client *qdrant.Client, collection string) MemoryManager {
 	}
 }
 
-func (m *memoryManager) Store(ctx context.Context, memory *Memory) error {
+func (m *memoryManager) Store(chatCtx iface.ChatContextInterface, memory *Memory) error {
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
 	}
@@ -75,7 +76,7 @@ func (m *memoryManager) Store(ctx context.Context, memory *Memory) error {
 		},
 	}
 
-	_, err := m.client.Upsert(ctx, &qdrant.UpsertPoints{
+	_, err := m.client.Upsert(chatCtx.Context(), &qdrant.UpsertPoints{
 		CollectionName: m.collection,
 		Points:         points,
 	})
@@ -83,16 +84,17 @@ func (m *memoryManager) Store(ctx context.Context, memory *Memory) error {
 	return err
 }
 
-func (m *memoryManager) Search(ctx context.Context, query []float32, limit int, sessionID string) ([]*Memory, error) {
+func (m *memoryManager) Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*Memory, error) {
 	filter := &qdrant.Filter{}
 
+	sessionID := chatCtx.SessionID()
 	if sessionID != "" {
 		filter.Must = []*qdrant.Condition{
 			qdrant.NewMatch("session_id", sessionID),
 		}
 	}
 
-	results, err := m.client.Query(ctx, &qdrant.QueryPoints{
+	results, err := m.client.Query(chatCtx.Context(), &qdrant.QueryPoints{
 		CollectionName: m.collection,
 		Query:          qdrant.NewQuery(query...),
 		Limit:          qdrant.PtrOf(uint64(limit)),
@@ -142,14 +144,14 @@ func (m *memoryManager) Search(ctx context.Context, query []float32, limit int, 
 	return memories, nil
 }
 
-func (m *memoryManager) GetBySession(ctx context.Context, sessionID string, limit int) ([]*Memory, error) {
+func (m *memoryManager) GetBySession(chatCtx iface.ChatContextInterface, limit int) ([]*Memory, error) {
 	filter := &qdrant.Filter{
 		Must: []*qdrant.Condition{
-			qdrant.NewMatch("session_id", sessionID),
+			qdrant.NewMatch("session_id", chatCtx.SessionID()),
 		},
 	}
 
-	results, err := m.client.Scroll(ctx, &qdrant.ScrollPoints{
+	results, err := m.client.Scroll(chatCtx.Context(), &qdrant.ScrollPoints{
 		CollectionName: m.collection,
 		Filter:         filter,
 		Limit:          qdrant.PtrOf(uint32(limit)),
@@ -196,14 +198,14 @@ func (m *memoryManager) GetBySession(ctx context.Context, sessionID string, limi
 	return memories, nil
 }
 
-func (m *memoryManager) DeleteBySession(ctx context.Context, sessionID string) error {
+func (m *memoryManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
 	filter := &qdrant.Filter{
 		Must: []*qdrant.Condition{
-			qdrant.NewMatch("session_id", sessionID),
+			qdrant.NewMatch("session_id", chatCtx.SessionID()),
 		},
 	}
 
-	_, err := m.client.Delete(ctx, &qdrant.DeletePoints{
+	_, err := m.client.Delete(chatCtx.Context(), &qdrant.DeletePoints{
 		CollectionName: m.collection,
 		Points:         &qdrant.PointsSelector{PointsSelectorOneOf: &qdrant.PointsSelector_Filter{Filter: filter}},
 	})

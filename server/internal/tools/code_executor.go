@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/tool"
 )
 
@@ -50,7 +51,7 @@ func (t *CodeExecutor) InputSchema() map[string]any {
 	}
 }
 
-func (t *CodeExecutor) Execute(ctx context.Context, args map[string]any) (*tool.ToolResult, error) {
+func (t *CodeExecutor) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	language, ok := args["language"].(string)
 	if !ok {
 		return &tool.ToolResult{Success: false, Error: "language is required"}, nil
@@ -61,7 +62,7 @@ func (t *CodeExecutor) Execute(ctx context.Context, args map[string]any) (*tool.
 		return &tool.ToolResult{Success: false, Error: "code is required"}, nil
 	}
 
-	execCtx, cancel := context.WithTimeout(ctx, t.timeout)
+	execCtx, cancel := context.WithTimeout(chatCtx.Context(), t.timeout)
 	defer cancel()
 
 	var cmd *exec.Cmd
@@ -144,7 +145,7 @@ func (t *ShellExecutor) InputSchema() map[string]any {
 	}
 }
 
-func (t *ShellExecutor) Execute(ctx context.Context, args map[string]any) (*tool.ToolResult, error) {
+func (t *ShellExecutor) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	command, ok := args["command"].(string)
 	if !ok {
 		return &tool.ToolResult{Success: false, Error: "command is required"}, nil
@@ -163,7 +164,7 @@ func (t *ShellExecutor) Execute(ctx context.Context, args map[string]any) (*tool
 		}, nil
 	}
 
-	execCtx, cancel := context.WithTimeout(ctx, t.timeout)
+	execCtx, cancel := context.WithTimeout(chatCtx.Context(), t.timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(execCtx, "sh", "-c", command)

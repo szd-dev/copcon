@@ -1,13 +1,13 @@
-package context
+package chat_context
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
 )
 
@@ -16,10 +16,10 @@ var (
 )
 
 type ContextManager interface {
-	GetHistory(ctx context.Context, sessionID string, limit int) ([]session.Message, error)
-	AddMessage(ctx context.Context, sessionID string, msg *session.Message) error
-	BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error)
-	DeleteBySession(ctx context.Context, sessionID string) error
+	GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error)
+	AddMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
+	BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error)
+	DeleteBySession(chatCtx iface.ChatContextInterface) error
 }
 
 type MessageForLLM struct {
@@ -38,15 +38,15 @@ func NewContextManager(db *gorm.DB) ContextManager {
 	return &contextManager{db: db}
 }
 
-func (m *contextManager) GetHistory(ctx context.Context, sessionID string, limit int) ([]session.Message, error) {
+func (m *contextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error) {
 	var messages []session.Message
 
-	sessionUUID, err := uuid.Parse(sessionID)
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
 	if err != nil {
 		return nil, fmt.Errorf("invalid session ID: %w", err)
 	}
 
-	query := m.db.WithContext(ctx).
+	query := m.db.WithContext(chatCtx.Context()).
 		Where("session_id = ?", sessionUUID).
 		Order("created_at ASC")
 
@@ -61,8 +61,8 @@ func (m *contextManager) GetHistory(ctx context.Context, sessionID string, limit
 	return messages, nil
 }
 
-func (m *contextManager) AddMessage(ctx context.Context, sessionID string, msg *session.Message) error {
-	sessionUUID, err := uuid.Parse(sessionID)
+func (m *contextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
 	if err != nil {
 		return fmt.Errorf("invalid session ID: %w", err)
 	}
@@ -72,10 +72,10 @@ func (m *contextManager) AddMessage(ctx context.Context, sessionID string, msg *
 	}
 	msg.SessionID = sessionUUID
 
-	return m.db.WithContext(ctx).Create(msg).Error
+	return m.db.WithContext(chatCtx.Context()).Create(msg).Error
 }
 
-func (m *contextManager) BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error) {
+func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error) {
 	messages := make([]MessageForLLM, 0)
 
 	// Use provided system prompt or default
@@ -87,7 +87,7 @@ func (m *contextManager) BuildContext(ctx context.Context, sessionID string, use
 		Content: systemPrompt,
 	})
 
-	history, err := m.GetHistory(ctx, sessionID, 1024)
+	history, err := m.GetHistory(chatCtx, 1024)
 	if err != nil {
 		return nil, err
 	}
@@ -114,13 +114,13 @@ func (m *contextManager) BuildContext(ctx context.Context, sessionID string, use
 	return messages, nil
 }
 
-func (m *contextManager) DeleteBySession(ctx context.Context, sessionID string) error {
-	sessionUUID, err := uuid.Parse(sessionID)
+func (m *contextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
 	if err != nil {
 		return fmt.Errorf("invalid session ID: %w", err)
 	}
 
-	return m.db.WithContext(ctx).
+	return m.db.WithContext(chatCtx.Context()).
 		Where("session_id = ?", sessionUUID).
 		Delete(&session.Message{}).Error
 }

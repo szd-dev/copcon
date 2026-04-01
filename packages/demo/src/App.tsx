@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bubble, Conversations, Sender, Think, Welcome, XProvider } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
 import { theme, Button, Flex, Spin, Typography } from 'antd';
-import { AgentClient, useAgentChat, Session, Message, ToolExecution } from '@copcon/ui';
+import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { AgentClient, useAgentChat, Session, Message, ToolExecution, TodoList, TodoItemProps } from '@copcon/ui';
+import './App.css';
 
 const { useToken } = theme;
 const { Text } = Typography;
@@ -26,6 +28,8 @@ const App: React.FC = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeKey, setActiveKey] = useState<string>('');
   const [loadingSessions, setLoadingSessions] = useState(true);
+  const [todos, setTodos] = useState<TodoItemProps[]>([]);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
 
   const { 
     messages, 
@@ -195,6 +199,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleStatusChange = (id: string, status: string) => {
+    setTodos((prev) =>
+      prev.map((todo) => (todo.id === id ? { ...todo, status: status as TodoItemProps['status'] } : todo))
+    );
+  };
+
   return (
     <XProvider>
       <Flex
@@ -340,6 +350,62 @@ const App: React.FC = () => {
             </Flex>
           )}
         </Flex>
+
+        {sidebarVisible && (
+          <Flex
+            vertical
+            style={{
+              width: 320,
+              borderLeft: `1px solid ${token.colorBorderSecondary}`,
+              background: token.colorBgContainer,
+            }}
+            className="todo-sidebar"
+          >
+            <Flex
+              justify="space-between"
+              align="center"
+              style={{
+                padding: token.padding,
+                borderBottom: `1px solid ${token.colorBorderSecondary}`,
+              }}
+            >
+              <Text strong style={{ fontSize: 16 }}>
+                Tasks
+              </Text>
+              <Button
+                type="text"
+                size="small"
+                icon={<MenuFoldOutlined />}
+                onClick={() => setSidebarVisible(false)}
+              />
+            </Flex>
+            <Flex
+              flex={1}
+              vertical
+              style={{
+                padding: token.paddingSM,
+                overflow: 'auto',
+              }}
+            >
+              <TodoList todos={todos} onStatusChange={handleStatusChange} />
+            </Flex>
+          </Flex>
+        )}
+
+        {!sidebarVisible && (
+          <Button
+            type="text"
+            icon={<MenuUnfoldOutlined />}
+            onClick={() => setSidebarVisible(true)}
+            style={{
+              position: 'fixed',
+              right: 16,
+              top: 16,
+              zIndex: 1000,
+            }}
+            className="sidebar-toggle-button"
+          />
+        )}
       </Flex>
     </XProvider>
   );

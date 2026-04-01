@@ -1,12 +1,13 @@
 package session
 
 import (
-	"context"
 	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"github.com/copcon/server/internal/domain/iface"
 )
 
 var (
@@ -14,12 +15,12 @@ var (
 )
 
 type SessionManager interface {
-	Create(ctx context.Context, title, defaultAgentID string) (*Session, error)
-	Get(ctx context.Context, id string) (*Session, error)
-	List(ctx context.Context, limit, offset int) ([]*Session, int64, error)
-	Delete(ctx context.Context, id string) error
-	UpdateTitle(ctx context.Context, id, title string) error
-	GetMessageCount(ctx context.Context, sessionID string) (int64, error)
+	Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*Session, error)
+	Get(chatCtx iface.ChatContextInterface) (*Session, error)
+	List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*Session, int64, error)
+	Delete(chatCtx iface.ChatContextInterface) error
+	UpdateTitle(chatCtx iface.ChatContextInterface, title string) error
+	GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error)
 	GetDB() *gorm.DB
 }
 
@@ -31,7 +32,7 @@ func NewSessionManager(db *gorm.DB) SessionManager {
 	return &sessionManager{db: db}
 }
 
-func (m *sessionManager) Create(ctx context.Context, title, defaultAgentID string) (*Session, error) {
+func (m *sessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*Session, error) {
 	session := &Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -41,16 +42,16 @@ func (m *sessionManager) Create(ctx context.Context, title, defaultAgentID strin
 		Metadata:       make(map[string]any),
 	}
 
-	if err := m.db.WithContext(ctx).Create(session).Error; err != nil {
+	if err := m.db.WithContext(chatCtx.Context()).Create(session).Error; err != nil {
 		return nil, err
 	}
 
 	return session, nil
 }
 
-func (m *sessionManager) Get(ctx context.Context, id string) (*Session, error) {
+func (m *sessionManager) Get(chatCtx iface.ChatContextInterface) (*Session, error) {
 	var session Session
-	if err := m.db.WithContext(ctx).Where("id = ?", id).First(&session).Error; err != nil {
+	if err := m.db.WithContext(chatCtx.Context()).Where("id = ?", chatCtx.SessionID()).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSessionNotFound
 		}
@@ -59,15 +60,15 @@ func (m *sessionManager) Get(ctx context.Context, id string) (*Session, error) {
 	return &session, nil
 }
 
-func (m *sessionManager) List(ctx context.Context, limit, offset int) ([]*Session, int64, error) {
+func (m *sessionManager) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*Session, int64, error) {
 	var sessions []*Session
 	var total int64
 
-	if err := m.db.WithContext(ctx).Model(&Session{}).Count(&total).Error; err != nil {
+	if err := m.db.WithContext(chatCtx.Context()).Model(&Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	if err := m.db.WithContext(ctx).
+	if err := m.db.WithContext(chatCtx.Context()).
 		Order("updated_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -78,8 +79,8 @@ func (m *sessionManager) List(ctx context.Context, limit, offset int) ([]*Sessio
 	return sessions, total, nil
 }
 
-func (m *sessionManager) Delete(ctx context.Context, id string) error {
-	result := m.db.WithContext(ctx).Delete(&Session{}, "id = ?", id)
+func (m *sessionManager) Delete(chatCtx iface.ChatContextInterface) error {
+	result := m.db.WithContext(chatCtx.Context()).Delete(&Session{}, "id = ?", chatCtx.SessionID())
 	if result.Error != nil {
 		return result.Error
 	}
@@ -89,10 +90,10 @@ func (m *sessionManager) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (m *sessionManager) UpdateTitle(ctx context.Context, id, title string) error {
-	result := m.db.WithContext(ctx).
+func (m *sessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
+	result := m.db.WithContext(chatCtx.Context()).
 		Model(&Session{}).
-		Where("id = ?", id).
+		Where("id = ?", chatCtx.SessionID()).
 		Update("title", title)
 
 	if result.Error != nil {
@@ -104,11 +105,11 @@ func (m *sessionManager) UpdateTitle(ctx context.Context, id, title string) erro
 	return nil
 }
 
-func (m *sessionManager) GetMessageCount(ctx context.Context, sessionID string) (int64, error) {
+func (m *sessionManager) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
 	var count int64
-	if err := m.db.WithContext(ctx).
+	if err := m.db.WithContext(chatCtx.Context()).
 		Model(&Message{}).
-		Where("session_id = ?", sessionID).
+		Where("session_id = ?", chatCtx.SessionID()).
 		Count(&count).Error; err != nil {
 		return 0, err
 	}

@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
+	github.com/lib/pq v1.12.1
 	github.com/openai/openai-go/v3 v3.29.0
 	github.com/qdrant/go-client v1.17.1
 	github.com/stretchr/testify v1.11.1

@@ -1,13 +1,14 @@
 package tool
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/openai/openai-go/v3"
+
+	"github.com/copcon/server/internal/domain/iface"
 )
 
 var (
@@ -31,7 +32,7 @@ type Tool interface {
 	Name() string
 	Description() string
 	InputSchema() map[string]any
-	Execute(ctx context.Context, args map[string]any) (*ToolResult, error)
+	Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*ToolResult, error)
 }
 
 type ToolManager interface {
@@ -39,7 +40,7 @@ type ToolManager interface {
 	Unregister(name string) error
 	Get(name string) (Tool, error)
 	List() []ToolInfo
-	Execute(ctx context.Context, name string, args map[string]any) (*ToolResult, error)
+	Execute(chatCtx iface.ChatContextInterface, name string, args map[string]any) (*ToolResult, error)
 	GetOpenAITools() []openai.ChatCompletionToolUnionParam
 }
 
@@ -161,13 +162,13 @@ func (m *toolManager) List() []ToolInfo {
 	return tools
 }
 
-func (m *toolManager) Execute(ctx context.Context, name string, args map[string]any) (*ToolResult, error) {
+func (m *toolManager) Execute(chatCtx iface.ChatContextInterface, name string, args map[string]any) (*ToolResult, error) {
 	tool, err := m.Get(name)
 	if err != nil {
 		return nil, err
 	}
 
-	return tool.Execute(ctx, args)
+	return tool.Execute(chatCtx, args)
 }
 
 func (m *toolManager) GetOpenAITools() []openai.ChatCompletionToolUnionParam {

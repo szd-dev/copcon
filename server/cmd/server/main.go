@@ -10,10 +10,11 @@ import (
 
 	"github.com/copcon/server/internal/agent"
 	"github.com/copcon/server/internal/api"
+	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/config"
-	contextmgr "github.com/copcon/server/internal/context"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/server/internal/todo"
 	"github.com/copcon/server/internal/tool"
 	"github.com/copcon/server/internal/tools"
 )
@@ -30,12 +31,13 @@ func main() {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&session.Session{}, &session.Message{}); err != nil {
+	if err := db.AutoMigrate(&session.Session{}, &session.Message{}, &session.Todo{}); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
 	sessionMgr := session.NewSessionManager(db)
-	contextMgr := contextmgr.NewContextManager(db)
+	todoMgr := todo.NewTodoManager(db)
+	contextMgr := chat_context.NewContextManager(db)
 	memoryMgr := memory.NewMemoryManager(nil, "agent_memory")
 
 	toolRegistry := tool.NewToolRegistry()
@@ -47,6 +49,9 @@ func main() {
 	}
 	if err := toolRegistry.Register(tools.NewFileOps("")); err != nil {
 		log.Fatalf("Failed to register file ops: %v", err)
+	}
+	if err := toolRegistry.Register(tools.NewTodoTool(todoMgr)); err != nil {
+		log.Fatalf("Failed to register todo tool: %v", err)
 	}
 	log.Printf("Registered %d tools in registry", len(toolRegistry.List()))
 
@@ -64,7 +69,7 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	api.SetupRoutes(r, cfg, sessionMgr, agentEngine, agentRegistry)
+	api.SetupRoutes(r, cfg, sessionMgr, todoMgr, agentEngine, agentRegistry)
 
 	log.Printf("Server starting on :%s", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {

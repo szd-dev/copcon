@@ -1,0 +1,33 @@
+/* App Layout Styles */
+
+/* Todo Sidebar Responsive Styles */
+@media (max-width: 768px) {
+  .todo-sidebar {
+    position: fixed !important;
+    right: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 999;
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Sidebar Toggle Button - hidden on larger screens */
+@media (min-width: 769px) {
+  .sidebar-toggle-button {
+    display: none !important;
+  }
+}
+
+/* Ensure main content doesn't get too narrow */
+@media (max-width: 1024px) {
+  .todo-sidebar {
+    width: 280px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .todo-sidebar {
+    width: 100% !important;
+  }
+}

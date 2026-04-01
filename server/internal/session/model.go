@@ -90,6 +90,7 @@ type Session struct {
 	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 	Metadata       JSONB     `gorm:"type:jsonb" json:"metadata"`
 	Messages       []Message `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE" json:"-"`
+	Todos          []Todo    `gorm:"foreignKey:SessionID;constraint:OnDelete:CASCADE" json:"-"`
 }
 
 type Message struct {

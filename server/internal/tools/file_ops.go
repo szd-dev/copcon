@@ -1,12 +1,12 @@
 package tools
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/tool"
 )
 
@@ -66,7 +66,7 @@ func (t *FileOps) InputSchema() map[string]any {
 	}
 }
 
-func (t *FileOps) Execute(ctx context.Context, args map[string]any) (*tool.ToolResult, error) {
+func (t *FileOps) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	operation, ok := args["operation"].(string)
 	if !ok {
 		return &tool.ToolResult{Success: false, Error: "operation is required"}, nil
