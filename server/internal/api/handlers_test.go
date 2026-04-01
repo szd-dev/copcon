@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +16,9 @@ import (
 
 	"github.com/copcon/server/internal/agent"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/server/internal/todo"
 )
 
 type mockSessionManager struct {
@@ -31,7 +32,7 @@ func newMockSessionManager() *mockSessionManager {
 	}
 }
 
-func (m *mockSessionManager) Create(ctx context.Context, title, defaultAgentID string) (*session.Session, error) {
+func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -44,15 +45,15 @@ func (m *mockSessionManager) Create(ctx context.Context, title, defaultAgentID s
 	return sess, nil
 }
 
-func (m *mockSessionManager) Get(ctx context.Context, id string) (*session.Session, error) {
-	sess, ok := m.sessions[id]
+func (m *mockSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.Session, error) {
+	sess, ok := m.sessions[chatCtx.SessionID()]
 	if !ok {
 		return nil, session.ErrSessionNotFound
 	}
 	return sess, nil
 }
 
-func (m *mockSessionManager) List(ctx context.Context, limit, offset int) ([]*session.Session, int64, error) {
+func (m *mockSessionManager) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	var list []*session.Session
 	for _, s := range m.sessions {
 		list = append(list, s)
@@ -60,16 +61,16 @@ func (m *mockSessionManager) List(ctx context.Context, limit, offset int) ([]*se
 	return list, int64(len(list)), nil
 }
 
-func (m *mockSessionManager) Delete(ctx context.Context, id string) error {
-	if _, ok := m.sessions[id]; !ok {
+func (m *mockSessionManager) Delete(chatCtx iface.ChatContextInterface) error {
+	if _, ok := m.sessions[chatCtx.SessionID()]; !ok {
 		return session.ErrSessionNotFound
 	}
-	delete(m.sessions, id)
+	delete(m.sessions, chatCtx.SessionID())
 	return nil
 }
 
-func (m *mockSessionManager) UpdateTitle(ctx context.Context, id, title string) error {
-	sess, ok := m.sessions[id]
+func (m *mockSessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
+	sess, ok := m.sessions[chatCtx.SessionID()]
 	if !ok {
 		return session.ErrSessionNotFound
 	}
@@ -77,12 +78,51 @@ func (m *mockSessionManager) UpdateTitle(ctx context.Context, id, title string) 
 	return nil
 }
 
-func (m *mockSessionManager) GetMessageCount(ctx context.Context, sessionID string) (int64, error) {
+func (m *mockSessionManager) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
 	return 0, nil
 }
 
 func (m *mockSessionManager) GetDB() *gorm.DB {
 	return m.db
+}
+
+type mockTodoManager struct{}
+
+func (m *mockTodoManager) Create(chatCtx iface.ChatContextInterface, content string, opts ...todo.TodoOption) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Get(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) List(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Update(chatCtx iface.ChatContextInterface, id string, updates map[string]any) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Delete(chatCtx iface.ChatContextInterface, id string) error {
+	return nil
+}
+func (m *mockTodoManager) Start(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Complete(chatCtx iface.ChatContextInterface, id string, result string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Fail(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Block(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) Unblock(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) GetAvailableTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) GetDB() *gorm.DB {
+	return nil
 }
 
 type mockAgentRegistry struct {
@@ -136,12 +176,13 @@ func setupTestHandler(t *testing.T) (*Handler, func()) {
 	}
 
 	sessionMgr := newMockSessionManager()
+	todoMgr := &mockTodoManager{}
 	agentRegistry := newMockAgentRegistry("default-agent")
 
 	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
 	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
 
-	handler := NewHandler(cfg, sessionMgr, nil, agentRegistry)
+	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry)
 
 	cleanup := func() {}
 

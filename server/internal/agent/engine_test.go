@@ -11,13 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	contextmgr "github.com/copcon/server/internal/context"
+	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/domain/entity"
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 )
 
-// mockSessionManager is a mock implementation of session.SessionManager
 type mockSessionManager struct {
 	sessions map[string]*session.Session
 }
@@ -28,7 +29,7 @@ func newMockSessionManager() *mockSessionManager {
 	}
 }
 
-func (m *mockSessionManager) Create(ctx context.Context, title, defaultAgentID string) (*session.Session, error) {
+func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
 	s := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -41,28 +42,28 @@ func (m *mockSessionManager) Create(ctx context.Context, title, defaultAgentID s
 	return s, nil
 }
 
-func (m *mockSessionManager) Get(ctx context.Context, id string) (*session.Session, error) {
-	s, ok := m.sessions[id]
+func (m *mockSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.Session, error) {
+	s, ok := m.sessions[chatCtx.SessionID()]
 	if !ok {
 		return nil, session.ErrSessionNotFound
 	}
 	return s, nil
 }
 
-func (m *mockSessionManager) List(ctx context.Context, limit, offset int) ([]*session.Session, int64, error) {
+func (m *mockSessionManager) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	return nil, 0, nil
 }
 
-func (m *mockSessionManager) Delete(ctx context.Context, id string) error {
-	delete(m.sessions, id)
+func (m *mockSessionManager) Delete(chatCtx iface.ChatContextInterface) error {
+	delete(m.sessions, chatCtx.SessionID())
 	return nil
 }
 
-func (m *mockSessionManager) UpdateTitle(ctx context.Context, id, title string) error {
+func (m *mockSessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
 	return nil
 }
 
-func (m *mockSessionManager) GetMessageCount(ctx context.Context, sessionID string) (int64, error) {
+func (m *mockSessionManager) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
 	return 0, nil
 }
 
@@ -70,53 +71,50 @@ func (m *mockSessionManager) GetDB() *gorm.DB {
 	return nil
 }
 
-// mockContextManager is a mock implementation of context.ContextManager
 type mockContextManager struct {
-	messages map[string][]contextmgr.MessageForLLM
+	messages map[string][]chat_context.MessageForLLM
 }
 
 func newMockContextManager() *mockContextManager {
 	return &mockContextManager{
-		messages: make(map[string][]contextmgr.MessageForLLM),
+		messages: make(map[string][]chat_context.MessageForLLM),
 	}
 }
 
-func (m *mockContextManager) GetHistory(ctx context.Context, sessionID string, limit int) ([]session.Message, error) {
+func (m *mockContextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error) {
 	return nil, nil
 }
 
-func (m *mockContextManager) AddMessage(ctx context.Context, sessionID string, msg *session.Message) error {
+func (m *mockContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
 	return nil
 }
 
-func (m *mockContextManager) BuildContext(ctx context.Context, sessionID string, userInput string, maxTokens int, systemPrompt string) ([]contextmgr.MessageForLLM, error) {
+func (m *mockContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]chat_context.MessageForLLM, error) {
 	return nil, nil
 }
 
-func (m *mockContextManager) DeleteBySession(ctx context.Context, sessionID string) error {
+func (m *mockContextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
 	return nil
 }
 
-// mockMemoryManager is a mock implementation of memory.MemoryManager
 type mockMemoryManager struct{}
 
-func (m *mockMemoryManager) Store(ctx context.Context, memory *memory.Memory) error {
+func (m *mockMemoryManager) Store(chatCtx iface.ChatContextInterface, memory *memory.Memory) error {
 	return nil
 }
 
-func (m *mockMemoryManager) Search(ctx context.Context, query []float32, limit int, sessionID string) ([]*memory.Memory, error) {
+func (m *mockMemoryManager) Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*memory.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryManager) GetBySession(ctx context.Context, sessionID string, limit int) ([]*memory.Memory, error) {
+func (m *mockMemoryManager) GetBySession(chatCtx iface.ChatContextInterface, limit int) ([]*memory.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryManager) DeleteBySession(ctx context.Context, sessionID string) error {
+func (m *mockMemoryManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
 	return nil
 }
 
-// mockAgentRegistry is a mock implementation of AgentRegistry
 type mockAgentRegistry struct {
 	agents       map[string]AgentDefinition
 	defaultAgent string
@@ -162,7 +160,6 @@ func (r *mockAgentRegistry) Default() (AgentDefinition, error) {
 	return r.Get(r.defaultAgent)
 }
 
-// mockToolManagerForEngine is a mock tool manager for engine tests
 type mockToolManagerForEngine struct {
 	tools []openai.ChatCompletionToolUnionParam
 }
@@ -173,7 +170,7 @@ func (m *mockToolManagerForEngine) Get(name string) (tool.Tool, error) {
 	return nil, tool.ErrToolNotFound
 }
 func (m *mockToolManagerForEngine) List() []tool.ToolInfo { return nil }
-func (m *mockToolManagerForEngine) Execute(ctx context.Context, name string, args map[string]any) (*tool.ToolResult, error) {
+func (m *mockToolManagerForEngine) Execute(chatCtx iface.ChatContextInterface, name string, args map[string]any) (*tool.ToolResult, error) {
 	return nil, nil
 }
 func (m *mockToolManagerForEngine) GetOpenAITools() []openai.ChatCompletionToolUnionParam {
@@ -182,7 +179,7 @@ func (m *mockToolManagerForEngine) GetOpenAITools() []openai.ChatCompletionToolU
 
 func TestAgentEngineChatWithAgent(t *testing.T) {
 	sessionMgr := newMockSessionManager()
-	contextMgr := newMockContextManager()
+	chat_context := newMockContextManager()
 	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
@@ -208,25 +205,26 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 	agentRegistry.SetDefault("agent-a")
 
 	ctx := context.Background()
-	session, err := sessionMgr.Create(ctx, "Test Session", "agent-a")
+	chatCtxForCreate := iface.NewChatContext(ctx, "", "agent-a")
+	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
 	require.NotNil(t, engine)
 
-	events, err := engine.Chat(ctx, session.ID.String(), "agent-b", "Hello")
+	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "agent-b")
+	err = engine.Chat(chatCtxForChat, "Hello")
 	require.NoError(t, err)
-	require.NotNil(t, events)
 
 	go func() {
-		for range events {
+		for range chatCtxForChat.Events() {
 		}
 	}()
 }
 
 func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	sessionMgr := newMockSessionManager()
-	contextMgr := newMockContextManager()
+	chat_context := newMockContextManager()
 	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
@@ -243,25 +241,26 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	agentRegistry.SetDefault("agent-a")
 
 	ctx := context.Background()
-	session, err := sessionMgr.Create(ctx, "Test Session", "agent-a")
+	chatCtxForCreate := iface.NewChatContext(ctx, "", "agent-a")
+	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
 	require.NotNil(t, engine)
 
-	events, err := engine.Chat(ctx, session.ID.String(), "", "Hello")
+	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "")
+	err = engine.Chat(chatCtxForChat, "Hello")
 	require.NoError(t, err)
-	require.NotNil(t, events)
 
 	go func() {
-		for range events {
+		for range chatCtxForChat.Events() {
 		}
 	}()
 }
 
 func TestAgentEngineSystemPrompt(t *testing.T) {
 	sessionMgr := newMockSessionManager()
-	contextMgr := newMockContextManager()
+	chat_context := newMockContextManager()
 	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
@@ -279,29 +278,30 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 	agentRegistry.SetDefault("coding-agent")
 
 	ctx := context.Background()
-	session, err := sessionMgr.Create(ctx, "Test Session", "coding-agent")
+	chatCtxForCreate := iface.NewChatContext(ctx, "", "coding-agent")
+	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "coding-agent")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
 	require.NotNil(t, engine)
 
 	agentDef, err := agentRegistry.Get("coding-agent")
 	require.NoError(t, err)
 	assert.Equal(t, customPrompt, agentDef.SystemPrompt)
 
-	events, err := engine.Chat(ctx, session.ID.String(), "coding-agent", "Hello")
+	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "coding-agent")
+	err = engine.Chat(chatCtxForChat, "Hello")
 	require.NoError(t, err)
-	require.NotNil(t, events)
 
 	go func() {
-		for range events {
+		for range chatCtxForChat.Events() {
 		}
 	}()
 }
 
 func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	sessionMgr := newMockSessionManager()
-	contextMgr := newMockContextManager()
+	chat_context := newMockContextManager()
 	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
@@ -318,22 +318,22 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	agentRegistry.SetDefault("agent-1")
 
 	ctx := context.Background()
-	session, err := sessionMgr.Create(ctx, "Test Session", "agent-1")
+	chatCtxForCreate := iface.NewChatContext(ctx, "", "agent-1")
+	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-1")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
 	require.NotNil(t, engine)
 
-	events, err := engine.Chat(ctx, session.ID.String(), "non-existent-agent", "Hello")
+	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "non-existent-agent")
+	err = engine.Chat(chatCtxForChat, "Hello")
 	require.NoError(t, err)
-	require.NotNil(t, events)
 
-	// Error should be sent through events channel as EventError
 	var foundError bool
-	for event := range events {
-		if event.Type == EventError {
+	for event := range chatCtxForChat.Events() {
+		if event.Type == entity.EventError {
 			foundError = true
-			errorData, ok := event.Data.(ErrorData)
+			errorData, ok := event.Data.(entity.ErrorData)
 			require.True(t, ok)
 			assert.Contains(t, errorData.Error, "agent not found")
 		}
@@ -343,7 +343,7 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 
 func TestAgentEngineStateless(t *testing.T) {
 	sessionMgr := newMockSessionManager()
-	contextMgr := newMockContextManager()
+	chat_context := newMockContextManager()
 	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
@@ -359,7 +359,7 @@ func TestAgentEngineStateless(t *testing.T) {
 	agentRegistry.Register("agent-1", agent)
 	agentRegistry.SetDefault("agent-1")
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
 	require.NotNil(t, engine)
 
 	assert.NotNil(t, engine.agentRegistry)

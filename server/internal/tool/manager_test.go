@@ -6,6 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/server/internal/testutil"
 )
 
 type mockTool struct {
@@ -28,7 +31,7 @@ func (m *mockTool) InputSchema() map[string]any {
 	return m.schema
 }
 
-func (m *mockTool) Execute(ctx context.Context, args map[string]any) (*ToolResult, error) {
+func (m *mockTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*ToolResult, error) {
 	return m.result, m.execErr
 }
 
@@ -71,7 +74,8 @@ func TestToolManager_Execute(t *testing.T) {
 	err := mgr.Register(tool)
 	require.NoError(t, err)
 
-	result, err := mgr.Execute(context.Background(), "echo", map[string]any{})
+	chatCtx := testutil.NewMockChatContext(context.Background(), "", "")
+	result, err := mgr.Execute(chatCtx, "echo", map[string]any{})
 
 	assert.NoError(t, err)
 	assert.True(t, result.Success)
@@ -81,7 +85,8 @@ func TestToolManager_Execute(t *testing.T) {
 func TestToolManager_Execute_NotFound(t *testing.T) {
 	mgr := NewToolManager()
 
-	_, err := mgr.Execute(context.Background(), "nonexistent", map[string]any{})
+	chatCtx := testutil.NewMockChatContext(context.Background(), "", "")
+	_, err := mgr.Execute(chatCtx, "nonexistent", map[string]any{})
 	assert.ErrorIs(t, err, ErrToolNotFound)
 }
 
