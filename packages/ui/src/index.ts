@@ -1,5 +1,5 @@
 export { AgentClient } from './api/agentClient';
-export type { Session, Message, SSEEvent, ToolCall, ToolExecution } from './api/types';
+export type { Session, Message, SSEEvent, ToolCall, ToolExecution, Todo } from './api/types';
 
 export { useAgentChat } from './hooks/useAgentChat';
 
@@ -8,3 +8,8 @@ export type { TodoItemProps } from './components/TodoItem';
 
 export { TodoList } from './components/TodoList';
 export type { TodoListProps } from './components/TodoList';
+
+export { default as CopConChatProvider } from './providers/CopConChatProvider';
+export type { CopConMessage, CopConInput, CopConSSEOutput } from './providers/CopConChatProvider';
+
+export { mergeToolMessages } from './utils/messageUtils';

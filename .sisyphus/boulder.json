@@ -1,17 +1,16 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/chat-context-refactor.md",
-  "started_at": "2026-03-31T15:31:06.548Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/tool-display-optimization.md",
+  "started_at": "2026-04-01T16:15:01.703Z",
   "session_ids": [
-    "ses_2bbf1aba4fferBie45tM4oQsL0",
-    "ses_2bb7a0eceffedXOfCNhdrBPJoB",
-    "ses_2bb7841aaffeYtpU0z52j9JErf",
-    "ses_2bb73f9fbffeT0UYjRsN7cFdk2",
-    "ses_2bb73a6f6ffeopOEzZxhHYMAI5",
-    "ses_2bb7326dcffeWw7E4tqUGEzEgt",
-    "ses_2bb6101cbffegN4iXuqYfoCwou",
-    "ses_2bb502572ffelVDHTRZCM6MOEA"
+    "ses_2b6be140cffeBLsYQ6C8iatkbo",
+    "ses_2b62a64e6ffeVbkbTNG7IlkTho",
+    "ses_2b62a64daffeOhNioSe5WmV2sx",
+    "ses_2b625d747ffegpy7Ptshzpsezy",
+    "ses_2b625d73dffe0xq38VHMGgmIxu",
+    "ses_2b6234c68ffeut5dM2ipzNiJ05",
+    "ses_2b61ce1beffe8O2W9WbZeje5EO"
   ],
-  "plan_name": "chat-context-refactor",
+  "plan_name": "tool-display-optimization",
   "agent": "atlas",
   "task_sessions": {}
 }

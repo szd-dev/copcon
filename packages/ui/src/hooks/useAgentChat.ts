@@ -1,173 +1,116 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useXChat, XRequest } from '@ant-design/x-sdk';
+import type { MessageInfo } from '@ant-design/x-sdk';
+import CopConChatProvider, {
+  CopConMessage,
+  CopConInput,
+  CopConSSEOutput,
+} from '../providers/CopConChatProvider';
 import { AgentClient } from '../api/agentClient';
-import { Message, SSEEvent, ToolExecution } from '../api/types';
+import { mergeToolMessages } from '../utils/messageUtils';
 
 export interface UseAgentChatOptions {
+  /** AgentClient instance for API calls */
   client: AgentClient;
+  /** Current session ID */
   sessionId: string;
 }
 
 export interface UseAgentChatReturn {
-  messages: Message[];
-  isLoading: boolean;
-  toolExecutions: ToolExecution[];
+  /** Array of chat messages */
+  messages: CopConMessage[];
+  /** Whether a request is in progress */
+  isRequesting: boolean;
+  /** Send a new message */
   sendMessage: (content: string) => void;
-  stopGeneration: () => void;
-  loadMessages: () => Promise<void>;
+  /** Abort the current request */
+  abort: () => void;
 }
 
-export function useAgentChat({ client, sessionId }: UseAgentChatOptions): UseAgentChatReturn {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([]);
-  const stopRef = useRef<(() => void) | null>(null);
-  const currentToolRef = useRef<ToolExecution | null>(null);
-  const currentReasoningRef = useRef('');
+/**
+ * Custom hook that wraps @ant-design/x-sdk's useXChat for CopCon chat functionality.
+ *
+ * Uses CopConChatProvider to handle SSE message transformation and useXChat for
+ * state management.
+ */
+export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
+  const { client, sessionId } = options;
 
-  const loadMessages = useCallback(async () => {
+  const [provider, setProvider] = useState<CopConChatProvider | null>(null);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const loadedSessionRef = useRef<string | null>(null);
+
+  // Create provider when sessionId changes
+  useEffect(() => {
     if (!sessionId) {
-      setMessages([]);
+      setProvider(null);
+      loadedSessionRef.current = null;
       return;
     }
-    try {
-      const result = await client.getMessages(sessionId);
-      setMessages(result.messages || []);
-    } catch (error) {
-      console.error('Failed to load messages:', error);
-      setMessages([]);
-    }
+
+    const baseUrl = client.getBaseUrl();
+    const request = XRequest<CopConInput, CopConSSEOutput, CopConMessage>(
+      `${baseUrl}/api/sessions/${sessionId}/chat`,
+      {
+        manual: true,
+        params: { content: '', sessionId },
+      }
+    );
+
+    setProvider(new CopConChatProvider({ request }));
   }, [client, sessionId]);
 
+  const chatResult = useXChat<CopConMessage, CopConMessage, CopConInput, CopConSSEOutput>({
+    provider: provider ?? undefined,
+  });
+
+  // Load historical messages when sessionId changes
   useEffect(() => {
-    setMessages([]);
-    if (sessionId) {
-      loadMessages();
+    if (!sessionId || !client || loadedSessionRef.current === sessionId) {
+      return;
     }
-  }, [sessionId]);
 
-  const handleEvent = useCallback((event: SSEEvent) => {
-    console.log('[useAgentChat] Received event:', event.type, event.data);
-    
-    switch (event.type) {
-      case 'reasoning':
-        if (event.data.content) {
-          console.log('[useAgentChat] Reasoning content:', event.data.content);
-          currentReasoningRef.current += event.data.content;
-        }
-        break;
-      case 'message':
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
-            return [...prev.slice(0, -1), { 
-              ...last, 
-              content: last.content + (event.data.content || ''),
-              reasoning: last.reasoning || currentReasoningRef.current,
-            }];
-          }
-          return [...prev, {
-            id: `temp-${Date.now()}`,
-            session_id: sessionId,
-            role: 'assistant' as const,
-            content: event.data.content || '',
-            reasoning: currentReasoningRef.current,
-            created_at: new Date().toISOString(),
-          }];
-        });
-        break;
-      case 'tool_call': {
-        const newTool: ToolExecution = {
-          id: event.data.id || `tool-${Date.now()}`,
-          name: event.data.name || event.data.tool_name || 'Unknown Tool',
-          arguments: event.data.arguments ? JSON.parse(event.data.arguments) : (event.data.tool_args || {}),
-          status: 'running',
-          startTime: Date.now(),
-        };
-        currentToolRef.current = newTool;
-        setToolExecutions((prev) => [...prev, newTool]);
-        break;
+    const loadMessages = async () => {
+      setIsLoadingMessages(true);
+      try {
+        const result = await client.getMessages(sessionId);
+        // Merge tool results into assistant messages
+        const mergedMessages = mergeToolMessages(
+          (result.messages || []) as CopConMessage[]
+        );
+        const messageInfos: MessageInfo<CopConMessage>[] = mergedMessages.map(
+          (msg) => ({
+            id: msg.id,
+            message: msg as CopConMessage,
+            status: 'success' as const,
+          })
+        );
+        chatResult.setMessages(messageInfos);
+        loadedSessionRef.current = sessionId;
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+        chatResult.setMessages([]);
+      } finally {
+        setIsLoadingMessages(false);
       }
-      case 'tool_result': {
-        setToolExecutions((prev) => {
-          const toolId = event.data.id || currentToolRef.current?.id;
-          if (!toolId) return prev;
-          
-          return prev.map((tool) => {
-            if (tool.id === toolId) {
-              return {
-                ...tool,
-                output: typeof event.data.output === 'string' 
-                  ? event.data.output 
-                  : JSON.stringify(event.data.output || event.data.result, null, 2),
-                status: 'success',
-                endTime: Date.now(),
-              };
-            }
-            return tool;
-          });
-        });
-        currentToolRef.current = null;
-        break;
-      }
-      case 'thought':
-        if (event.data.content) {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              return [...prev.slice(0, -1), { ...last, content: last.content + `\n\n> ${event.data.content}` }];
-            }
-            return [...prev, {
-              id: `temp-${Date.now()}`,
-              session_id: sessionId,
-              role: 'assistant' as const,
-              content: `> ${event.data.content}`,
-              created_at: new Date().toISOString(),
-            }];
-          });
-        }
-        break;
-      case 'done':
-        setIsLoading(false);
-        stopRef.current = null;
-        currentToolRef.current = null;
-        currentReasoningRef.current = '';
-        break;
-      case 'error':
-        setIsLoading(false);
-        stopRef.current = null;
-        currentToolRef.current = null;
-        currentReasoningRef.current = '';
-        console.error('Chat error:', event.data.error);
-        break;
-    }
-  }, [sessionId]);
+    };
 
-  const sendMessage = useCallback((content: string) => {
-    if (!sessionId) return;
-    
-    setToolExecutions([]);
-    currentToolRef.current = null;
-    currentReasoningRef.current = '';
-    
-    setMessages((prev) => [...prev, {
-      id: `user-${Date.now()}`,
-      session_id: sessionId,
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-    }]);
-    
-    setIsLoading(true);
-    stopRef.current = client.chat(sessionId, content, handleEvent);
-  }, [client, sessionId, handleEvent]);
+    loadMessages();
+  }, [client, sessionId, chatResult]);
 
-  const stopGeneration = useCallback(() => {
-    if (stopRef.current) {
-      stopRef.current();
-      stopRef.current = null;
-      setIsLoading(false);
-    }
-  }, []);
+  const sendMessage = useCallback(
+    (content: string) => {
+      if (!sessionId || !provider) return;
 
-  return { messages, isLoading, toolExecutions, sendMessage, stopGeneration, loadMessages };
+      chatResult.onRequest({ content, sessionId });
+    },
+    [sessionId, provider, chatResult]
+  );
+
+  return {
+    messages: chatResult.messages.map((m) => m.message),
+    isRequesting: chatResult.isRequesting || isLoadingMessages,
+    sendMessage,
+    abort: chatResult.abort,
+  };
 }

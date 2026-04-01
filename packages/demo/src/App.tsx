@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bubble, Conversations, Sender, Think, Welcome, XProvider } from '@ant-design/x';
+import { Bubble, Conversations, Sender, Think, Welcome, XProvider, ThoughtChain } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
 import { theme, Button, Flex, Spin, Typography } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
-import { AgentClient, useAgentChat, Session, Message, ToolExecution, TodoList, TodoItemProps } from '@copcon/ui';
+import { AgentClient, useAgentChat, Session, CopConMessage, TodoList, TodoItemProps, Todo } from '@copcon/ui';
 import './App.css';
 
 const { useToken } = theme;
@@ -33,11 +33,9 @@ const App: React.FC = () => {
 
   const { 
     messages, 
-    isLoading, 
-    toolExecutions, 
+    isRequesting, 
     sendMessage, 
-    stopGeneration, 
-    loadMessages 
+    abort
   } = useAgentChat({
     client,
     sessionId: activeKey,
@@ -52,7 +50,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (activeKey) {
-      loadMessages();
+      loadTodos(activeKey);
+    } else {
+      setTodos([]);
     }
   }, [activeKey]);
 
@@ -60,7 +60,7 @@ const App: React.FC = () => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [messages, toolExecutions]);
+  }, [messages]);
 
   const loadSessions = async () => {
     setLoadingSessions(true);
@@ -74,6 +74,23 @@ const App: React.FC = () => {
       console.error('Failed to load sessions:', error);
     } finally {
       setLoadingSessions(false);
+    }
+  };
+
+  const loadTodos = async (sessionId: string) => {
+    try {
+      const result = await client.getTodos(sessionId);
+      const todoItems: TodoItemProps[] = (result.todos || []).map((todo: Todo) => ({
+        id: todo.id,
+        content: todo.content,
+        status: todo.status,
+        activeForm: todo.active_form,
+        result: todo.result,
+      }));
+      setTodos(todoItems);
+    } catch (error) {
+      console.error('Failed to load todos:', error);
+      setTodos([]);
     }
   };
 
@@ -107,20 +124,42 @@ const App: React.FC = () => {
 
   const bubbleItems: BubbleItem[] = [];
   
-  messages.forEach((msg: Message) => {
+  messages.forEach((msg: CopConMessage) => {
     const isLastAssistant = 
       msg.role === 'assistant' && 
       messages.indexOf(msg) === messages.length - 1;
     
-    bubbleItems.push({
-      key: msg.id,
-      role: msg.role === 'user' ? 'user' : msg.role === 'tool' ? 'tool' : 'ai',
-      content: msg.content,
-      loading: isLastAssistant && isLoading && !msg.content,
-      header: msg.reasoning ? (
+    let header: React.ReactNode = undefined;
+    
+    const toolCalls = msg.tool_calls;
+    if (toolCalls && toolCalls.length > 0) {
+      const toolChainItems = toolCalls.map(tc => ({
+        key: tc.id,
+        title: `🔧 ${tc.function.name}`,
+        status: tc.status || 'loading',
+        description: tc.function.arguments ? `Arguments: ${tc.function.arguments}` : undefined,
+        content: tc.output,
+        collapsible: true,
+      }));
+      
+      header = (
+        <ThoughtChain
+          items={toolChainItems}
+          line="dashed"
+          styles={{
+            root: {
+              marginBottom: token.marginXS,
+            },
+          }}
+        />
+      );
+    }
+    
+    if (msg.reasoning) {
+      const thinkComponent = (
         <Think
           title="💭 Thinking..."
-          loading={isLastAssistant && isLoading}
+          loading={isLastAssistant && isRequesting}
           defaultExpanded={true}
           styles={{
             root: {
@@ -139,23 +178,22 @@ const App: React.FC = () => {
         >
           {msg.reasoning}
         </Think>
-      ) : undefined,
-    });
-  });
-
-  toolExecutions.forEach((tool: ToolExecution) => {
+      );
+      
+      header = header ? (
+        <>
+          {thinkComponent}
+          {header}
+        </>
+      ) : thinkComponent;
+    }
+    
     bubbleItems.push({
-      key: tool.id,
-      role: 'tool',
-      content: tool.output 
-        ? `Arguments:\n${JSON.stringify(tool.arguments, null, 2)}\n\nOutput:\n${tool.output}`
-        : JSON.stringify(tool.arguments, null, 2),
-      loading: tool.status === 'running',
-      header: (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          🔧 {tool.name}
-        </Text>
-      ),
+      key: msg.id,
+      role: msg.role === 'user' ? 'user' : 'ai',
+      content: msg.content,
+      loading: isLastAssistant && isRequesting && !msg.content,
+      header,
     });
   });
 
@@ -175,20 +213,6 @@ const App: React.FC = () => {
       placement: 'end' as const,
       variant: 'filled' as const,
       shape: 'default' as const,
-    },
-    tool: {
-      placement: 'start' as const,
-      variant: 'outlined' as const,
-      shape: 'default' as const,
-      styles: {
-        content: {
-          fontFamily: 'monospace',
-          fontSize: 12,
-          whiteSpace: 'pre-wrap',
-          maxHeight: 300,
-          overflow: 'auto',
-        },
-      },
     },
   };
 
@@ -324,9 +348,9 @@ const App: React.FC = () => {
               >
                 <Sender
                   ref={senderRef}
-                  loading={isLoading}
+                  loading={isRequesting}
                   onSubmit={handleSubmit}
-                  onCancel={stopGeneration}
+                  onCancel={abort}
                   placeholder="Type a message..."
                   style={{
                     flex: 1,

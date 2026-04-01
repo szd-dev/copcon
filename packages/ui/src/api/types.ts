@@ -26,6 +26,19 @@ export interface Message {
   created_at: string;
 }
 
+export interface Todo {
+  id: string;
+  session_id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'blocked' | 'failed';
+  active_form?: string;
+  result?: string;
+  depends_on?: string[];
+  retry_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type SSEEventType = 'message' | 'reasoning' | 'tool_call' | 'tool_result' | 'thought' | 'done' | 'error';
 
 export interface SSEEvent {

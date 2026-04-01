@@ -1,4 +1,4 @@
-import { Session, Message, SSEEvent } from './types';
+import { Session, Message, SSEEvent, Todo } from './types';
 
 export interface AgentClientConfig {
   baseUrl: string;
@@ -9,6 +9,10 @@ export class AgentClient {
 
   constructor(config: AgentClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   async createSession(): Promise<Session> {
@@ -45,66 +49,9 @@ export class AgentClient {
     return response.json();
   }
 
-  chat(
-    sessionId: string,
-    content: string,
-    onEvent: (event: SSEEvent) => void,
-    onError?: (error: Error) => void,
-    onComplete?: () => void
-  ): () => void {
-    const controller = new AbortController();
-    
-    fetch(`${this.baseUrl}/api/sessions/${sessionId}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Chat request failed: ${response.statusText}`);
-        }
-        
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response body');
-        
-        const decoder = new TextDecoder();
-        let buffer = '';
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                onComplete?.();
-                return;
-              }
-              try {
-                const event = JSON.parse(data) as SSEEvent;
-                console.log('[AgentClient] Parsed SSE event:', event);
-                onEvent(event);
-              } catch (e) {
-                console.error('[AgentClient] Failed to parse SSE data:', data, e);
-              }
-            } else if (line.startsWith('event: ')) {
-              // Handle event type line
-            }
-          }
-        }
-      })
-      .catch((error) => {
-        if (error.name !== 'AbortError') {
-          onError?.(error);
-        }
-      });
-    
-    return () => controller.abort();
+  async getTodos(sessionId: string): Promise<{ todos: Todo[] }> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/todos`);
+    if (!response.ok) throw new Error(`Failed to get todos: ${response.statusText}`);
+    return response.json();
   }
 }

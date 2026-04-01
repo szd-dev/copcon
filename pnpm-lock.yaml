@@ -14,6 +14,9 @@ importers:
       '@ant-design/x-markdown':
         specifier: ^2.4.0
         version: 2.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@ant-design/x-sdk':
+        specifier: ^2.4.0
+        version: 2.5.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@copcon/ui':
         specifier: file:../ui
         version: link:../ui
@@ -48,6 +51,9 @@ importers:
       '@ant-design/x':
         specifier: ^2.4.0
         version: 2.5.0(antd@6.3.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@ant-design/x-sdk':
+        specifier: ^2.4.0
+        version: 2.5.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@storybook/react-vite':
         specifier: ^8.6.0
         version: 8.6.18(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(rollup@4.60.1)(storybook@8.6.18)(typescript@5.9.3)(vite@6.4.1)
@@ -118,6 +124,12 @@ packages:
 
   '@ant-design/x-markdown@2.5.0':
     resolution: {integrity: sha512-Xuhhus8yB0eza9Cs5/G51gG+wUJAgNzyjwGx4G4ivsKTcEzcLJWomE6zpzmlmd4t3lAWsDzcyMDYB6wKjDMbyw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@ant-design/x-sdk@2.5.0':
+    resolution: {integrity: sha512-exUKKoJCYK2y81FH5ofZtw8ItrSERTnwkMYz+vY5S8Oie2MN4j5RYf9HmbktBc3Lct9blbZVXaotHcXqKuJvGg==}
     peerDependencies:
       react: '>=18.0.0'
       react-dom: '>=18.0.0'
@@ -2227,6 +2239,12 @@ snapshots:
       react-dom: 19.2.4(react@19.2.4)
     transitivePeerDependencies:
       - '@types/react'
+
+  '@ant-design/x-sdk@2.5.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      '@rc-component/util': 1.10.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
 
   '@ant-design/x@2.5.0(antd@6.3.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
