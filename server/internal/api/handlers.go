@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -206,7 +207,12 @@ func (h *Handler) Chat(c *gin.Context) {
 
 	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, req.AgentID)
 
-	go h.agent.Chat(chatCtx, req.Content)
+	go func() {
+		defer chatCtx.Close()
+		if err := h.agent.Chat(chatCtx, req.Content); err != nil {
+			log.Printf("Agent chat error: %v", err)
+		}
+	}()
 
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")

@@ -33,6 +33,10 @@ func (c *ChatContext) Emit(event entity.Event) {
 	}
 }
 
+func (c *ChatContext) Close() {
+	close(c.events)
+}
+
 func NewChatContext(ctx context.Context, sessionID, agentID string) *ChatContext {
 	return &ChatContext{
 		ctx:       ctx,

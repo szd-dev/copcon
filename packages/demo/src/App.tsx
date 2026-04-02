@@ -191,8 +191,8 @@ const App: React.FC = () => {
     bubbleItems.push({
       key: msg.id,
       role: msg.role === 'user' ? 'user' : 'ai',
-      content: msg.content,
-      loading: isLastAssistant && isRequesting && !msg.content,
+      content: msg.content || (msg.reasoning ? ' ' : ''),
+      loading: isLastAssistant && isRequesting && !msg.content && !msg.reasoning,
       header,
     });
   });
