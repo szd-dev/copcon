@@ -8,9 +8,27 @@
     "ses_2b625d747ffegpy7Ptshzpsezy",
     "ses_2b625d73dffe0xq38VHMGgmIxu",
     "ses_2b6234c68ffeut5dM2ipzNiJ05",
-    "ses_2b61ce1beffe8O2W9WbZeje5EO"
+    "ses_2b61ce1beffe8O2W9WbZeje5EO",
+    "ses_2b14ed938ffe0Ot2gX8qlrBe4b",
+    "ses_2b12d0fffffeq5D3YfGsB5cpw3",
+    "ses_2b12c7dcbffe5D4VH85u8ufK9u",
+    "ses_2b12088caffecwF3QHGIkkE4LT",
+    "ses_2b11bc67bffe86qa203roRav4h",
+    "ses_2b10f3b5effery7gLelUXhqxW0",
+    "ses_2b10f3b5cffeg5oQX3AAm6jab4",
+    "ses_2b10f3b60ffex6X4bOtPJ7bVWk",
+    "ses_2b10f3aedffeVTUi0fpWx2PMBG"
   ],
   "plan_name": "tool-display-optimization",
   "agent": "atlas",
-  "task_sessions": {}
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "**更新 CopConMessage.tool_calls 类型**",
+      "session_id": "ses_2b10f3b5effery7gLelUXhqxW0",
+      "agent": "oracle",
+      "updated_at": "2026-04-02T16:05:55.714Z"
+    }
+  }
 }

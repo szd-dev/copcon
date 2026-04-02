@@ -27,21 +27,24 @@ type MessageData struct {
 
 // ReasoningData 推理事件数据
 type ReasoningData struct {
-	Content string `json:"content"`
+	MessageID string `json:"message_id"`
+	Content   string `json:"content"`
 }
 
 // ToolCallData 工具调用事件数据
 type ToolCallData struct {
-	ToolName string         `json:"tool_name"`
-	Args     map[string]any `json:"args"`
-	ID       string         `json:"id"`
+	MessageID string         `json:"message_id"`
+	ToolName  string         `json:"tool_name"`
+	Args      map[string]any `json:"args"`
+	ID        string         `json:"id"`
 }
 
 // ToolResultData 工具结果事件数据
 type ToolResultData struct {
-	ToolName string `json:"tool_name"`
-	Result   any    `json:"result"`
-	ID       string `json:"id"`
+	MessageID string `json:"message_id"`
+	ToolName  string `json:"tool_name"`
+	Result    any    `json:"result"`
+	ID        string `json:"id"`
 }
 
 // DoneData 完成事件数据

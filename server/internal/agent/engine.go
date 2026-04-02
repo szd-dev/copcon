@@ -28,6 +28,7 @@ type deltaExtraFields struct {
 }
 
 type toolCallInfo struct {
+	MessageID string
 	ID        string
 	Name      string
 	Arguments string
@@ -174,7 +175,7 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 						reasoningContent += extra.ReasoningContent
 						chatCtx.Emit(entity.Event{
 							Type: entity.EventReasoning,
-							Data: entity.ReasoningData{Content: extra.ReasoningContent},
+							Data: entity.ReasoningData{MessageID: messageID, Content: extra.ReasoningContent},
 						})
 					}
 				}
@@ -197,6 +198,7 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 								ID:        tc.ID,
 								Name:      tc.Function.Name,
 								Arguments: tc.Function.Arguments,
+								MessageID: messageID,
 							}
 						}
 					}
@@ -294,9 +296,10 @@ func (e *AgentEngine) executeToolCall(chatCtx iface.ChatContextInterface, toolMg
 	chatCtx.Emit(entity.Event{
 		Type: entity.EventToolCall,
 		Data: entity.ToolCallData{
-			ToolName: tc.Name,
-			Args:     parseArgs(tc.Arguments),
-			ID:       tc.ID,
+			ToolName:  tc.Name,
+			Args:      parseArgs(tc.Arguments),
+			ID:        tc.ID,
+			MessageID: tc.MessageID,
 		},
 	})
 
@@ -306,15 +309,17 @@ func (e *AgentEngine) executeToolCall(chatCtx iface.ChatContextInterface, toolMg
 	var resultData entity.ToolResultData
 	if err != nil {
 		resultData = entity.ToolResultData{
-			ToolName: tc.Name,
-			Result:   map[string]any{"error": err.Error()},
-			ID:       tc.ID,
+			ToolName:  tc.Name,
+			Result:    map[string]any{"error": err.Error()},
+			ID:        tc.ID,
+			MessageID: tc.MessageID,
 		}
 	} else {
 		resultData = entity.ToolResultData{
-			ToolName: tc.Name,
-			Result:   result,
-			ID:       tc.ID,
+			ToolName:  tc.Name,
+			Result:    result,
+			ID:        tc.ID,
+			MessageID: tc.MessageID,
 		}
 	}
 

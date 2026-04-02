@@ -37,13 +37,11 @@ export interface CopConInput {
 /**
  * SSE output structure from backend
  * Backend sends: data: {"type": "message", "data": {...}}
- * XRequest parses this as: { data: {"type": "message", "data": {...}} }
+ * XStream parses this as: { data: '{"type": "message", "data": {...}}' } (STRING!)
+ * The data field is a JSON string that must be parsed
  */
 export interface CopConSSEOutput {
-  data: {
-    type: 'message' | 'reasoning' | 'tool_call' | 'tool_result' | 'done' | 'error';
-    data: Record<string, unknown>;
-  };
+  data: string;
 }
 
 /**
@@ -94,9 +92,16 @@ export default class CopConChatProvider extends AbstractChatProvider<
   transformMessage(info: TransformMessage<CopConMessage, CopConSSEOutput>): CopConMessage {
     const { originMessage, chunk } = info;
 
-    // Extract message_id from chunk for message grouping
-    // Backend sends message_id with each message event - use it to group chunks
-    const chunkMessageId = chunk?.data?.data?.message_id as string | undefined;
+    // Parse SSE data - XStream returns chunk.data as a JSON STRING, not an object
+    // Backend sends: data: {"type":"message","data":{"message_id":"xxx",...}}
+    // XStream parses as: { data: '{"type":"message","data":...}' } (string!)
+    let parsedData: { type?: string; data?: Record<string, unknown> } | undefined;
+    if (chunk?.data) {
+      parsedData = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
+    }
+
+    // Extract message_id from parsed data for message grouping
+    const chunkMessageId = parsedData?.data?.message_id as string | undefined;
 
     const baseMessage: CopConMessage = originMessage || {
       // Use message_id from backend if available, otherwise generate temp ID
@@ -107,11 +112,15 @@ export default class CopConChatProvider extends AbstractChatProvider<
       created_at: new Date().toISOString(),
     };
 
-    if (!chunk?.data) {
+    if (!parsedData) {
       return baseMessage;
     }
 
-    const { type, data } = chunk.data;
+    const { type, data } = parsedData;
+
+    if (!data) {
+      return baseMessage;
+    }
 
     switch (type) {
       case 'message':
