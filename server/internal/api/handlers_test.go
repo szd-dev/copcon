@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/copcon/server/internal/agent"
@@ -380,4 +381,142 @@ func TestListAgents(t *testing.T) {
 	assert.Equal(t, "code-assistant", agent1["id"])
 	assert.Equal(t, "Code Assistant", agent1["name"])
 	assert.Equal(t, "gpt-4o", agent1["model"])
+}
+
+func setupTestDB(t *testing.T) *gorm.DB {
+	dsn := "host=localhost user=admin password=changeme dbname=agent_infra port=5432 sslmode=disable"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Skipf("PostgreSQL not available: %v", err)
+	}
+
+	err = db.AutoMigrate(&session.Session{}, &session.Message{})
+	require.NoError(t, err)
+
+	db.Exec("DELETE FROM messages WHERE content LIKE 'Test:%'")
+	db.Exec("DELETE FROM sessions WHERE title LIKE 'Test:%'")
+
+	return db
+}
+
+func createTestSessionForMessages(t *testing.T, db *gorm.DB) *session.Session {
+	sess := &session.Session{
+		ID:             uuid.New(),
+		Title:          "Test: " + uuid.New().String(),
+		DefaultAgentID: "default-agent",
+		Metadata:       make(map[string]any),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+	err := db.Create(sess).Error
+	require.NoError(t, err)
+	return sess
+}
+
+func TestGetMessagesReasoning(t *testing.T) {
+	db := setupTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	sess := createTestSessionForMessages(t, db)
+
+	reasoningContent := "Let me think about this step by step..."
+	msg := &session.Message{
+		ID:        uuid.New(),
+		SessionID: sess.ID,
+		Role:      "assistant",
+		Content:   "Test: message with reasoning",
+		Reasoning: reasoningContent,
+		CreatedAt: time.Now(),
+	}
+	err := db.Create(msg).Error
+	require.NoError(t, err)
+
+	cfg := &config.Config{DefaultAgentID: "default-agent"}
+	sessionMgr := &dbSessionManager{db: db}
+	todoMgr := &mockTodoManager{}
+	agentRegistry := newMockAgentRegistry("default-agent")
+	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
+
+	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry)
+
+	router := gin.New()
+	router.GET("/api/sessions/:sessionId/messages", handler.GetMessages)
+
+	req, _ := http.NewRequest("GET", "/api/sessions/"+sess.ID.String()+"/messages", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	messages, ok := response["messages"].([]interface{})
+	require.True(t, ok, "response should contain messages array")
+	require.Len(t, messages, 1, "should have exactly one message")
+
+	message := messages[0].(map[string]interface{})
+
+	assert.Equal(t, msg.ID.String(), message["id"])
+	assert.Equal(t, sess.ID.String(), message["session_id"])
+	assert.Equal(t, "assistant", message["role"])
+	assert.Equal(t, "Test: message with reasoning", message["content"])
+
+	reasoning, hasReasoning := message["reasoning"]
+	require.True(t, hasReasoning, "response MUST include 'reasoning' field")
+	assert.Equal(t, reasoningContent, reasoning, "reasoning field should match stored value")
+}
+
+type dbSessionManager struct {
+	db *gorm.DB
+}
+
+func (m *dbSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
+	sess := &session.Session{
+		ID:             uuid.New(),
+		Title:          title,
+		DefaultAgentID: defaultAgentID,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Metadata:       make(map[string]any),
+	}
+	err := m.db.Create(sess).Error
+	return sess, err
+}
+
+func (m *dbSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.Session, error) {
+	var sess session.Session
+	err := m.db.Where("id = ?", chatCtx.SessionID()).First(&sess).Error
+	if err != nil {
+		return nil, session.ErrSessionNotFound
+	}
+	return &sess, nil
+}
+
+func (m *dbSessionManager) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
+	var sessions []*session.Session
+	var total int64
+	m.db.Model(&session.Session{}).Count(&total)
+	m.db.Limit(limit).Offset(offset).Find(&sessions)
+	return sessions, total, nil
+}
+
+func (m *dbSessionManager) Delete(chatCtx iface.ChatContextInterface) error {
+	return m.db.Delete(&session.Session{}, "id = ?", chatCtx.SessionID()).Error
+}
+
+func (m *dbSessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
+	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("title", title).Error
+}
+
+func (m *dbSessionManager) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
+	var count int64
+	err := m.db.Model(&session.Message{}).Where("session_id = ?", chatCtx.SessionID()).Count(&count).Error
+	return count, err
+}
+
+func (m *dbSessionManager) GetDB() *gorm.DB {
+	return m.db
 }

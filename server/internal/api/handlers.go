@@ -182,6 +182,7 @@ func (h *Handler) GetMessages(c *gin.Context) {
 			"session_id":   msg.SessionID.String(),
 			"role":         msg.Role,
 			"content":      msg.Content,
+			"reasoning":    msg.Reasoning,
 			"tool_calls":   msg.ToolCalls,
 			"tool_call_id": msg.ToolCallID,
 			"created_at":   msg.CreatedAt,
