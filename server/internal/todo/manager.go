@@ -3,6 +3,7 @@ package todo
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +59,17 @@ func (m *todoManager) Create(chatCtx iface.ChatContextInterface, content string,
 		return nil, fmt.Errorf("parse session id: %w", err)
 	}
 
+	var existing session.Todo
+	err = m.db.WithContext(chatCtx.Context()).
+		Where("session_id = ? AND content = ? AND status != ?", sessionUUID, content, session.TodoStatusCompleted).
+		First(&existing).Error
+	if err == nil {
+		return &existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("check duplicate: %w", err)
+	}
+
 	todo := &session.Todo{
 		ID:         uuid.New(),
 		SessionID:  sessionUUID,
@@ -81,6 +93,15 @@ func (m *todoManager) Create(chatCtx iface.ChatContextInterface, content string,
 	result := m.db.WithContext(chatCtx.Context()).Create(todo)
 	if result.Error != nil {
 		return nil, fmt.Errorf("create todo: %w", result.Error)
+	}
+
+	if len(todo.DependsOn) == 0 {
+		started, err := m.Start(chatCtx, todo.ID.String())
+		if err != nil {
+			log.Printf("Warning: failed to auto-start todo %s: %v", todo.ID, err)
+			return todo, nil
+		}
+		return started, nil
 	}
 
 	return todo, nil

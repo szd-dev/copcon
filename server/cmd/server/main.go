@@ -61,7 +61,7 @@ func main() {
 	}
 	log.Printf("Loaded %d agents", len(agentRegistry.List()))
 
-	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr, todoMgr)
 
 	r := gin.Default()
 
