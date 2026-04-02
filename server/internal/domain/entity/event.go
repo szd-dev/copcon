@@ -21,7 +21,8 @@ type Event struct {
 
 // MessageData 消息事件数据
 type MessageData struct {
-	Content string `json:"content"`
+	MessageID string `json:"message_id"`
+	Content   string `json:"content"`
 }
 
 // ReasoningData 推理事件数据

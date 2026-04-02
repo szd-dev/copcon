@@ -94,8 +94,13 @@ export default class CopConChatProvider extends AbstractChatProvider<
   transformMessage(info: TransformMessage<CopConMessage, CopConSSEOutput>): CopConMessage {
     const { originMessage, chunk } = info;
 
+    // Extract message_id from chunk for message grouping
+    // Backend sends message_id with each message event - use it to group chunks
+    const chunkMessageId = chunk?.data?.data?.message_id as string | undefined;
+
     const baseMessage: CopConMessage = originMessage || {
-      id: `assistant-${Date.now()}`,
+      // Use message_id from backend if available, otherwise generate temp ID
+      id: chunkMessageId || `assistant-${Date.now()}`,
       session_id: '',
       role: 'assistant',
       content: '',

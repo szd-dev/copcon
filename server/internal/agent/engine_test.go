@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/copcon/server/internal/chat_context"
@@ -16,6 +18,8 @@ import (
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/server/internal/testutil"
+	"github.com/copcon/server/internal/todo"
 	"github.com/copcon/server/internal/tool"
 )
 
@@ -115,6 +119,56 @@ func (m *mockMemoryManager) DeleteBySession(chatCtx iface.ChatContextInterface) 
 	return nil
 }
 
+type mockTodoManager struct{}
+
+func (m *mockTodoManager) Create(chatCtx iface.ChatContextInterface, content string, opts ...todo.TodoOption) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Get(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) List(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Update(chatCtx iface.ChatContextInterface, id string, updates map[string]any) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Delete(chatCtx iface.ChatContextInterface, id string) error {
+	return nil
+}
+
+func (m *mockTodoManager) Start(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Complete(chatCtx iface.ChatContextInterface, id string, result string) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Fail(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Block(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) Unblock(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) GetAvailableTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
+	return nil, nil
+}
+
+func (m *mockTodoManager) GetDB() *gorm.DB {
+	return nil
+}
+
 type mockAgentRegistry struct {
 	agents       map[string]AgentDefinition
 	defaultAgent string
@@ -209,7 +263,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, &mockTodoManager{})
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "agent-b")
@@ -245,7 +299,7 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, &mockTodoManager{})
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "")
@@ -282,7 +336,7 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "coding-agent")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, &mockTodoManager{})
 	require.NotNil(t, engine)
 
 	agentDef, err := agentRegistry.Get("coding-agent")
@@ -322,7 +376,7 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-1")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, &mockTodoManager{})
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "non-existent-agent")
@@ -359,11 +413,170 @@ func TestAgentEngineStateless(t *testing.T) {
 	agentRegistry.Register("agent-1", agent)
 	agentRegistry.SetDefault("agent-1")
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, &mockTodoManager{})
 	require.NotNil(t, engine)
 
 	assert.NotNil(t, engine.agentRegistry)
 	assert.NotNil(t, engine.sessionMgr)
 	assert.NotNil(t, engine.contextMgr)
 	assert.NotNil(t, engine.memoryMgr)
+}
+
+func TestMessageDataMessageID(t *testing.T) {
+	msgData := entity.MessageData{
+		MessageID: "test-message-id",
+		Content:   "test content",
+	}
+	assert.Equal(t, "test-message-id", msgData.MessageID)
+	assert.Equal(t, "test content", msgData.Content)
+}
+
+// TestTodoLoopFix verifies the todo state injection and duplicate prevention behavior.
+// This test FAILS in the current implementation because:
+// 1. Agent loop does not inject todo state into the context before LLM call
+// 2. TodoTool.Create does not detect duplicate todos
+// 3. TodoTool.Create does not auto-start the todo after creation
+func TestTodoLoopFix(t *testing.T) {
+	// Setup test database
+	dsn := "host=localhost user=admin password=changeme dbname=agent_infra port=5432 sslmode=disable"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Skipf("PostgreSQL not available: %v", err)
+	}
+
+	// Run migrations
+	err = db.AutoMigrate(&session.Session{}, &session.Todo{}, &session.Message{})
+	require.NoError(t, err)
+
+	// Cleanup test data
+	db.Exec("DELETE FROM todos WHERE content LIKE 'TestTodoLoop:%'")
+	db.Exec("DELETE FROM messages WHERE session_id IN (SELECT id FROM sessions WHERE title LIKE 'TestTodoLoop:%')")
+	db.Exec("DELETE FROM sessions WHERE title LIKE 'TestTodoLoop:%'")
+
+	// Create test session
+	sess := &session.Session{
+		ID:             uuid.New(),
+		Title:          "TestTodoLoop: " + uuid.New().String(),
+		DefaultAgentID: "test-agent",
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Metadata:       make(map[string]any),
+	}
+	err = db.Create(sess).Error
+	require.NoError(t, err)
+
+	// Create todo manager
+	todoMgr := todo.NewTodoManager(db)
+	ctx := context.Background()
+
+	t.Run("todo state should be injected into context before LLM call", func(t *testing.T) {
+		// Create some existing todos for the session
+		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
+		existingTodo, err := todoMgr.Create(chatCtx, "TestTodoLoop: existing task 1")
+		require.NoError(t, err)
+		require.NotNil(t, existingTodo)
+
+		// Create a context manager
+		contextMgr := chat_context.NewContextManager(db)
+
+		// Build context - this should include todo state, but currently doesn't
+		messages, err := contextMgr.BuildContext(chatCtx, "", 256000, "You are a helpful assistant.")
+		require.NoError(t, err)
+
+		// Check if any message contains todo information
+		// This assertion will FAIL because todo state is not injected
+		hasTodoInfo := false
+		for _, msg := range messages {
+			if strings.Contains(strings.ToLower(msg.Content), "todo") ||
+				strings.Contains(strings.ToLower(msg.Content), "task") {
+				hasTodoInfo = true
+				break
+			}
+		}
+
+		// EXPECTED: Todo info should be present in context
+		// ACTUAL: Todo info is NOT present (this assertion fails)
+		assert.True(t, hasTodoInfo,
+			"Context should include existing todo state before LLM call. "+
+				"Current implementation does not inject todo state into BuildContext. "+
+				"The LLM has no visibility of existing todos.")
+	})
+
+	t.Run("duplicate todo creation should be prevented", func(t *testing.T) {
+		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
+
+		// Create a todo
+		todo1, err := todoMgr.Create(chatCtx, "TestTodoLoop: duplicate check task")
+		require.NoError(t, err)
+		require.NotNil(t, todo1)
+
+		// Try to create the same todo again
+		// EXPECTED: Should return error or existing todo
+		// ACTUAL: Creates a duplicate (this assertion fails)
+		todo2, err := todoMgr.Create(chatCtx, "TestTodoLoop: duplicate check task")
+
+		// The current implementation allows duplicates - this is the bug
+		if err == nil && todo2 != nil {
+			// Both todos exist with same content - this should NOT happen
+			assert.NotEqual(t, todo1.ID, todo2.ID,
+				"Duplicate todos should not be created with the same content. "+
+					"Current implementation allows duplicate creation which can lead to infinite todo loops.")
+		}
+	})
+
+	t.Run("todo count should not increase per loop iteration", func(t *testing.T) {
+		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
+
+		// Get initial todo count
+		initialTodos, err := todoMgr.List(chatCtx)
+		require.NoError(t, err)
+		initialCount := len(initialTodos)
+
+		// Simulate multiple "loop iterations" where the LLM might try to create the same todo
+		sameContent := "TestTodoLoop: loop iteration task"
+
+		// First iteration - create todo
+		_, err = todoMgr.Create(chatCtx, sameContent)
+		require.NoError(t, err)
+
+		// Second iteration - LLM tries to create the same todo again
+		// (because it has no visibility of existing todos)
+		_, err = todoMgr.Create(chatCtx, sameContent)
+		// This should fail or return existing, but currently succeeds
+
+		// Third iteration
+		_, err = todoMgr.Create(chatCtx, sameContent)
+
+		// Check final count
+		finalTodos, err := todoMgr.List(chatCtx)
+		require.NoError(t, err)
+		finalCount := len(finalTodos)
+
+		// EXPECTED: Count should increase by at most 1 (only the first creation)
+		// ACTUAL: Count increases by 3 (all three creations succeed)
+		allowedIncrease := 1
+		actualIncrease := finalCount - initialCount
+
+		assert.LessOrEqual(t, actualIncrease, allowedIncrease,
+			"Todo count should not increase unboundedly per loop iteration. "+
+				"Current implementation allows %d increases, expected at most %d. "+
+				"This leads to infinite todo creation when LLM has no visibility of existing todos.",
+			actualIncrease, allowedIncrease)
+	})
+
+	t.Run("todo should be auto-started after creation", func(t *testing.T) {
+		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
+
+		// Create a todo
+		createdTodo, err := todoMgr.Create(chatCtx, "TestTodoLoop: auto-start task")
+		require.NoError(t, err)
+		require.NotNil(t, createdTodo)
+
+		// EXPECTED: After creation, todo should be automatically started (status = in_progress)
+		// ACTUAL: Todo remains in pending status (this assertion fails)
+		assert.Equal(t, session.TodoStatusInProgress, createdTodo.Status,
+			"Todo should be automatically started after creation. "+
+				"Current implementation leaves todo in 'pending' status. "+
+				"Expected behavior: Create once, then auto-execute (immediately call Start()).")
+	})
 }

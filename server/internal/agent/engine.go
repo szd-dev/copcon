@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
@@ -14,6 +15,7 @@ import (
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/server/internal/todo"
 	"github.com/copcon/server/internal/tool"
 )
 
@@ -36,6 +38,7 @@ type AgentEngine struct {
 	sessionMgr    session.SessionManager
 	contextMgr    chat_context.ContextManager
 	memoryMgr     memory.MemoryManager
+	todoMgr       todo.TodoManager
 }
 
 func NewAgentEngine(
@@ -43,12 +46,14 @@ func NewAgentEngine(
 	sessionMgr session.SessionManager,
 	contextMgr chat_context.ContextManager,
 	memoryMgr memory.MemoryManager,
+	todoMgr todo.TodoManager,
 ) *AgentEngine {
 	return &AgentEngine{
 		agentRegistry: agentRegistry,
 		sessionMgr:    sessionMgr,
 		contextMgr:    contextMgr,
 		memoryMgr:     memoryMgr,
+		todoMgr:       todoMgr,
 	}
 }
 
@@ -96,7 +101,22 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 	}
 
 	for {
-		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, agentDef.SystemPrompt)
+		// Generate MessageID at the start of each loop iteration
+		// Each iteration = one assistant message
+		messageID := uuid.New().String()
+
+		systemPrompt := agentDef.SystemPrompt
+		if e.todoMgr != nil {
+			todos, err := e.todoMgr.List(chatCtx)
+			if err != nil {
+				log.Printf("Warning: failed to fetch todos: %v", err)
+			} else if len(todos) > 0 {
+				todoState := formatTodoState(todos)
+				systemPrompt = systemPrompt + "\n\n" + todoState
+			}
+		}
+
+		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, systemPrompt)
 		if err != nil {
 			return fmt.Errorf("build context: %w", err)
 		}
@@ -144,7 +164,7 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 					content += delta.Content
 					chatCtx.Emit(entity.Event{
 						Type: entity.EventMessage,
-						Data: entity.MessageData{Content: delta.Content},
+						Data: entity.MessageData{MessageID: messageID, Content: delta.Content},
 					})
 				}
 
@@ -252,7 +272,6 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 			continue
 		}
 
-		messageID := uuid.New().String()
 		if err := e.contextMgr.AddMessage(chatCtx, &session.Message{
 			ID:        uuid.MustParse(messageID),
 			Role:      "assistant",
@@ -353,4 +372,46 @@ func parseArgs(argsJSON string) map[string]any {
 		return make(map[string]any)
 	}
 	return args
+}
+
+func formatTodoState(todos []*session.Todo) string {
+	var pending, inProgress, completed, failed, blocked []string
+
+	for _, t := range todos {
+		content := t.Content
+		if t.ActiveForm != "" {
+			content = t.ActiveForm
+		}
+		switch t.Status {
+		case session.TodoStatusPending:
+			pending = append(pending, content)
+		case session.TodoStatusInProgress:
+			inProgress = append(inProgress, content)
+		case session.TodoStatusCompleted:
+			completed = append(completed, content)
+		case session.TodoStatusFailed:
+			failed = append(failed, content)
+		case session.TodoStatusBlocked:
+			blocked = append(blocked, content)
+		}
+	}
+
+	var parts []string
+	if len(pending) > 0 {
+		parts = append(parts, "pending: "+strings.Join(pending, ", "))
+	}
+	if len(inProgress) > 0 {
+		parts = append(parts, "in_progress: "+strings.Join(inProgress, ", "))
+	}
+	if len(completed) > 0 {
+		parts = append(parts, "completed: "+strings.Join(completed, ", "))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, "failed: "+strings.Join(failed, ", "))
+	}
+	if len(blocked) > 0 {
+		parts = append(parts, "blocked: "+strings.Join(blocked, ", "))
+	}
+
+	return "Current todo list: [" + strings.Join(parts, ", ") + "]"
 }
