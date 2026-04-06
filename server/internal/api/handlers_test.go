@@ -19,7 +19,7 @@ import (
 	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
-	"github.com/copcon/server/internal/todo"
+	"github.com/copcon/server/internal/tools/todo"
 )
 
 type mockSessionManager struct {

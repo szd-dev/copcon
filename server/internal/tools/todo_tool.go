@@ -6,8 +6,8 @@ import (
 
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
-	"github.com/copcon/server/internal/todo"
 	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/server/internal/tools/todo"
 )
 
 // TodoTool provides MCP tool functionality for managing todos

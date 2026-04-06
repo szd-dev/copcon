@@ -24,7 +24,7 @@ import (
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
-	"github.com/copcon/server/internal/todo"
+	"github.com/copcon/server/internal/tools/todo"
 )
 
 func setupIntegrationTestDB(t *testing.T) *gorm.DB {
@@ -187,7 +187,7 @@ func TestIntegrationAllIssues(t *testing.T) {
 			_, err = todoMgr.Create(chatCtx3, "IntegrationTest: context injection task 2")
 			require.NoError(t, err)
 
-			contextMgr := chat_context.NewContextManager(db)
+			contextMgr := chat_context.NewContextManager(db, todoMgr)
 
 			systemPrompt := "You are a helpful assistant."
 			_, err = contextMgr.BuildContext(chatCtx3, "", 256000, systemPrompt)
