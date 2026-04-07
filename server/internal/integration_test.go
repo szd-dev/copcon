@@ -310,6 +310,33 @@ func (m *dbSessionManagerForIntegration) GetDB() *gorm.DB {
 	return m.db
 }
 
+func (m *dbSessionManagerForIntegration) UpdateMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("metadata", metadata).Error
+}
+
+func (m *dbSessionManagerForIntegration) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
+	sess, err := m.Get(chatCtx)
+	if err != nil {
+		return err
+	}
+
+	if sess.Metadata == nil {
+		sess.Metadata = make(map[string]any)
+	}
+
+	var pending []map[string]any
+	if val, ok := sess.Metadata["async_completion_pending"].([]map[string]any); ok {
+		pending = val
+	} else {
+		pending = []map[string]any{}
+	}
+
+	pending = append(pending, event)
+	sess.Metadata["async_completion_pending"] = pending
+
+	return m.UpdateMetadata(chatCtx, sess.Metadata)
+}
+
 type mockAgentRegistryForIntegration struct {
 	defaultAgent string
 }

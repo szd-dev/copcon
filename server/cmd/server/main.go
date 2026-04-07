@@ -35,7 +35,10 @@ func main() {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	sessionMgr := session.NewSessionManager(db)
+	// Create async tool registry first (shared between session manager and agent engine)
+	asyncRegistry := tool.NewAsyncToolRegistry()
+
+	sessionMgr := session.NewSessionManager(db, asyncRegistry)
 	todoMgr := todo.NewTodoManager(db)
 	contextMgr := chat_context.NewContextManager(db, todoMgr)
 	memoryMgr := memory.NewMemoryManager(nil, "agent_memory")
@@ -53,6 +56,18 @@ func main() {
 	if err := toolRegistry.Register(tools.NewTodoTool(todoMgr)); err != nil {
 		log.Fatalf("Failed to register todo tool: %v", err)
 	}
+	if err := toolRegistry.Register(tools.NewGetToolStatusTool(asyncRegistry)); err != nil {
+		log.Fatalf("Failed to register get_tool_status: %v", err)
+	}
+	if err := toolRegistry.Register(tools.NewGetToolResultTool(asyncRegistry)); err != nil {
+		log.Fatalf("Failed to register get_tool_result: %v", err)
+	}
+	if err := toolRegistry.Register(tools.NewCancelToolTool(asyncRegistry)); err != nil {
+		log.Fatalf("Failed to register cancel_tool: %v", err)
+	}
+	if err := toolRegistry.Register(tools.NewListAsyncToolsTool(asyncRegistry)); err != nil {
+		log.Fatalf("Failed to register list_async_tools: %v", err)
+	}
 	log.Printf("Registered %d tools in registry", len(toolRegistry.List()))
 
 	agentRegistry, err := agent.NewAgentRegistry(cfg, toolRegistry)
@@ -61,7 +76,7 @@ func main() {
 	}
 	log.Printf("Loaded %d agents", len(agentRegistry.List()))
 
-	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr)
+	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr, asyncRegistry)
 
 	r := gin.Default()
 

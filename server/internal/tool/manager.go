@@ -177,10 +177,34 @@ func (m *toolManager) GetOpenAITools() []openai.ChatCompletionToolUnionParam {
 
 	tools := make([]openai.ChatCompletionToolUnionParam, 0, len(m.tools))
 	for _, t := range m.tools {
+		schema := t.InputSchema()
+		if schema == nil {
+			schema = make(map[string]any)
+		}
+
+		// Create a copy to avoid modifying the original schema
+		schemaCopy := make(map[string]any)
+		for k, v := range schema {
+			schemaCopy[k] = v
+		}
+
+		if schemaCopy["properties"] == nil {
+			schemaCopy["properties"] = make(map[string]any)
+		}
+		props := schemaCopy["properties"].(map[string]any)
+
+		// Not required - uses default value
+		props["execution_mode"] = map[string]any{
+			"type":        "string",
+			"enum":        []string{"sync", "concurrent", "async"},
+			"default":     "sync",
+			"description": "Execution mode: 'sync' (wait for result), 'concurrent' (parallel with other tools), 'async' (background execution). Default: sync.",
+		}
+
 		tools = append(tools, openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
 			Name:        t.Name(),
 			Description: openai.String(t.Description()),
-			Parameters:  openai.FunctionParameters(t.InputSchema()),
+			Parameters:  openai.FunctionParameters(schemaCopy),
 		}))
 	}
 

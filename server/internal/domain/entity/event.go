@@ -11,6 +11,12 @@ const (
 	EventThought    EventType = "thought"
 	EventDone       EventType = "done"
 	EventError      EventType = "error"
+
+	// Async tool execution events
+	EventAsyncToolStarted       EventType = "async_tool_started"
+	EventAsyncToolComplete      EventType = "async_tool_complete"
+	EventAsyncToolFailed        EventType = "async_tool_failed"
+	EventAsyncCompletionPending EventType = "async_completion_pending"
 )
 
 // Event 定义事件结构
@@ -55,4 +61,35 @@ type DoneData struct {
 // ErrorData 错误事件数据
 type ErrorData struct {
 	Error string `json:"error"`
+}
+
+// AsyncToolStartedData 异步工具开始事件数据
+type AsyncToolStartedData struct {
+	CallID    string `json:"call_id"`
+	ToolName  string `json:"tool_name"`
+	SessionID string `json:"session_id"`
+}
+
+// AsyncToolCompleteData 异步工具完成事件数据
+type AsyncToolCompleteData struct {
+	CallID   string `json:"call_id"`
+	ToolName string `json:"tool_name"`
+	Result   any    `json:"result"`
+	Duration int64  `json:"duration_ms"`
+}
+
+// AsyncToolFailedData 异步工具失败事件数据
+type AsyncToolFailedData struct {
+	CallID   string `json:"call_id"`
+	ToolName string `json:"tool_name"`
+	Error    string `json:"error"`
+	Duration int64  `json:"duration_ms"`
+}
+
+// AsyncCompletionPendingData 异步完成待处理事件数据 (用于前端轮询)
+type AsyncCompletionPendingData struct {
+	CallID      string `json:"call_id"`
+	ToolName    string `json:"tool_name"`
+	SessionID   string `json:"session_id"`
+	CompletedAt string `json:"completed_at"`
 }

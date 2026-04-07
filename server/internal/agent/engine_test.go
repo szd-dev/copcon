@@ -76,6 +76,14 @@ func (m *mockSessionManager) GetDB() *gorm.DB {
 	return nil
 }
 
+func (m *mockSessionManager) UpdateMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+	return nil
+}
+
+func (m *mockSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
+	return nil
+}
+
 type mockContextManager struct {
 	messages map[string][]chat_context.MessageForLLM
 }
@@ -264,7 +272,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "agent-b")
@@ -300,7 +308,7 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "")
@@ -337,7 +345,7 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "coding-agent")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	agentDef, err := agentRegistry.Get("coding-agent")
@@ -377,7 +385,7 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-1")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "non-existent-agent")
@@ -414,7 +422,7 @@ func TestAgentEngineStateless(t *testing.T) {
 	agentRegistry.Register("agent-1", agent)
 	agentRegistry.SetDefault("agent-1")
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	assert.NotNil(t, engine.agentRegistry)

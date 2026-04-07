@@ -52,7 +52,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 func TestSessionManager_Create(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
 
@@ -67,7 +67,7 @@ func TestSessionManager_Create(t *testing.T) {
 
 func TestSessionManager_Get(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
@@ -84,7 +84,7 @@ func TestSessionManager_Get(t *testing.T) {
 
 func TestSessionManager_Get_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, uuid.New().String(), "")
@@ -95,7 +95,7 @@ func TestSessionManager_Get_NotFound(t *testing.T) {
 
 func TestSessionManager_List(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
@@ -114,7 +114,7 @@ func TestSessionManager_List(t *testing.T) {
 
 func TestSessionManager_Delete(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
@@ -132,7 +132,7 @@ func TestSessionManager_Delete(t *testing.T) {
 
 func TestSessionManager_UpdateTitle(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
@@ -151,7 +151,7 @@ func TestSessionManager_UpdateTitle(t *testing.T) {
 
 func TestCreateSessionWithAgent(t *testing.T) {
 	db := setupTestDB(t)
-	mgr := NewSessionManager(db)
+	mgr := NewSessionManager(db, nil)
 	ctx := context.Background()
 
 	agentID := "agent-123"

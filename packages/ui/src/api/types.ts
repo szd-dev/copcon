@@ -39,7 +39,7 @@ export interface Todo {
   updated_at: string;
 }
 
-export type SSEEventType = 'message' | 'reasoning' | 'tool_call' | 'tool_result' | 'thought' | 'done' | 'error';
+export type SSEEventType = 'message' | 'reasoning' | 'tool_call' | 'tool_result' | 'thought' | 'done' | 'error' | 'async_tool_started' | 'async_tool_complete' | 'async_tool_failed' | 'async_completion_pending';
 
 export interface SSEEvent {
   type: SSEEventType;
@@ -54,7 +54,39 @@ export interface SSEEvent {
     name?: string;
     arguments?: string;
     output?: string;
+    call_id?: string;
+    session_id?: string;
+    duration_ms?: number;
+    completed_at?: string;
+    status?: string;
   };
+}
+
+export interface AsyncToolStartedData {
+  call_id: string;
+  tool_name: string;
+  session_id: string;
+}
+
+export interface AsyncToolCompleteData {
+  call_id: string;
+  tool_name: string;
+  result: unknown;
+  duration_ms: number;
+}
+
+export interface AsyncToolFailedData {
+  call_id: string;
+  tool_name: string;
+  error: string;
+  duration_ms: number;
+}
+
+export interface AsyncCompletionPendingData {
+  call_id: string;
+  tool_name: string;
+  session_id: string;
+  completed_at: string;
 }
 
 export interface ToolExecution {

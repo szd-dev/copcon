@@ -262,8 +262,41 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionMa
 			sessions.GET("/:sessionId/messages", handler.GetMessages)
 			sessions.POST("/:sessionId/chat", handler.Chat)
 			sessions.GET("/:sessionId/todos", handler.GetSessionTodos)
+			sessions.GET("/:sessionId/updates", handler.GetSessionUpdates)
 		}
 	}
+}
+
+func (h *Handler) GetSessionUpdates(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+	lastEventID := c.Query("since")
+
+	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, "")
+	session, err := h.sessionMgr.Get(chatCtx)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+
+	var events []map[string]any
+	if session.Metadata != nil {
+		if pending, ok := session.Metadata["async_completion_pending"].([]map[string]any); ok {
+			if lastEventID != "" {
+				for _, event := range pending {
+					if eventID, ok := event["id"].(string); ok && eventID > lastEventID {
+						events = append(events, event)
+					}
+				}
+			} else {
+				events = pending
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"has_updates": len(events) > 0,
+		"events":      events,
+	})
 }
 
 func (h *Handler) GetSessionTodos(c *gin.Context) {

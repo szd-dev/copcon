@@ -54,4 +54,27 @@ export class AgentClient {
     if (!response.ok) throw new Error(`Failed to get todos: ${response.statusText}`);
     return response.json();
   }
+
+  async getUpdates(
+    sessionId: string,
+    since?: string
+  ): Promise<{
+    has_updates: boolean;
+    events: Array<{
+      id: string;
+      call_id: string;
+      tool_name: string;
+      session_id: string;
+      completed_at: string;
+      status: string;
+      error?: string;
+    }>;
+  }> {
+    const url = since
+      ? `${this.baseUrl}/api/sessions/${sessionId}/updates?since=${since}`
+      : `${this.baseUrl}/api/sessions/${sessionId}/updates`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to get updates: ${response.statusText}`);
+    return response.json();
+  }
 }
