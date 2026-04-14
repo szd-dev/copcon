@@ -157,15 +157,40 @@ export default class CopConChatProvider extends AbstractChatProvider<
 
         if (!toolCalls) {
           console.warn('[CopConChatProvider] tool_result received but no tool_calls in message');
-          return baseMessage;
+          // 创建 tool_calls 数组并添加新的 tool_call
+          const rawOutput = JSON.stringify(data.result) || '';
+          const { status, output } = parseToolOutput(rawOutput);
+          return {
+            ...baseMessage,
+            tool_calls: [{
+              id: toolCallId,
+              type: 'function' as const,
+              function: { name: (data.tool_name as string) || '', arguments: '{}' },
+              status,
+              output,
+            }],
+          };
         }
 
         const toolCallIndex = toolCalls.findIndex(tc => tc.id === toolCallId);
         if (toolCallIndex === -1) {
-          console.warn(`[CopConChatProvider] tool_result received for unknown tool_call_id: ${toolCallId}`);
-          return baseMessage;
+          console.warn(`[CopConChatProvider] tool_result for unknown tool_call_id: ${toolCallId}`);
+          // 添加缺失的 tool_call
+          const rawOutput = JSON.stringify(data.result) || '';
+          const { status, output } = parseToolOutput(rawOutput);
+          return {
+            ...baseMessage,
+            tool_calls: [...toolCalls, {
+              id: toolCallId,
+              type: 'function' as const,
+              function: { name: (data.tool_name as string) || '', arguments: '{}' },
+              status,
+              output,
+            }],
+          };
         }
 
+        // 正常更新逻辑保持不变
         const rawOutput = (data.output as string) || (data.result as string) || (data.content as string) || '';
         const { status, output } = parseToolOutput(rawOutput);
 

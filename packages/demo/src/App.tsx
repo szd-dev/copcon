@@ -18,7 +18,7 @@ const MarkdownContent: React.FC<{ content: string }> = ({ content }) => (
 interface BubbleItem {
   key: string;
   role: string;
-  content: string;
+  content: string | React.ReactNode;
   header?: React.ReactNode;
   loading?: boolean;
 }
@@ -188,13 +188,25 @@ const App: React.FC = () => {
       ) : thinkComponent;
     }
     
-    bubbleItems.push({
-      key: msg.id,
-      role: msg.role === 'user' ? 'user' : 'ai',
-      content: msg.content || (msg.reasoning ? ' ' : ''),
-      loading: isLastAssistant && isRequesting && !msg.content && !msg.reasoning,
-      header,
-    });
+    if (msg.role === 'user') {
+      bubbleItems.push({
+        key: msg.id,
+        role: 'user',
+        content: msg.content || '',
+      });
+    } else {
+      bubbleItems.push({
+        key: msg.id,
+        role: 'ai',
+        content: (
+          <>
+            {header}
+            <MarkdownContent content={msg.content || ''} />
+          </>
+        ),
+        loading: isLastAssistant && isRequesting && !msg.content && !msg.reasoning && !header,
+      });
+    }
   });
 
   const roleConfig = {
@@ -202,7 +214,6 @@ const App: React.FC = () => {
       placement: 'start' as const,
       variant: 'filled' as const,
       shape: 'default' as const,
-      contentRender: (content: string) => <MarkdownContent content={content} />,
       styles: {
         content: {
           maxWidth: '100%',
