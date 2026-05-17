@@ -3,7 +3,7 @@ package todo
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -98,7 +98,7 @@ func (m *todoManager) Create(chatCtx iface.ChatContextInterface, content string,
 	if len(todo.DependsOn) == 0 {
 		started, err := m.Start(chatCtx, todo.ID.String())
 		if err != nil {
-			log.Printf("Warning: failed to auto-start todo %s: %v", todo.ID, err)
+			slog.Warn("failed to auto-start todo", "todo_id", todo.ID.String(), "error", err)
 			return todo, nil
 		}
 		return started, nil

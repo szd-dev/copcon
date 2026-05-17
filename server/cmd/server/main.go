@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/qdrant/go-client/qdrant"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
@@ -55,15 +54,8 @@ func main() {
 	todoMgr := todo.NewTodoManager(db)
 	contextMgr := chat_context.NewContextManager(db, context_builder.New(), logger)
 
-	qdrantClient, err := qdrant.NewClient(&qdrant.Config{
-		Host: cfg.Qdrant.Host,
-		Port: cfg.Qdrant.Port,
-	})
-	if err != nil {
-		logger.Error("Failed to create qdrant client", "error", err)
-		os.Exit(1)
-	}
-	memoryMgr := memory.NewMemoryManager(qdrantClient, "copcon")
+	// Memory plugin uses nil Qdrant client (no-op until Qdrant is configured)
+	memoryMgr := memory.NewMemoryManager(nil, "copcon")
 
 	hookRunner := hook.NewHookRunner()
 	hookRunner.Register(plugins.NewTodoInjectionHook(todoMgr))
