@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -13,7 +14,8 @@ func main() {
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		slog.Error("Failed to connect", "error", err)
+		os.Exit(1)
 	}
 
 	var exists bool
@@ -21,7 +23,8 @@ func main() {
 
 	if !exists {
 		if err := db.Exec("CREATE DATABASE copcon").Error; err != nil {
-			log.Fatalf("Failed to create database: %v", err)
+			slog.Error("Failed to create database", "error", err)
+			os.Exit(1)
 		}
 		fmt.Println("Database 'copcon' created")
 	} else {
@@ -34,7 +37,8 @@ func main() {
 	copconDSN := "host=localhost port=5432 user=admin password=changeme dbname=copcon sslmode=disable"
 	copconDB, err := gorm.Open(postgres.Open(copconDSN), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Failed to connect to copcon: %v", err)
+		slog.Error("Failed to connect to copcon", "error", err)
+		os.Exit(1)
 	}
 
 	schema := `
@@ -75,7 +79,8 @@ CREATE OR REPLACE TRIGGER trigger_update_session_timestamp
 `
 
 	if err := copconDB.Exec(schema).Error; err != nil {
-		log.Fatalf("Failed to execute schema: %v", err)
+		slog.Error("Failed to execute schema", "error", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("Tables created successfully!")

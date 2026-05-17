@@ -3,7 +3,7 @@ package chat_context
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -38,10 +38,11 @@ type MessageForLLM struct {
 type contextManager struct {
 	db      *gorm.DB
 	todoMgr todo.TodoManager
+	logger  *slog.Logger
 }
 
-func NewContextManager(db *gorm.DB, todoMgr todo.TodoManager) ContextManager {
-	return &contextManager{db: db, todoMgr: todoMgr}
+func NewContextManager(db *gorm.DB, todoMgr todo.TodoManager, logger *slog.Logger) ContextManager {
+	return &contextManager{db: db, todoMgr: todoMgr, logger: logger}
 }
 
 func (m *contextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error) {
@@ -91,7 +92,7 @@ func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userIn
 	if m.todoMgr != nil {
 		todos, err := m.todoMgr.List(chatCtx)
 		if err != nil {
-			log.Printf("Warning: failed to fetch todos: %v", err)
+			m.logger.Warn("failed to fetch todos", "session_id", chatCtx.SessionID(), "error", err)
 		} else if len(todos) > 0 {
 			todoState := formatTodoState(todos)
 			systemPrompt = systemPrompt + "\n\n" + todoState

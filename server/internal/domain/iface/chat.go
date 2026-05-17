@@ -2,7 +2,7 @@ package iface
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/copcon/server/internal/domain/entity"
 )
@@ -33,7 +33,7 @@ func (c *ChatContext) Emit(event entity.Event) {
 		// Event sent successfully
 	default:
 		// Channel would block - log warning then block with context check
-		log.Printf("WARNING: SSE event channel near capacity, event type=%s", event.Type)
+		slog.Warn("SSE event channel near capacity, blocking emit", "event_type", event.Type)
 		select {
 		case c.events <- event:
 		case <-c.ctx.Done():

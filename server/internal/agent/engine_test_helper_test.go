@@ -8,55 +8,53 @@ import (
 	"github.com/copcon/server/internal/tool"
 )
 
-// TestEngineOption configures an AgentEngine created by NewTestEngine.
-type TestEngineOption func(*AgentEngine)
-
 // WithTestRegistry sets a custom agent registry on the test engine.
-func WithTestRegistry(reg AgentRegistry) TestEngineOption {
-	return func(e *AgentEngine) {
+func WithTestRegistry(reg AgentRegistry) EngineOption {
+	return func(e *engineImpl) {
 		e.agentRegistry = reg
 	}
 }
 
 // WithTestSessionMgr sets a custom session manager on the test engine.
-func WithTestSessionMgr(mgr session.SessionManager) TestEngineOption {
-	return func(e *AgentEngine) {
+func WithTestSessionMgr(mgr session.SessionManager) EngineOption {
+	return func(e *engineImpl) {
 		e.sessionMgr = mgr
 	}
 }
 
 // WithTestContextMgr sets a custom context manager on the test engine.
-func WithTestContextMgr(mgr chat_context.ContextManager) TestEngineOption {
-	return func(e *AgentEngine) {
+func WithTestContextMgr(mgr chat_context.ContextManager) EngineOption {
+	return func(e *engineImpl) {
 		e.contextMgr = mgr
 	}
 }
 
 // WithTestAsyncRegistry sets a custom async registry on the test engine.
-func WithTestAsyncRegistry(reg *tool.AsyncToolRegistry) TestEngineOption {
-	return func(e *AgentEngine) {
+func WithTestAsyncRegistry(reg *tool.AsyncToolRegistry) EngineOption {
+	return func(e *engineImpl) {
 		e.asyncRegistry = reg
 	}
 }
 
 // NewTestEngine creates a minimal AgentEngine for testing with sensible defaults.
 // All fields are populated with mock implementations. Options can override defaults.
-func NewTestEngine(opts ...TestEngineOption) *AgentEngine {
-	e := &AgentEngine{
-		agentRegistry:  newMockAgentRegistry(),
-		sessionMgr:     newMockSessionManager(),
-		contextMgr:     newMockContextManager(),
-		concurrencySem: semaphore.NewWeighted(5),
-		asyncRegistry:  tool.NewAsyncToolRegistry(),
+func NewTestEngine(opts ...EngineOption) *engineImpl {
+	e := &engineImpl{
+		agentRegistry: newMockAgentRegistry(),
+		sessionMgr:    newMockSessionManager(),
+		contextMgr:    newMockContextManager(),
+		concurrency:   5,
+		asyncRegistry: tool.NewAsyncToolRegistry(),
 	}
 	for _, opt := range opts {
 		opt(e)
 	}
+	e.concurrencySem = semaphore.NewWeighted(int64(e.concurrency))
 	return e
 }
 
 // NewTestEngineWithRegistry creates a test AgentEngine with a specific async registry.
-func NewTestEngineWithRegistry(asyncRegistry *tool.AsyncToolRegistry, opts ...TestEngineOption) *AgentEngine {
+func NewTestEngineWithRegistry(asyncRegistry *tool.AsyncToolRegistry, opts ...EngineOption) *engineImpl {
 	e := NewTestEngine(opts...)
 	e.asyncRegistry = asyncRegistry
 	return e

@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 
@@ -22,11 +22,11 @@ type Handler struct {
 	config        *config.Config
 	sessionMgr    session.SessionManager
 	todoMgr       todo.TodoManager
-	agent         *agent.AgentEngine
+	agent         agent.AgentEngine
 	agentRegistry agent.AgentRegistry
 }
 
-func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) *Handler {
+func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine agent.AgentEngine, agentRegistry agent.AgentRegistry) *Handler {
 	return &Handler{
 		config:        cfg,
 		sessionMgr:    sessionMgr,
@@ -322,7 +322,7 @@ func (h *Handler) Chat(c *gin.Context) {
 	go func() {
 		defer chatCtx.Close()
 		if err := h.agent.Chat(chatCtx, req.Content); err != nil {
-			log.Printf("Agent chat error: %v", err)
+			slog.Error("Agent chat error", "session_id", sessionID, "error", err)
 		}
 	}()
 
@@ -358,7 +358,7 @@ func (h *Handler) ListAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"agents": result})
 }
 
-func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine *agent.AgentEngine, agentRegistry agent.AgentRegistry) {
+func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine agent.AgentEngine, agentRegistry agent.AgentRegistry) {
 	handler := NewHandler(cfg, sessionMgr, todoMgr, agentEngine, agentRegistry)
 
 	api := r.Group("/api")

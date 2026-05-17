@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -118,7 +119,7 @@ type integrationTestHarness struct {
 	asyncRegistry *tool.AsyncToolRegistry
 	toolManager   tool.ToolManager
 	agentRegistry AgentRegistry
-	engine        *AgentEngine
+	engine        *engineImpl
 }
 
 func newIntegrationTestHarness(t *testing.T) *integrationTestHarness {
@@ -126,7 +127,7 @@ func newIntegrationTestHarness(t *testing.T) *integrationTestHarness {
 
 	sessionMgr := session.NewSessionManager(db, nil)
 	todoMgr := todo.NewTodoManager(db)
-	contextMgr := chat_context.NewContextManager(db, todoMgr)
+	contextMgr := chat_context.NewContextManager(db, todoMgr, slog.Default())
 	asyncRegistry := tool.NewAsyncToolRegistry()
 	toolManager := tool.NewToolManager()
 	agentRegistry := newMockAgentRegistry()
@@ -141,7 +142,7 @@ func newIntegrationTestHarness(t *testing.T) *integrationTestHarness {
 		asyncRegistry: asyncRegistry,
 		toolManager:   toolManager,
 		agentRegistry: agentRegistry,
-		engine:        engine,
+		engine:        engine.(*engineImpl),
 	}
 }
 

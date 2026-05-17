@@ -2,7 +2,7 @@ package testutil
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
@@ -34,7 +34,7 @@ func (m *MockChatContext) Emit(event entity.Event) {
 	select {
 	case m.events <- event:
 	default:
-		log.Printf("WARNING: SSE event channel near capacity, event type=%s", event.Type)
+		slog.Warn("SSE near capacity, blocking emit", "event_type", event.Type)
 		select {
 		case m.events <- event:
 		case <-m.ctx.Done():

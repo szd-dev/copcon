@@ -150,12 +150,12 @@ func (m *mockToolManagerWithTools) GetOpenAITools() []openai.ChatCompletionToolU
 // ============================================================================
 
 // createTestEngine creates a minimal AgentEngine for execution mode testing
-func createTestEngine() *AgentEngine {
+func createTestEngine() *engineImpl {
 	return NewTestEngine()
 }
 
 // createTestEngineWithRegistry creates an AgentEngine with a specific async registry
-func createTestEngineWithRegistry(asyncRegistry *tool.AsyncToolRegistry) *AgentEngine {
+func createTestEngineWithRegistry(asyncRegistry *tool.AsyncToolRegistry) *engineImpl {
 	return NewTestEngineWithRegistry(asyncRegistry)
 }
 

@@ -74,7 +74,7 @@ func parseArgs(argsJSON string) map[string]any {
 
 // executeSync executes a tool call synchronously.
 // Emits part_update(state='running') at start, then part_update(state='complete', output) or part_update(state='error', error).
-func (e *AgentEngine) executeSync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any, messageID string, stepIndex int, partIndices map[string]int, toolResults map[string]*ToolCallResult) error {
+func (e *engineImpl) executeSync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any, messageID string, stepIndex int, partIndices map[string]int, toolResults map[string]*ToolCallResult) error {
 	// Part-level event: running state
 	if partIdx, ok := partIndices[tc.ID]; ok {
 		chatCtx.Emit(entity.Event{
@@ -139,7 +139,7 @@ func (e *AgentEngine) executeSync(chatCtx iface.ChatContextInterface, toolMgr to
 // executeAsync executes a tool call asynchronously in a goroutine.
 // Emits part_update(state='running') for the sync portion; async completion
 // is handled by the goroutine emitting further part_update events.
-func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any, messageID string, stepIndex int, partIndices map[string]int) error {
+func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any, messageID string, stepIndex int, partIndices map[string]int) error {
 	sessionID := chatCtx.SessionID()
 	startTime := time.Now()
 
@@ -342,7 +342,7 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 // One failure does not stop other executions - all tools run to completion.
 // Results are sorted by tool call ID and persisted in order.
 // Emits part_update(state='running') then part_update(state='complete'/error) for each tool.
-func (e *AgentEngine) executeConcurrent(
+func (e *engineImpl) executeConcurrent(
 	chatCtx iface.ChatContextInterface,
 	toolMgr tool.ToolManager,
 	toolCalls []parsedToolCall,
@@ -469,7 +469,7 @@ func (e *AgentEngine) executeConcurrent(
 // Returns true if the loop should continue (tool calls were executed),
 // false if the loop should exit (no tool calls, final message persisted).
 // Emits part_create for each tool-call and EventMessageDone when no tool calls.
-func (e *AgentEngine) handleToolCalls(
+func (e *engineImpl) handleToolCalls(
 	chatCtx iface.ChatContextInterface,
 	toolMgr tool.ToolManager,
 	result *StreamResult,
@@ -571,7 +571,7 @@ func (e *AgentEngine) handleToolCalls(
 }
 
 // convertToolCalls converts internal toolCallInfo slice to session.ToolCall format.
-func (e *AgentEngine) convertToolCalls(toolCalls []toolCallInfo) []session.ToolCall {
+func (e *engineImpl) convertToolCalls(toolCalls []toolCallInfo) []session.ToolCall {
 	result := make([]session.ToolCall, len(toolCalls))
 	for i, tc := range toolCalls {
 		result[i] = session.ToolCall{

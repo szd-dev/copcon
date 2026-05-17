@@ -52,30 +52,58 @@ type LLMRequest struct {
 	Tools    []openai.ChatCompletionToolUnionParam
 }
 
-type AgentEngine struct {
+// AgentEngine defines the public interface for the agent engine.
+type AgentEngine interface {
+	Chat(chatCtx iface.ChatContextInterface, userInput string) error
+}
+
+// EngineOption configures an AgentEngine created by NewAgentEngine.
+type EngineOption func(*engineImpl)
+
+// WithConcurrency sets the maximum number of concurrent tool executions.
+// n must be greater than 0, otherwise it panics.
+func WithConcurrency(n int) EngineOption {
+	return func(e *engineImpl) {
+		if n <= 0 {
+			panic(fmt.Sprintf("WithConcurrency: n must be > 0, got %d", n))
+		}
+		e.concurrency = n
+	}
+}
+
+type engineImpl struct {
 	agentRegistry  AgentRegistry
 	sessionMgr     session.SessionManager
 	contextMgr     chat_context.ContextManager
+	concurrency    int                     // max concurrent tool executions
 	concurrencySem *semaphore.Weighted     // limit concurrent tool executions
 	asyncRegistry  *tool.AsyncToolRegistry // tracks async tool executions
 }
+
+var _ AgentEngine = (*engineImpl)(nil)
 
 func NewAgentEngine(
 	agentRegistry AgentRegistry,
 	sessionMgr session.SessionManager,
 	contextMgr chat_context.ContextManager,
 	asyncRegistry *tool.AsyncToolRegistry,
-) *AgentEngine {
-	return &AgentEngine{
-		agentRegistry:  agentRegistry,
-		sessionMgr:     sessionMgr,
-		contextMgr:     contextMgr,
-		concurrencySem: semaphore.NewWeighted(5), // max 5 concurrent tool executions
-		asyncRegistry:  asyncRegistry,
+	opts ...EngineOption,
+) AgentEngine {
+	e := &engineImpl{
+		agentRegistry: agentRegistry,
+		sessionMgr:    sessionMgr,
+		contextMgr:    contextMgr,
+		asyncRegistry: asyncRegistry,
+		concurrency:   5,
 	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	e.concurrencySem = semaphore.NewWeighted(int64(e.concurrency))
+	return e
 }
 
-func (e *AgentEngine) Chat(chatCtx iface.ChatContextInterface, userInput string) error {
+func (e *engineImpl) Chat(chatCtx iface.ChatContextInterface, userInput string) error {
 	if err := e.runAgentLoop(chatCtx, userInput); err != nil {
 		chatCtx.Emit(entity.Event{
 			Type: entity.EventError,
@@ -89,7 +117,7 @@ func (e *AgentEngine) Chat(chatCtx iface.ChatContextInterface, userInput string)
 // It retrieves the session, resolves the agent (with 3-layer fallback),
 // and persists the user message.
 // Original location: runAgentLoop lines 72-102.
-func (e *AgentEngine) prepareAgentLoop(chatCtx iface.ChatContextInterface, userInput string) (*AgentDefinition, error) {
+func (e *engineImpl) prepareAgentLoop(chatCtx iface.ChatContextInterface, userInput string) (*AgentDefinition, error) {
 	sess, err := e.sessionMgr.Get(chatCtx)
 	if err != nil {
 		return nil, fmt.Errorf("get session: %w", err)
@@ -134,7 +162,7 @@ func (e *AgentEngine) prepareAgentLoop(chatCtx iface.ChatContextInterface, userI
 // handleStreaming processes the streaming response from OpenAI, accumulating
 // content, reasoning, and tool calls while emitting part-level events in real-time.
 // It emits only new UI-layer events (EventPartCreate, EventPartUpdate).
-func (e *AgentEngine) handleStreaming(
+func (e *engineImpl) handleStreaming(
 	chatCtx iface.ChatContextInterface,
 	agentDef *AgentDefinition,
 	openAIMessages []openai.ChatCompletionMessageParamUnion,
@@ -343,7 +371,7 @@ func (e *AgentEngine) handleStreaming(
 }
 
 // logLLMRequest logs the LLM request parameters for debugging.
-func (e *AgentEngine) logLLMRequest(agentDef *AgentDefinition, messages []chat_context.MessageForLLM, tools []openai.ChatCompletionToolUnionParam) {
+func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []chat_context.MessageForLLM, tools []openai.ChatCompletionToolUnionParam) {
 	log.Printf("========== LLM Request ==========")
 	log.Printf("Agent: %s", agentDef.Name)
 	log.Printf("Model: %s", agentDef.Model)
@@ -357,7 +385,7 @@ func (e *AgentEngine) logLLMRequest(agentDef *AgentDefinition, messages []chat_c
 	log.Printf("=================================")
 }
 
-func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput string) error {
+func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput string) error {
 	// Phase 1: Initialization
 	agentDef, err := e.prepareAgentLoop(chatCtx, userInput)
 	if err != nil {
@@ -418,7 +446,7 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 	}
 }
 
-func (e *AgentEngine) convertMessages(messages []chat_context.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
+func (e *engineImpl) convertMessages(messages []chat_context.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
 	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {
@@ -460,7 +488,7 @@ func (e *AgentEngine) convertMessages(messages []chat_context.MessageForLLM) []o
 // If result has ToolCalls, they are included.
 // If isFinal is true, the message ID is set.
 // Parts JSONB is populated from the stream result for UIMessage format.
-func (e *AgentEngine) persistMessage(
+func (e *engineImpl) persistMessage(
 	chatCtx iface.ChatContextInterface,
 	result *StreamResult,
 	isFinal bool,
@@ -489,7 +517,7 @@ func (e *AgentEngine) persistMessage(
 	return nil
 }
 
-func (e *AgentEngine) buildUIParts(result *StreamResult, stepIndex int) session.PersistedParts {
+func (e *engineImpl) buildUIParts(result *StreamResult, stepIndex int) session.PersistedParts {
 	var parts session.PersistedParts
 
 	if result.ReasoningContent != "" {

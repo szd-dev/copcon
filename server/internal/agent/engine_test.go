@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -419,10 +420,11 @@ func TestAgentEngineStateless(t *testing.T) {
 
 	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
+	eng := engine.(*engineImpl)
 
-	assert.NotNil(t, engine.agentRegistry)
-	assert.NotNil(t, engine.sessionMgr)
-	assert.NotNil(t, engine.contextMgr)
+	assert.NotNil(t, eng.agentRegistry)
+	assert.NotNil(t, eng.sessionMgr)
+	assert.NotNil(t, eng.contextMgr)
 }
 
 func TestMessageDataMessageID(t *testing.T) {
@@ -1092,7 +1094,7 @@ func TestTodoLoopFix(t *testing.T) {
 		require.NotNil(t, existingTodo)
 
 		// Create a context manager
-		contextMgr := chat_context.NewContextManager(db, todoMgr)
+		contextMgr := chat_context.NewContextManager(db, todoMgr, slog.Default())
 
 		// Build context - this should include todo state, but currently doesn't
 		messages, err := contextMgr.BuildContext(chatCtx, "", 256000, "You are a helpful assistant.")
@@ -1194,4 +1196,45 @@ func TestTodoLoopFix(t *testing.T) {
 				"Current implementation leaves todo in 'pending' status. "+
 				"Expected behavior: Create once, then auto-execute (immediately call Start()).")
 	})
+}
+
+// ============================================================================
+// Concurrency configuration tests
+// ============================================================================
+
+func TestConcurrencyConfigDefault(t *testing.T) {
+	engine := NewTestEngine()
+	assert.Equal(t, 5, engine.concurrency)
+	assert.NotNil(t, engine.concurrencySem)
+}
+
+func TestConcurrencyConfigWithConcurrency(t *testing.T) {
+	engine := NewTestEngine(WithConcurrency(3))
+	assert.Equal(t, 3, engine.concurrency)
+	assert.NotNil(t, engine.concurrencySem)
+}
+
+func TestConcurrencyConfigPanicOnZero(t *testing.T) {
+	assert.PanicsWithValue(t, "WithConcurrency: n must be > 0, got 0", func() {
+		NewAgentEngine(newMockAgentRegistry(), newMockSessionManager(), newMockContextManager(), tool.NewAsyncToolRegistry(), WithConcurrency(0))
+	})
+}
+
+func TestConcurrencyConfigPanicOnNegative(t *testing.T) {
+	assert.PanicsWithValue(t, "WithConcurrency: n must be > 0, got -1", func() {
+		NewAgentEngine(newMockAgentRegistry(), newMockSessionManager(), newMockContextManager(), tool.NewAsyncToolRegistry(), WithConcurrency(-1))
+	})
+}
+
+func TestNewAgentEngineWithConcurrency(t *testing.T) {
+	engine := NewAgentEngine(
+		newMockAgentRegistry(),
+		newMockSessionManager(),
+		newMockContextManager(),
+		tool.NewAsyncToolRegistry(),
+		WithConcurrency(3),
+	)
+	require.NotNil(t, engine)
+	eng := engine.(*engineImpl)
+	assert.Equal(t, 3, eng.concurrency)
 }

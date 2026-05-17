@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -19,19 +20,24 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	dsn := buildDSN(cfg.Database)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Failed to connect database: %v", err)
+		logger.Error("Failed to connect database", "error", err)
+		os.Exit(1)
 	}
 
 	if err := db.AutoMigrate(&session.Session{}, &session.Message{}, &session.Todo{}); err != nil {
-		log.Fatalf("Failed to migrate database: %v", err)
+		logger.Error("Failed to migrate database", "error", err)
+		os.Exit(1)
 	}
 
 	// Create async tool registry first (shared between session manager and agent engine)
@@ -39,40 +45,49 @@ func main() {
 
 	sessionMgr := session.NewSessionManager(db, asyncRegistry)
 	todoMgr := todo.NewTodoManager(db)
-	contextMgr := chat_context.NewContextManager(db, todoMgr)
+	contextMgr := chat_context.NewContextManager(db, todoMgr, logger)
 
 	toolRegistry := tool.NewToolRegistry()
 	if err := toolRegistry.Register(tools.NewCodeExecutor()); err != nil {
-		log.Fatalf("Failed to register code executor: %v", err)
+		logger.Error("Failed to register code executor", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewShellExecutor()); err != nil {
-		log.Fatalf("Failed to register shell executor: %v", err)
+		logger.Error("Failed to register shell executor", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewFileOps("")); err != nil {
-		log.Fatalf("Failed to register file ops: %v", err)
+		logger.Error("Failed to register file ops", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewTodoTool(todoMgr)); err != nil {
-		log.Fatalf("Failed to register todo tool: %v", err)
+		logger.Error("Failed to register todo tool", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewGetToolStatusTool(asyncRegistry)); err != nil {
-		log.Fatalf("Failed to register get_tool_status: %v", err)
+		logger.Error("Failed to register get_tool_status", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewGetToolResultTool(asyncRegistry)); err != nil {
-		log.Fatalf("Failed to register get_tool_result: %v", err)
+		logger.Error("Failed to register get_tool_result", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewCancelToolTool(asyncRegistry)); err != nil {
-		log.Fatalf("Failed to register cancel_tool: %v", err)
+		logger.Error("Failed to register cancel_tool", "error", err)
+		os.Exit(1)
 	}
 	if err := toolRegistry.Register(tools.NewListAsyncToolsTool(asyncRegistry)); err != nil {
-		log.Fatalf("Failed to register list_async_tools: %v", err)
+		logger.Error("Failed to register list_async_tools", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Registered %d tools in registry", len(toolRegistry.List()))
+	logger.Info("Registered tools in registry", "count", len(toolRegistry.List()))
 
 	agentRegistry, err := agent.NewAgentRegistry(cfg, toolRegistry)
 	if err != nil {
-		log.Fatalf("Failed to create agent registry: %v", err)
+		logger.Error("Failed to create agent registry", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Loaded %d agents", len(agentRegistry.List()))
+	logger.Info("Loaded agents", "count", len(agentRegistry.List()))
 
 	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, asyncRegistry)
 
@@ -84,9 +99,10 @@ func main() {
 
 	api.SetupRoutes(r, cfg, sessionMgr, todoMgr, agentEngine, agentRegistry)
 
-	log.Printf("Server starting on :%s", cfg.Server.Port)
+	logger.Info("Server starting", "port", cfg.Server.Port)
 	if err := r.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		logger.Error("Failed to start server", "error", err)
+		os.Exit(1)
 	}
 }
 
