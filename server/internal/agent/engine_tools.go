@@ -73,39 +73,58 @@ func parseArgs(argsJSON string) map[string]any {
 }
 
 // executeSync executes a tool call synchronously.
-func (e *AgentEngine) executeSync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any) error {
-	chatCtx.Emit(entity.Event{
-		Type: entity.EventToolCall,
-		Data: entity.ToolCallData{
-			ToolName:  tc.Name,
-			Args:      args,
-			ID:        tc.ID,
-			MessageID: tc.MessageID,
-		},
-	})
+// Emits part_update(state='running') at start, then part_update(state='complete', output) or part_update(state='error', error).
+func (e *AgentEngine) executeSync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any, messageID string, stepIndex int, partIndices map[string]int, toolResults map[string]*ToolCallResult) error {
+	// Part-level event: running state
+	if partIdx, ok := partIndices[tc.ID]; ok {
+		chatCtx.Emit(entity.Event{
+			Type: entity.EventPartUpdate,
+			Data: entity.PartUpdateData{
+				MessageID: messageID,
+				StepIndex: stepIndex,
+				PartIndex: partIdx,
+				PartType:  "tool-call",
+				State:     "running",
+			},
+		})
+	}
 
 	result, err := toolMgr.Execute(chatCtx, tc.Name, args)
 
-	var resultData entity.ToolResultData
+	tr := &ToolCallResult{}
 	if err != nil {
-		resultData = entity.ToolResultData{
-			ToolName:  tc.Name,
-			Result:    map[string]any{"error": err.Error()},
-			ID:        tc.ID,
-			MessageID: tc.MessageID,
-		}
+		tr.Error = err.Error()
 	} else {
-		resultData = entity.ToolResultData{
-			ToolName:  tc.Name,
-			Result:    result,
-			ID:        tc.ID,
-			MessageID: tc.MessageID,
+		outputJSON, _ := json.Marshal(result)
+		tr.Output = string(outputJSON)
+	}
+	toolResults[tc.ID] = tr
+
+	// Part-level event: complete/error state
+	if partIdx, ok := partIndices[tc.ID]; ok {
+		partUpdate := entity.PartUpdateData{
+			MessageID: messageID,
+			StepIndex: stepIndex,
+			PartIndex: partIdx,
+			PartType:  "tool-call",
 		}
+		if tr.Error != "" {
+			partUpdate.State = "error"
+			partUpdate.Error = tr.Error
+		} else {
+			partUpdate.State = "complete"
+			partUpdate.Output = tr.Output
+		}
+		chatCtx.Emit(entity.Event{Type: entity.EventPartUpdate, Data: partUpdate})
 	}
 
-	chatCtx.Emit(entity.Event{Type: entity.EventToolResult, Data: resultData})
-
-	resultJSON, _ := json.Marshal(resultData.Result)
+	// Persist tool result message
+	var resultJSON []byte
+	if err != nil {
+		resultJSON, _ = json.Marshal(map[string]any{"error": err.Error()})
+	} else {
+		resultJSON, _ = json.Marshal(result)
+	}
 	if err := e.contextMgr.AddMessage(chatCtx, &session.Message{
 		Role:       "tool",
 		Content:    string(resultJSON),
@@ -118,7 +137,9 @@ func (e *AgentEngine) executeSync(chatCtx iface.ChatContextInterface, toolMgr to
 }
 
 // executeAsync executes a tool call asynchronously in a goroutine.
-func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any) error {
+// Emits part_update(state='running') for the sync portion; async completion
+// is handled by the goroutine emitting further part_update events.
+func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr tool.ToolManager, tc toolCallInfo, args map[string]any, messageID string, stepIndex int, partIndices map[string]int) error {
 	sessionID := chatCtx.SessionID()
 	startTime := time.Now()
 
@@ -129,11 +150,26 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 	chatCtx.Emit(entity.Event{
 		Type: entity.EventAsyncToolStarted,
 		Data: entity.AsyncToolStartedData{
+			MessageID: messageID,
 			CallID:    tc.ID,
 			ToolName:  tc.Name,
 			SessionID: sessionID,
 		},
 	})
+
+	// Part-level event: running state
+	if partIdx, ok := partIndices[tc.ID]; ok {
+		chatCtx.Emit(entity.Event{
+			Type: entity.EventPartUpdate,
+			Data: entity.PartUpdateData{
+				MessageID: messageID,
+				StepIndex: stepIndex,
+				PartIndex: partIdx,
+				PartType:  "tool-call",
+				State:     "running",
+			},
+		})
+	}
 
 	go func() {
 		defer e.asyncRegistry.Unregister(tc.ID)
@@ -144,12 +180,26 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 			chatCtx.Emit(entity.Event{
 				Type: entity.EventAsyncToolFailed,
 				Data: entity.AsyncToolFailedData{
-					CallID:   tc.ID,
-					ToolName: tc.Name,
-					Error:    err.Error(),
-					Duration: time.Since(startTime).Milliseconds(),
+					MessageID: messageID,
+					CallID:    tc.ID,
+					ToolName:  tc.Name,
+					Error:     err.Error(),
+					Duration:  time.Since(startTime).Milliseconds(),
 				},
 			})
+			if partIdx, ok := partIndices[tc.ID]; ok {
+				chatCtx.Emit(entity.Event{
+					Type: entity.EventPartUpdate,
+					Data: entity.PartUpdateData{
+						MessageID: messageID,
+						StepIndex: stepIndex,
+						PartIndex: partIdx,
+						PartType:  "tool-call",
+						State:     "error",
+						Error:     err.Error(),
+					},
+				})
+			}
 			return
 		}
 		defer e.concurrencySem.Release(1)
@@ -162,12 +212,26 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 				chatCtx.Emit(entity.Event{
 					Type: entity.EventAsyncToolFailed,
 					Data: entity.AsyncToolFailedData{
-						CallID:   tc.ID,
-						ToolName: tc.Name,
-						Error:    errMsg,
-						Duration: time.Since(startTime).Milliseconds(),
+						MessageID: messageID,
+						CallID:    tc.ID,
+						ToolName:  tc.Name,
+						Error:     errMsg,
+						Duration:  time.Since(startTime).Milliseconds(),
 					},
 				})
+				if partIdx, ok := partIndices[tc.ID]; ok {
+					chatCtx.Emit(entity.Event{
+						Type: entity.EventPartUpdate,
+						Data: entity.PartUpdateData{
+							MessageID: messageID,
+							StepIndex: stepIndex,
+							PartIndex: partIdx,
+							PartType:  "tool-call",
+							State:     "error",
+							Error:     errMsg,
+						},
+					})
+				}
 			}
 		}()
 
@@ -178,12 +242,26 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 			chatCtx.Emit(entity.Event{
 				Type: entity.EventAsyncToolFailed,
 				Data: entity.AsyncToolFailedData{
-					CallID:   tc.ID,
-					ToolName: tc.Name,
-					Error:    err.Error(),
-					Duration: time.Since(startTime).Milliseconds(),
+					MessageID: messageID,
+					CallID:    tc.ID,
+					ToolName:  tc.Name,
+					Error:     err.Error(),
+					Duration:  time.Since(startTime).Milliseconds(),
 				},
 			})
+			if partIdx, ok := partIndices[tc.ID]; ok {
+				chatCtx.Emit(entity.Event{
+					Type: entity.EventPartUpdate,
+					Data: entity.PartUpdateData{
+						MessageID: messageID,
+						StepIndex: stepIndex,
+						PartIndex: partIdx,
+						PartType:  "tool-call",
+						State:     "error",
+						Error:     err.Error(),
+					},
+				})
+			}
 
 			resultJSON, _ := json.Marshal(map[string]any{"error": err.Error()})
 			if addErr := e.contextMgr.AddMessage(chatCtx, &session.Message{
@@ -211,12 +289,27 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 			chatCtx.Emit(entity.Event{
 				Type: entity.EventAsyncToolComplete,
 				Data: entity.AsyncToolCompleteData{
-					CallID:   tc.ID,
-					ToolName: tc.Name,
-					Result:   result,
-					Duration: time.Since(startTime).Milliseconds(),
+					MessageID: messageID,
+					CallID:    tc.ID,
+					ToolName:  tc.Name,
+					Result:    result,
+					Duration:  time.Since(startTime).Milliseconds(),
 				},
 			})
+			if partIdx, ok := partIndices[tc.ID]; ok {
+				outputJSON, _ := json.Marshal(result)
+				chatCtx.Emit(entity.Event{
+					Type: entity.EventPartUpdate,
+					Data: entity.PartUpdateData{
+						MessageID: messageID,
+						StepIndex: stepIndex,
+						PartIndex: partIdx,
+						PartType:  "tool-call",
+						State:     "complete",
+						Output:    string(outputJSON),
+					},
+				})
+			}
 
 			resultJSON, _ := json.Marshal(result)
 			if addErr := e.contextMgr.AddMessage(chatCtx, &session.Message{
@@ -248,10 +341,15 @@ func (e *AgentEngine) executeAsync(chatCtx iface.ChatContextInterface, toolMgr t
 // It uses a semaphore to limit concurrency to 5 and collects results safely with mutex protection.
 // One failure does not stop other executions - all tools run to completion.
 // Results are sorted by tool call ID and persisted in order.
+// Emits part_update(state='running') then part_update(state='complete'/error) for each tool.
 func (e *AgentEngine) executeConcurrent(
 	chatCtx iface.ChatContextInterface,
 	toolMgr tool.ToolManager,
 	toolCalls []parsedToolCall,
+	messageID string,
+	stepIndex int,
+	partIndices map[string]int,
+	toolResults map[string]*ToolCallResult,
 ) error {
 	if len(toolCalls) == 0 {
 		return nil
@@ -271,7 +369,6 @@ func (e *AgentEngine) executeConcurrent(
 
 			// Acquire semaphore (blocks if 5 concurrent executions are already running)
 			if err := e.concurrencySem.Acquire(chatCtx.Context(), 1); err != nil {
-				// Context cancelled or semaphore error
 				mu.Lock()
 				results[idx] = toolExecutionResult{
 					tc:  p.tc,
@@ -282,16 +379,19 @@ func (e *AgentEngine) executeConcurrent(
 			}
 			defer e.concurrencySem.Release(1)
 
-			// Emit tool call event
-			chatCtx.Emit(entity.Event{
-				Type: entity.EventToolCall,
-				Data: entity.ToolCallData{
-					ToolName:  p.tc.Name,
-					Args:      p.args,
-					ID:        p.tc.ID,
-					MessageID: p.tc.MessageID,
-				},
-			})
+			// Part-level event: running state
+			if partIdx, ok := partIndices[p.tc.ID]; ok {
+				chatCtx.Emit(entity.Event{
+					Type: entity.EventPartUpdate,
+					Data: entity.PartUpdateData{
+						MessageID: messageID,
+						StepIndex: stepIndex,
+						PartIndex: partIdx,
+						PartType:  "tool-call",
+						State:     "running",
+					},
+				})
+			}
 
 			// Execute tool
 			execResult, execErr := toolMgr.Execute(chatCtx, p.tc.Name, p.args)
@@ -309,17 +409,36 @@ func (e *AgentEngine) executeConcurrent(
 				result: result,
 				err:    execErr,
 			}
+
+			tr := &ToolCallResult{}
+			if execErr != nil {
+				tr.Error = execErr.Error()
+			} else {
+				outputJSON, _ := json.Marshal(execResult)
+				tr.Output = string(outputJSON)
+			}
+			toolResults[p.tc.ID] = tr
+
 			mu.Unlock()
 
-			chatCtx.Emit(entity.Event{
-				Type: entity.EventToolResult,
-				Data: entity.ToolResultData{
-					ToolName:  p.tc.Name,
-					Result:    result,
-					ID:        p.tc.ID,
-					MessageID: p.tc.MessageID,
-				},
-			})
+			// Part-level event: complete/error state
+			if partIdx, ok := partIndices[p.tc.ID]; ok {
+				partUpdate := entity.PartUpdateData{
+					MessageID: messageID,
+					StepIndex: stepIndex,
+					PartIndex: partIdx,
+					PartType:  "tool-call",
+				}
+				if execErr != nil {
+					partUpdate.State = "error"
+					partUpdate.Error = execErr.Error()
+				} else {
+					partUpdate.State = "complete"
+					outputJSON, _ := json.Marshal(execResult)
+					partUpdate.Output = string(outputJSON)
+				}
+				chatCtx.Emit(entity.Event{Type: entity.EventPartUpdate, Data: partUpdate})
+			}
 		}(i, p)
 	}
 
@@ -349,15 +468,44 @@ func (e *AgentEngine) executeConcurrent(
 // handleToolCalls processes tool calls from the streaming result.
 // Returns true if the loop should continue (tool calls were executed),
 // false if the loop should exit (no tool calls, final message persisted).
+// Emits part_create for each tool-call and EventMessageDone when no tool calls.
 func (e *AgentEngine) handleToolCalls(
 	chatCtx iface.ChatContextInterface,
 	toolMgr tool.ToolManager,
 	result *StreamResult,
 ) (bool, error) {
 	if len(result.ToolCalls) > 0 {
-		if err := e.persistMessage(chatCtx, result, false); err != nil {
-			return false, err
+		// Emit part_create for each tool-call part
+		// Part indices start after reasoning and text parts (which handleStreaming already emitted)
+		partIndex := 0
+		if result.ReasoningContent != "" {
+			partIndex++
 		}
+		if result.Content != "" || len(result.ToolCalls) == 0 {
+			partIndex++
+		}
+
+		stepIndex := result.StepIndex
+		toolCallPartIndices := make(map[string]int)
+		for _, tc := range result.ToolCalls {
+			chatCtx.Emit(entity.Event{
+				Type: entity.EventPartCreate,
+				Data: entity.PartCreateData{
+					MessageID:  result.MessageID,
+					StepIndex:  stepIndex,
+					PartIndex:  partIndex,
+					PartType:   "tool-call",
+					State:      "pending",
+					ToolCallID: tc.ID,
+					ToolName:   tc.Name,
+					Args:       tc.Arguments,
+				},
+			})
+			toolCallPartIndices[tc.ID] = partIndex
+			partIndex++
+		}
+
+		toolResults := make(map[string]*ToolCallResult)
 
 		var (
 			syncToolCalls       []toolCallInfo
@@ -382,13 +530,13 @@ func (e *AgentEngine) handleToolCalls(
 		for _, tc := range syncToolCalls {
 			args := parseArgs(tc.Arguments)
 			_, args = parseExecutionMode(args)
-			if err := e.executeSync(chatCtx, toolMgr, tc, args); err != nil {
+			if err := e.executeSync(chatCtx, toolMgr, tc, args, result.MessageID, stepIndex, toolCallPartIndices, toolResults); err != nil {
 				return false, fmt.Errorf("execute sync tool call: %w", err)
 			}
 		}
 
 		if len(concurrentToolCalls) > 0 {
-			if err := e.executeConcurrent(chatCtx, toolMgr, concurrentToolCalls); err != nil {
+			if err := e.executeConcurrent(chatCtx, toolMgr, concurrentToolCalls, result.MessageID, stepIndex, toolCallPartIndices, toolResults); err != nil {
 				return false, fmt.Errorf("execute concurrent tool calls: %w", err)
 			}
 		}
@@ -396,9 +544,15 @@ func (e *AgentEngine) handleToolCalls(
 		for _, tc := range asyncToolCalls {
 			args := parseArgs(tc.Arguments)
 			_, args = parseExecutionMode(args)
-			if err := e.executeAsync(chatCtx, toolMgr, tc, args); err != nil {
+			if err := e.executeAsync(chatCtx, toolMgr, tc, args, result.MessageID, stepIndex, toolCallPartIndices); err != nil {
 				return false, fmt.Errorf("execute async tool call: %w", err)
 			}
+		}
+
+		result.ToolResults = toolResults
+
+		if err := e.persistMessage(chatCtx, result, false); err != nil {
+			return false, err
 		}
 
 		return true, nil
@@ -409,8 +563,8 @@ func (e *AgentEngine) handleToolCalls(
 	}
 
 	chatCtx.Emit(entity.Event{
-		Type: entity.EventDone,
-		Data: entity.DoneData{MessageID: result.MessageID},
+		Type: entity.EventMessageDone,
+		Data: entity.MessageDoneData{MessageID: result.MessageID},
 	})
 
 	return false, nil

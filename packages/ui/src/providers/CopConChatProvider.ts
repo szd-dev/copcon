@@ -1,33 +1,26 @@
 import { AbstractChatProvider, TransformMessage } from '@ant-design/x-sdk';
 import type { XRequestOptions } from '@ant-design/x-sdk';
-import { parseToolOutput } from '../utils/messageUtils';
+import type {
+  Step,
+  Part,
+  TextPart,
+  ReasoningPart,
+  ToolCallPart,
+  UIMessageMeta,
+} from '../api/types';
 
 /**
- * CopCon message structure matching backend SSE format
+ * CopCon message structure using step-based architecture.
+ * Each message contains steps, and each step contains parts
+ * (text, reasoning, tool-call).
  */
 export interface CopConMessage {
   id: string;
-  session_id: string;
-  role: 'user' | 'assistant' | 'tool';
-  content: string;
-  reasoning?: string;
-  tool_calls?: Array<{
-    id: string;
-    type: 'function';
-    function: {
-      name: string;
-      arguments: string;
-    };
-    status?: 'loading' | 'success' | 'error' | 'abort';
-    output?: string;
-  }>;
-  tool_call_id?: string;
-  created_at: string;
+  role: 'user' | 'assistant';
+  steps: Step[];
+  metadata: UIMessageMeta;
 }
 
-/**
- * Input parameters for chat request
- */
 export interface CopConInput {
   content: string;
   agentId?: string;
@@ -35,10 +28,10 @@ export interface CopConInput {
 }
 
 /**
- * SSE output structure from backend
- * Backend sends: data: {"type": "message", "data": {...}}
- * XStream parses this as: { data: '{"type": "message", "data": {...}}' } (STRING!)
- * The data field is a JSON string that must be parsed
+ * SSE output structure from backend.
+ * Backend sends: data: {"type": "step_create", "data": {...}}
+ * XStream parses this as: { data: '{"type": "step_create", "data": {...}}' } (STRING!)
+ * The data field is a JSON string that must be parsed.
  */
 export interface CopConSSEOutput {
   data: string;
@@ -46,6 +39,13 @@ export interface CopConSSEOutput {
 
 /**
  * CopCon Chat Provider - Adapts backend SSE API to @ant-design/x-sdk
+ *
+ * Handles step-based events only:
+ * - step_create: creates a new step with empty parts
+ * - part_create: creates a new part within a step
+ * - part_update: updates a part's content/state
+ * - message_done: finalizes all steps and parts
+ * - error: logs error from backend
  *
  * Usage:
  * ```tsx
@@ -78,14 +78,15 @@ export default class CopConChatProvider extends AbstractChatProvider<
   }
 
   transformLocalMessage(requestParams: Partial<CopConInput>): CopConMessage {
-    const now = new Date().toISOString();
+    const text = requestParams.content || '';
 
     return {
       id: `local-${Date.now()}`,
-      session_id: requestParams.sessionId || '',
       role: 'user',
-      content: requestParams.content || '',
-      created_at: now,
+      steps: text
+        ? [{ parts: [{ type: 'text', text, state: 'done' }], status: 'done' }]
+        : [],
+      metadata: { createdAt: new Date().toISOString() },
     };
   }
 
@@ -93,23 +94,21 @@ export default class CopConChatProvider extends AbstractChatProvider<
     const { originMessage, chunk } = info;
 
     // Parse SSE data - XStream returns chunk.data as a JSON STRING, not an object
-    // Backend sends: data: {"type":"message","data":{"message_id":"xxx",...}}
-    // XStream parses as: { data: '{"type":"message","data":...}' } (string!)
     let parsedData: { type?: string; data?: Record<string, unknown> } | undefined;
     if (chunk?.data) {
       parsedData = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
     }
 
-    // Extract message_id from parsed data for message grouping
-    const chunkMessageId = parsedData?.data?.message_id as string | undefined;
+    const chunkMessageId =
+      typeof parsedData?.data?.messageId === 'string'
+        ? parsedData.data.messageId
+        : undefined;
 
-    const baseMessage: CopConMessage = originMessage || {
-      // Use message_id from backend if available, otherwise generate temp ID
-      id: chunkMessageId || `assistant-${Date.now()}`,
-      session_id: '',
+    const baseMessage: CopConMessage = originMessage ?? {
+      id: chunkMessageId ?? `assistant-${Date.now()}`,
       role: 'assistant',
-      content: '',
-      created_at: new Date().toISOString(),
+      steps: [],
+      metadata: { createdAt: new Date().toISOString() },
     };
 
     if (!parsedData) {
@@ -123,96 +122,185 @@ export default class CopConChatProvider extends AbstractChatProvider<
     }
 
     switch (type) {
-      case 'message':
-        return {
-          ...baseMessage,
-          content: baseMessage.content + (data.content as string || ''),
-        };
+      // ──────────────────────────────────────────────────────────
+      // step_create: creates a new step at the specified index
+      // ──────────────────────────────────────────────────────────
+      case 'step_create': {
+        const stepIndex =
+          typeof data.stepIndex === 'number' ? data.stepIndex : 0;
 
-      case 'reasoning':
-        return {
-          ...baseMessage,
-          reasoning: (baseMessage.reasoning || '') + (data.content as string || ''),
-        };
+        const steps = [...baseMessage.steps];
+        while (steps.length <= stepIndex) {
+          steps.push({ parts: [], status: 'streaming' });
+        }
+        steps[stepIndex] = { parts: [], status: 'streaming' };
 
-      case 'tool_call': {
-        const funcData = data.function as { name?: string; arguments?: string } | undefined;
-        const toolCall = {
-          id: data.id as string || `tool-${Date.now()}`,
-          type: 'function' as const,
-          function: {
-            name: (data.name as string) || funcData?.name || '',
-            arguments: (data.arguments as string) || funcData?.arguments || '{}',
-          },
-        };
-        return {
-          ...baseMessage,
-          tool_calls: [...(baseMessage.tool_calls || []), toolCall],
-        };
+        return { ...baseMessage, steps };
       }
 
-      case 'tool_result': {
-        const toolCallId = data.id as string;
-        const toolCalls = baseMessage.tool_calls;
+      // ──────────────────────────────────────────────────────────
+      // part_create: creates a new part within a step at the specified index
+      // ──────────────────────────────────────────────────────────
+      case 'part_create': {
+        const stepIndex =
+          typeof data.stepIndex === 'number' ? data.stepIndex : 0;
+        const partIndex =
+          typeof data.partIndex === 'number' ? data.partIndex : 0;
+        const partType =
+          typeof data.partType === 'string' ? data.partType : 'text';
 
-        if (!toolCalls) {
-          console.warn('[CopConChatProvider] tool_result received but no tool_calls in message');
-          // 创建 tool_calls 数组并添加新的 tool_call
-          const rawOutput = JSON.stringify(data.result) || '';
-          const { status, output } = parseToolOutput(rawOutput);
-          return {
-            ...baseMessage,
-            tool_calls: [{
-              id: toolCallId,
-              type: 'function' as const,
-              function: { name: (data.tool_name as string) || '', arguments: '{}' },
-              status,
-              output,
-            }],
-          };
+        let newPart: Part;
+        switch (partType) {
+          case 'text':
+            newPart = { type: 'text', text: '', state: 'streaming' };
+            break;
+          case 'reasoning':
+            newPart = { type: 'reasoning', text: '', state: 'streaming' };
+            break;
+          case 'tool-call': {
+            const state: ToolCallPart['state'] =
+              data.state === 'pending' ? 'pending' :
+              data.state === 'running' ? 'running' :
+              data.state === 'complete' ? 'complete' :
+              data.state === 'error' ? 'error' :
+              'pending';
+            newPart = {
+              type: 'tool-call',
+              toolCallId:
+                typeof data.toolCallId === 'string' ? data.toolCallId : '',
+              toolName:
+                typeof data.toolName === 'string' ? data.toolName : '',
+              args: typeof data.args === 'string' ? data.args : '{}',
+              output: '',
+              error: '',
+              state,
+            };
+            break;
+          }
+          default:
+            return baseMessage;
         }
 
-        const toolCallIndex = toolCalls.findIndex(tc => tc.id === toolCallId);
-        if (toolCallIndex === -1) {
-          console.warn(`[CopConChatProvider] tool_result for unknown tool_call_id: ${toolCallId}`);
-          // 添加缺失的 tool_call
-          const rawOutput = JSON.stringify(data.result) || '';
-          const { status, output } = parseToolOutput(rawOutput);
-          return {
-            ...baseMessage,
-            tool_calls: [...toolCalls, {
-              id: toolCallId,
-              type: 'function' as const,
-              function: { name: (data.tool_name as string) || '', arguments: '{}' },
-              status,
-              output,
-            }],
-          };
+        // Ensure steps array is large enough (immutable — deep copy)
+        const steps = [...baseMessage.steps];
+        while (steps.length <= stepIndex) {
+          steps.push({ parts: [], status: 'streaming' });
         }
 
-        // 正常更新逻辑保持不变
-        const rawOutput = (data.output as string) || (data.result as string) || (data.content as string) || '';
-        const { status, output } = parseToolOutput(rawOutput);
+        // Insert newPart at partIndex within the target step (immutable)
+        const parts = [...steps[stepIndex].parts];
+        while (parts.length <= partIndex) {
+          parts.push({ type: 'text', text: '', state: 'streaming' });
+        }
+        parts[partIndex] = newPart;
 
-        const updatedToolCalls = [...toolCalls];
-        updatedToolCalls[toolCallIndex] = {
-          ...toolCalls[toolCallIndex],
-          status,
-          output,
-        };
+        steps[stepIndex] = { ...steps[stepIndex], parts };
 
-        return {
-          ...baseMessage,
-          tool_calls: updatedToolCalls,
-        };
+        return { ...baseMessage, steps };
       }
 
-      case 'done':
-        return baseMessage;
+      // ──────────────────────────────────────────────────────────
+      // part_update: updates a part's content/state at the specified index
+      // ──────────────────────────────────────────────────────────
+      case 'part_update': {
+        const stepIndex =
+          typeof data.stepIndex === 'number' ? data.stepIndex : 0;
+        const partIndex =
+          typeof data.partIndex === 'number' ? data.partIndex : 0;
 
-      case 'error':
+        if (stepIndex >= baseMessage.steps.length) {
+          return baseMessage;
+        }
+
+        const steps = [...baseMessage.steps];
+        const step = steps[stepIndex];
+
+        if (partIndex >= step.parts.length) {
+          return baseMessage;
+        }
+
+        const parts = [...step.parts];
+        const part = parts[partIndex];
+
+        let updatedPart: Part;
+        switch (part.type) {
+          case 'text': {
+            const textDelta =
+              typeof data.textDelta === 'string' ? data.textDelta : '';
+            const state: TextPart['state'] =
+              data.state === 'done' ? 'done' : part.state;
+            updatedPart = { ...part, text: part.text + textDelta, state };
+            break;
+          }
+          case 'reasoning': {
+            const textDelta =
+              typeof data.textDelta === 'string' ? data.textDelta : '';
+            const state: ReasoningPart['state'] =
+              data.state === 'done' ? 'done' : part.state;
+            updatedPart = { ...part, text: part.text + textDelta, state };
+            break;
+          }
+          case 'tool-call': {
+            const state: ToolCallPart['state'] =
+              data.state === 'pending' ? 'pending' :
+              data.state === 'running' ? 'running' :
+              data.state === 'complete' ? 'complete' :
+              data.state === 'error' ? 'error' :
+              part.state;
+            updatedPart = {
+              ...part,
+              ...(state !== part.state ? { state } : {}),
+              ...(data.output !== undefined && typeof data.output === 'string'
+                ? { output: data.output }
+                : {}),
+              ...(data.error !== undefined && typeof data.error === 'string'
+                ? { error: data.error }
+                : {}),
+            };
+            break;
+          }
+        }
+
+        parts[partIndex] = updatedPart;
+        steps[stepIndex] = { ...step, parts };
+
+        return { ...baseMessage, steps };
+      }
+
+      // ──────────────────────────────────────────────────────────
+      // message_done: finalizes all steps and parts
+      // ──────────────────────────────────────────────────────────
+      case 'message_done': {
+        const steps = baseMessage.steps.map((step) => ({
+          ...step,
+          status: 'done' as const,
+          parts: step.parts.map((part) => {
+            if (part.type === 'text' && part.state === 'streaming') {
+              return { ...part, state: 'done' as const };
+            }
+            if (part.type === 'reasoning' && part.state === 'streaming') {
+              return { ...part, state: 'done' as const };
+            }
+            if (
+              part.type === 'tool-call' &&
+              (part.state === 'pending' || part.state === 'running')
+            ) {
+              return { ...part, state: 'complete' as const };
+            }
+            return part;
+          }),
+        }));
+
+        return { ...baseMessage, steps };
+      }
+
+      // ──────────────────────────────────────────────────────────
+      // error: log and return message unchanged
+      // ──────────────────────────────────────────────────────────
+      case 'error': {
         console.error('[CopConChatProvider] Error from backend:', data.error);
         return baseMessage;
+      }
 
       default:
         return baseMessage;

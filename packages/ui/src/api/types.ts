@@ -15,15 +15,13 @@ export interface ToolCall {
   };
 }
 
+/** @deprecated Use UIMessage instead */
 export interface Message {
   id: string;
-  session_id: string;
-  role: 'user' | 'assistant' | 'tool';
-  content: string;
-  reasoning?: string;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-  created_at: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  steps: Step[];
+  metadata: UIMessageMeta;
 }
 
 export interface Todo {
@@ -39,28 +37,7 @@ export interface Todo {
   updated_at: string;
 }
 
-export type SSEEventType = 'message' | 'reasoning' | 'tool_call' | 'tool_result' | 'thought' | 'done' | 'error' | 'async_tool_started' | 'async_tool_complete' | 'async_tool_failed' | 'async_completion_pending';
-
-export interface SSEEvent {
-  type: SSEEventType;
-  data: {
-    content?: string;
-    tool_name?: string;
-    tool_args?: Record<string, unknown>;
-    result?: unknown;
-    message_id?: string;
-    error?: string;
-    id?: string;
-    name?: string;
-    arguments?: string;
-    output?: string;
-    call_id?: string;
-    session_id?: string;
-    duration_ms?: number;
-    completed_at?: string;
-    status?: string;
-  };
-}
+// --- Async Tool Data Types ---
 
 export interface AsyncToolStartedData {
   call_id: string;
@@ -97,4 +74,99 @@ export interface ToolExecution {
   status: 'running' | 'success' | 'error';
   startTime: number;
   endTime?: number;
+}
+
+// --- UI Message Types (Step-based) ---
+
+export interface TextPart {
+  type: 'text';
+  text: string;
+  state: 'streaming' | 'done';
+}
+
+export interface ReasoningPart {
+  type: 'reasoning';
+  text: string;
+  state: 'streaming' | 'done';
+}
+
+export interface ToolCallPart {
+  type: 'tool-call';
+  toolCallId: string;
+  toolName: string;
+  args: string;
+  output: string;
+  error: string;
+  state: 'pending' | 'running' | 'complete' | 'error';
+}
+
+export type Part = TextPart | ReasoningPart | ToolCallPart;
+
+export interface Step {
+  parts: Part[];
+  status: 'streaming' | 'done';
+}
+
+export interface UIMessageMeta {
+  createdAt: string;
+  model?: string;
+  tokenCount?: number;
+  durationMs?: number;
+}
+
+export interface UIMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  steps: Step[];
+  metadata: UIMessageMeta;
+}
+
+// --- SSE Event Types ---
+
+export type SSEEventType =
+  | 'step_create'
+  | 'part_create'
+  | 'part_update'
+  | 'message_done'
+  | 'error'
+  | 'async_tool_started'
+  | 'async_tool_complete'
+  | 'async_tool_failed';
+
+export interface StepCreateEvent {
+  type: 'step_create';
+  data: { messageId: string; stepIndex: number };
+}
+
+export interface PartCreateEvent {
+  type: 'part_create';
+  data: {
+    messageId: string;
+    stepIndex: number;
+    partIndex: number;
+    partType: string;
+    state?: string;
+    toolCallId?: string;
+    toolName?: string;
+    args?: string;
+  };
+}
+
+export interface PartUpdateEvent {
+  type: 'part_update';
+  data: {
+    messageId: string;
+    stepIndex: number;
+    partIndex: number;
+    partType: string;
+    textDelta?: string;
+    state?: string;
+    output?: string;
+    error?: string;
+  };
+}
+
+export interface MessageDoneEvent {
+  type: 'message_done';
+  data: { messageId: string };
 }

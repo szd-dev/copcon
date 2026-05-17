@@ -1,4 +1,4 @@
-import { Session, Message, SSEEvent, Todo } from './types';
+import { Session, Message, Todo } from './types';
 
 export interface AgentClientConfig {
   baseUrl: string;

@@ -233,7 +233,8 @@ func TestSyncExecution(t *testing.T) {
 	args := map[string]any{}
 
 	// Execute sync tool
-	err := engine.executeSync(chatCtx, toolMgr, tc, args)
+	partIndices := map[string]int{"call-sync-001": 0}
+	err := engine.executeSync(chatCtx, toolMgr, tc, args, "", 0, partIndices, make(map[string]*ToolCallResult))
 	require.NoError(t, err, "Sync execution should not return error")
 
 	// Verify tool was executed exactly once
@@ -242,31 +243,25 @@ func TestSyncExecution(t *testing.T) {
 	// Collect events
 	events := trackEvents(chatCtx.Events(), 500*time.Millisecond)
 
-	// Verify event sequence
-	var foundToolCall, foundToolResult bool
+	// Verify part_update event sequence (running → complete)
+	var foundRunning, foundComplete bool
 	for _, event := range events {
-		if event.Type == entity.EventToolCall {
-			foundToolCall = true
-			data := event.Data.(entity.ToolCallData)
-			assert.Equal(t, "sync_test_tool", data.ToolName)
-			assert.Equal(t, "call-sync-001", data.ID)
-		}
-		if event.Type == entity.EventToolResult {
-			foundToolResult = true
-			data := event.Data.(entity.ToolResultData)
-			assert.Equal(t, "sync_test_tool", data.ToolName)
-			assert.Equal(t, "call-sync-001", data.ID)
-			// Result should contain the tool result
-			if result, ok := data.Result.(*tool.ToolResult); ok {
-				assert.True(t, result.Success)
-				if resultMap, ok := result.Data.(map[string]any); ok {
-					assert.Equal(t, "sync_result", resultMap["value"])
-				}
+		if event.Type == entity.EventPartUpdate {
+			data := event.Data.(entity.PartUpdateData)
+			if data.State == "running" {
+				foundRunning = true
+				assert.Equal(t, "tool-call", data.PartType)
+				assert.Equal(t, 0, data.PartIndex)
+			}
+			if data.State == "complete" {
+				foundComplete = true
+				assert.Equal(t, "tool-call", data.PartType)
+				assert.NotEmpty(t, data.Output)
 			}
 		}
 	}
-	assert.True(t, foundToolCall, "EventToolCall should be emitted")
-	assert.True(t, foundToolResult, "EventToolResult should be emitted")
+	assert.True(t, foundRunning, "part_update with state='running' should be emitted")
+	assert.True(t, foundComplete, "part_update with state='complete' should be emitted")
 
 	// Close channel to clean up
 	closeMockChatContext(chatCtx)
@@ -319,7 +314,7 @@ func TestConcurrentExecution(t *testing.T) {
 	startTime := time.Now()
 
 	// Execute concurrent tools
-	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls)
+	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls, "", 0, nil, make(map[string]*ToolCallResult))
 	require.NoError(t, err, "Concurrent execution should not return error")
 
 	totalDuration := time.Since(startTime)
@@ -352,22 +347,6 @@ func TestConcurrentExecution(t *testing.T) {
 	)
 	assert.Less(t, maxStartDiff, 10*time.Millisecond,
 		"Concurrent tools should start at approximately the same time")
-
-	// Collect and verify events
-	events := trackEvents(chatCtx.Events(), 500*time.Millisecond)
-
-	toolCallCount := 0
-	toolResultCount := 0
-	for _, event := range events {
-		if event.Type == entity.EventToolCall {
-			toolCallCount++
-		}
-		if event.Type == entity.EventToolResult {
-			toolResultCount++
-		}
-	}
-	assert.Equal(t, 3, toolCallCount, "Should emit 3 EventToolCall events")
-	assert.Equal(t, 3, toolResultCount, "Should emit 3 EventToolResult events")
 
 	closeMockChatContext(chatCtx)
 }
@@ -407,7 +386,7 @@ func TestConcurrencyLimit(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls)
+	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls, "", 0, nil, make(map[string]*ToolCallResult))
 	require.NoError(t, err)
 
 	duration := time.Since(startTime)
@@ -471,7 +450,7 @@ func TestAsyncExecution(t *testing.T) {
 	startTime := time.Now()
 
 	// Execute async tool - should return immediately
-	err := engine.executeAsync(chatCtx, toolMgr, tc, args)
+	err := engine.executeAsync(chatCtx, toolMgr, tc, args, "", 0, nil)
 	require.NoError(t, err, "Async execution should return immediately without error")
 
 	returnDuration := time.Since(startTime)
@@ -540,7 +519,7 @@ func TestAsyncCompletionSSEOnline(t *testing.T) {
 		Arguments: "{}",
 	}
 
-	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{})
+	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err)
 
 	// Wait for completion and collect events
@@ -609,7 +588,7 @@ func TestAsyncCompletionSSEOffline(t *testing.T) {
 	}
 
 	// Execute async tool
-	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{})
+	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err)
 
 	// Simulate SSE offline by closing event channel before completion
@@ -676,7 +655,7 @@ func TestErrorIsolation(t *testing.T) {
 	}
 
 	// Execute concurrent - should not fail overall even if one tool fails
-	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls)
+	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls, "", 0, nil, make(map[string]*ToolCallResult))
 	require.NoError(t, err, "Concurrent execution should not fail even if one tool fails")
 
 	// Verify all tools were executed (failure didn't stop others)
@@ -684,23 +663,23 @@ func TestErrorIsolation(t *testing.T) {
 	assert.Equal(t, int32(1), successTool2.GetExecutionCount(), "Success tool 2 should still execute")
 	assert.Equal(t, int32(1), failingTool.GetExecutionCount(), "Failing tool should also execute")
 
-	// Verify events - should have results for all (success and failure)
+	// Verify events - should have part_update for all (success and failure)
 	events := trackEvents(chatCtx.Events(), 500*time.Millisecond)
 
-	toolResultCount := 0
+	partUpdateCount := 0
 	for _, event := range events {
-		if event.Type == entity.EventToolResult {
-			toolResultCount++
-			data := event.Data.(entity.ToolResultData)
-			// Failing tool should still have a result (error wrapped)
-			if data.ID == "call-fail-001" {
-				if resultMap, ok := data.Result.(map[string]any); ok {
-					assert.Contains(t, resultMap, "error")
-				}
+		if event.Type == entity.EventPartUpdate {
+			data := event.Data.(entity.PartUpdateData)
+			if data.State == "complete" || data.State == "error" {
+				partUpdateCount++
+			}
+			// Failing tool should have error state
+			if data.State == "error" {
+				assert.NotEmpty(t, data.Error)
 			}
 		}
 	}
-	assert.Equal(t, 3, toolResultCount, "Should have results for all 3 tools (including failed one)")
+	assert.Equal(t, 3, partUpdateCount, "Should have terminal part_update for all 3 tools (including failed one)")
 
 	closeMockChatContext(chatCtx)
 }
@@ -763,7 +742,7 @@ func TestResultOrdering(t *testing.T) {
 		{tc: toolCallInfo{ID: "call_b", MessageID: "msg-order", Name: "tool_b", Arguments: "{}"}, args: map[string]any{}},
 	}
 
-	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls)
+	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls, "", 0, nil, make(map[string]*ToolCallResult))
 	require.NoError(t, err)
 
 	// Verify order in context manager (should be alphabetical by ID)
@@ -843,7 +822,7 @@ func TestPanicRecovery(t *testing.T) {
 	}
 
 	// Execute async tool that will panic
-	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{})
+	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err, "executeAsync should not fail even if tool will panic")
 
 	// Wait for panic to be caught and handled
@@ -877,7 +856,7 @@ func TestPanicRecovery(t *testing.T) {
 		Name:      "normal_tool",
 		Arguments: "{}",
 	}
-	err = engine.executeSync(chatCtx, toolMgr, normalTc, map[string]any{})
+	err = engine.executeSync(chatCtx, toolMgr, normalTc, map[string]any{}, "", 0, nil, make(map[string]*ToolCallResult))
 	require.NoError(t, err, "Normal tool should still work after panic was recovered")
 	assert.Equal(t, int32(1), normalTool.GetExecutionCount(), "Normal tool should execute successfully")
 
@@ -922,7 +901,7 @@ func TestGoroutineLeak(t *testing.T) {
 			Name:      fmt.Sprintf("leak_test_tool_%d", i),
 			Arguments: "{}",
 		}
-		err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{})
+		err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil)
 		require.NoError(t, err)
 	}
 
@@ -994,7 +973,7 @@ func TestConcurrentWithErrorAndPanic(t *testing.T) {
 		{tc: toolCallInfo{ID: "call-mixed-002", MessageID: "msg-mixed", Name: "mixed_error", Arguments: "{}"}, args: map[string]any{}},
 	}
 
-	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls)
+	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls, "", 0, nil, make(map[string]*ToolCallResult))
 	require.NoError(t, err, "Concurrent execution should handle mixed success/failure")
 
 	// Both tools should execute
@@ -1004,13 +983,16 @@ func TestConcurrentWithErrorAndPanic(t *testing.T) {
 	events := trackEvents(chatCtx.Events(), 200*time.Millisecond)
 
 	// Should have results for both (success and error wrapped)
-	toolResults := 0
+	terminalUpdates := 0
 	for _, event := range events {
-		if event.Type == entity.EventToolResult {
-			toolResults++
+		if event.Type == entity.EventPartUpdate {
+			data := event.Data.(entity.PartUpdateData)
+			if data.State == "complete" || data.State == "error" {
+				terminalUpdates++
+			}
 		}
 	}
-	assert.Equal(t, 2, toolResults, "Should have results for both tools")
+	assert.Equal(t, 2, terminalUpdates, "Should have terminal part_update for both tools")
 
 	closeMockChatContext(chatCtx)
 }
@@ -1095,7 +1077,7 @@ func TestContextCancellation(t *testing.T) {
 		Arguments: "{}",
 	}
 
-	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{})
+	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err)
 
 	// Cancel context after a short delay

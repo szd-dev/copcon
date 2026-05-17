@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/copcon/server/internal/agent"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tools/todo"
@@ -176,21 +178,131 @@ func (h *Handler) GetMessages(c *gin.Context) {
 		return
 	}
 
-	result := make([]gin.H, len(messages))
-	for i, msg := range messages {
+	// Build lookup from tool-role messages: ToolCallID → Content
+	toolResults := make(map[string]string)
+	for _, msg := range messages {
+		if msg.Role == "tool" && msg.ToolCallID != "" {
+			toolResults[msg.ToolCallID] = msg.Content
+		}
+	}
+
+	// Filter out role=tool messages — tool results are embedded in tool-call parts
+	var filtered []session.Message
+	for _, msg := range messages {
+		if msg.Role != "tool" {
+			filtered = append(filtered, msg)
+		}
+	}
+
+	result := make([]gin.H, len(filtered))
+	for i, msg := range filtered {
+		parts := msg.Parts
+		if len(parts) == 0 {
+			parts = backfillParts(msg, toolResults)
+		}
+
+		steps := groupPartsByStep(parts)
+
 		result[i] = gin.H{
-			"id":           msg.ID.String(),
-			"session_id":   msg.SessionID.String(),
-			"role":         msg.Role,
-			"content":      msg.Content,
-			"reasoning":    msg.Reasoning,
-			"tool_calls":   msg.ToolCalls,
-			"tool_call_id": msg.ToolCallID,
-			"created_at":   msg.CreatedAt,
+			"id":        msg.ID.String(),
+			"sessionId": msg.SessionID.String(),
+			"role":      msg.Role,
+			"steps":     steps,
+			"metadata": gin.H{
+				"createdAt":  msg.CreatedAt,
+				"model":      msg.Model,
+				"tokenCount": msg.TokenCount,
+				"durationMs": msg.DurationMs,
+			},
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"messages": result})
+}
+
+// groupPartsByStep groups PersistedParts by StepIndex into UIStep objects.
+func groupPartsByStep(parts session.PersistedParts) []entity.UIStep {
+	stepMap := make(map[int][]entity.UIPart)
+	var stepIndices []int
+	for _, p := range parts {
+		uiPart := entity.UIPart{
+			Type:       entity.UIPartType(p.Type),
+			Text:       p.Text,
+			State:      entity.UIPartState(p.State),
+			ToolCallID: p.ToolCallID,
+			ToolName:   p.ToolName,
+			Args:       p.Args,
+			Output:     p.Output,
+			Error:      p.Error,
+			StepIndex:  p.StepIndex,
+		}
+		if _, exists := stepMap[p.StepIndex]; !exists {
+			stepIndices = append(stepIndices, p.StepIndex)
+		}
+		stepMap[p.StepIndex] = append(stepMap[p.StepIndex], uiPart)
+	}
+	sort.Ints(stepIndices)
+	var steps []entity.UIStep
+	for _, idx := range stepIndices {
+		steps = append(steps, entity.UIStep{
+			Parts: stepMap[idx],
+			State: entity.UIPartStateDone, // all persisted data is done
+		})
+	}
+	return steps
+}
+
+// backfillParts creates PersistedParts from legacy Content/Reasoning/ToolCalls fields
+// when the Parts JSONB column is empty.
+func backfillParts(msg session.Message, toolResults map[string]string) session.PersistedParts {
+	var parts session.PersistedParts
+
+	if msg.Role == "user" {
+		if msg.Content != "" {
+			parts = append(parts, session.PersistedPart{
+				Type:      "text",
+				Text:      msg.Content,
+				State:     "done",
+				StepIndex: 0,
+			})
+		}
+		return parts
+	}
+
+	if msg.Role == "assistant" {
+		if msg.Reasoning != "" {
+			parts = append(parts, session.PersistedPart{
+				Type:      "reasoning",
+				Text:      msg.Reasoning,
+				State:     "done",
+				StepIndex: 0,
+			})
+		}
+		if msg.Content != "" || len(msg.ToolCalls) == 0 {
+			parts = append(parts, session.PersistedPart{
+				Type:      "text",
+				Text:      msg.Content,
+				State:     "done",
+				StepIndex: 0,
+			})
+		}
+		for _, tc := range msg.ToolCalls {
+			pp := session.PersistedPart{
+				Type:       "tool-call",
+				ToolCallID: tc.ID,
+				ToolName:   tc.Function.Name,
+				Args:       tc.Function.Arguments,
+				State:      "complete",
+				StepIndex:  0,
+			}
+			if output, ok := toolResults[tc.ID]; ok && output != "" {
+				pp.Output = output
+			}
+			parts = append(parts, pp)
+		}
+	}
+
+	return parts
 }
 
 func (h *Handler) Chat(c *gin.Context) {

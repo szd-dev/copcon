@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"log"
 
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
@@ -21,7 +22,7 @@ func NewMockChatContext(ctx context.Context, sessionID, agentID string) *MockCha
 		ctx:       ctx,
 		sessionID: sessionID,
 		agentID:   agentID,
-		events:    make(chan entity.Event, 100),
+		events:    make(chan entity.Event, 256),
 	}
 }
 
@@ -33,7 +34,11 @@ func (m *MockChatContext) Emit(event entity.Event) {
 	select {
 	case m.events <- event:
 	default:
-		// Channel full, skip
+		log.Printf("WARNING: SSE event channel near capacity, event type=%s", event.Type)
+		select {
+		case m.events <- event:
+		case <-m.ctx.Done():
+		}
 	}
 }
 

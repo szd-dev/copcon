@@ -210,7 +210,7 @@ func TestFullAsyncLifecycle(t *testing.T) {
 		MessageID: uuid.New().String(),
 	}
 
-	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{})
+	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err, "executeAsync should return immediately")
 
 	// Verify EventAsyncToolStarted was emitted
@@ -290,7 +290,7 @@ func TestSSEDisconnectScenario(t *testing.T) {
 		MessageID: uuid.New().String(),
 	}
 
-	err = harness.engine.executeAsync(chatCtx1, harness.toolManager, tc, map[string]any{})
+	err = harness.engine.executeAsync(chatCtx1, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err)
 
 	// Verify tool started
@@ -391,7 +391,7 @@ func TestMultipleAsyncTools(t *testing.T) {
 			Arguments: "{}",
 			MessageID: uuid.New().String(),
 		}
-		err := harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{})
+		err := harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 		require.NoError(t, err)
 	}
 
@@ -465,7 +465,7 @@ func TestSessionCleanupIntegration(t *testing.T) {
 			Arguments: "{}",
 			MessageID: uuid.New().String(),
 		}
-		err := harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{})
+		err := harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 		require.NoError(t, err)
 	}
 
@@ -542,7 +542,7 @@ func TestTimeoutIntegration(t *testing.T) {
 		MessageID: uuid.New().String(),
 	}
 
-	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{})
+	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err)
 
 	// Wait for started event
@@ -613,7 +613,7 @@ func TestAsyncToolPanicRecovery(t *testing.T) {
 		MessageID: uuid.New().String(),
 	}
 
-	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{})
+	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 	require.NoError(t, err)
 
 	// Wait for started event
@@ -668,7 +668,7 @@ func TestConcurrentVsAsyncExecution(t *testing.T) {
 	}
 
 	start := time.Now()
-	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{})
+	err = harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{}, "", 0, nil)
 	elapsed := time.Since(start)
 
 	require.NoError(t, err)
@@ -734,7 +734,7 @@ func TestSemaphoreLimitingIntegration(t *testing.T) {
 		}
 		err := harness.engine.executeAsync(chatCtx, harness.toolManager, tc, map[string]any{
 			"_call_id": callID,
-		})
+		}, "", 0, nil)
 		require.NoError(t, err)
 	}
 

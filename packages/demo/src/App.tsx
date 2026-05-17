@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bubble, Conversations, Sender, Think, Welcome, XProvider, ThoughtChain } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
-import { theme, Button, Flex, Spin, Typography } from 'antd';
+import { theme, Button, Divider, Flex, Spin, Typography } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
-import { AgentClient, useAgentChat, Session, CopConMessage, TodoList, TodoItemProps, Todo } from '@copcon/ui';
+import { AgentClient, useAgentChat, Session, CopConMessage, Step, ToolCallPart, TodoList, TodoItemProps, Todo } from '@copcon/ui';
 import './App.css';
 
 const { useToken } = theme;
@@ -15,13 +15,61 @@ const MarkdownContent: React.FC<{ content: string }> = ({ content }) => (
   <XMarkdown content={content} />
 );
 
+const mapToolCallStatus = (state: string): 'loading' | 'success' | 'error' => {
+  switch (state) {
+    case 'pending': return 'loading';
+    case 'running': return 'loading';
+    case 'complete': return 'success';
+    case 'error': return 'error';
+    default: return 'loading';
+  }
+};
+
 interface BubbleItem {
   key: string;
   role: string;
   content: string | React.ReactNode;
-  header?: React.ReactNode;
   loading?: boolean;
 }
+
+const StepContent: React.FC<{ step: Step }> = ({ step }) => {
+  const toolCallParts: ToolCallPart[] = [];
+
+  return (
+    <>
+      {step.parts.map((part, index) => {
+        switch (part.type) {
+          case 'text':
+            return <MarkdownContent key={index} content={part.text} />;
+          case 'reasoning':
+            return (
+              <Think key={index} title="Thinking" defaultExpanded>
+                <MarkdownContent content={part.text} />
+              </Think>
+            );
+          case 'tool-call':
+            toolCallParts.push(part);
+            return null; // Will render as ThoughtChain below
+          default:
+            return null;
+        }
+      })}
+      {toolCallParts.length > 0 && (
+        <ThoughtChain
+          items={toolCallParts.map((part) => ({
+            key: part.toolCallId,
+            title: part.toolName,
+            status: mapToolCallStatus(part.state),
+            description: part.args,
+            content: part.output
+              ? <MarkdownContent content={part.output} />
+              : undefined,
+          }))}
+        />
+      )}
+    </>
+  );
+};
 
 const App: React.FC = () => {
   const { token } = useToken();
@@ -122,89 +170,48 @@ const App: React.FC = () => {
     label: session.title || 'New Chat',
   }));
 
+  const renderMessageContent = (msg: CopConMessage) => {
+    if (!msg.steps || msg.steps.length === 0) {
+      return null;
+    }
+
+    return (
+      <>
+        {msg.steps.map((step, stepIndex) => (
+          <React.Fragment key={stepIndex}>
+            {stepIndex > 0 && <Divider style={{ margin: '8px 0' }} />}
+            <StepContent step={step} />
+          </React.Fragment>
+        ))}
+      </>
+    );
+  };
+
   const bubbleItems: BubbleItem[] = [];
   
   messages.forEach((msg: CopConMessage) => {
     const isLastAssistant = 
       msg.role === 'assistant' && 
       messages.indexOf(msg) === messages.length - 1;
-    
-    let header: React.ReactNode = undefined;
-    
-    const toolCalls = msg.tool_calls;
-    if (toolCalls && toolCalls.length > 0) {
-      const toolChainItems = toolCalls.map(tc => ({
-        key: tc.id,
-        title: `🔧 ${tc.function.name}`,
-        status: tc.status || 'loading',
-        description: tc.function.arguments ? `Arguments: ${tc.function.arguments}` : undefined,
-        content: tc.output,
-        collapsible: true,
-      }));
-      
-      header = (
-        <ThoughtChain
-          items={toolChainItems}
-          line="dashed"
-          styles={{
-            root: {
-              marginBottom: token.marginXS,
-            },
-          }}
-        />
-      );
-    }
-    
-    if (msg.reasoning) {
-      const thinkComponent = (
-        <Think
-          title="💭 Thinking..."
-          loading={isLastAssistant && isRequesting}
-          defaultExpanded={true}
-          styles={{
-            root: {
-              background: token.colorBgContainer,
-              borderRadius: token.borderRadius,
-              marginBottom: token.marginXS,
-              border: `1px solid ${token.colorInfoBorder}`,
-            },
-            content: {
-              color: token.colorTextSecondary,
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
-            },
-          }}
-        >
-          {msg.reasoning}
-        </Think>
-      );
-      
-      header = header ? (
-        <>
-          {thinkComponent}
-          {header}
-        </>
-      ) : thinkComponent;
-    }
-    
+
     if (msg.role === 'user') {
+      const userText = msg.steps[0]?.parts.find(p => p.type === 'text')?.text || '';
       bubbleItems.push({
         key: msg.id,
         role: 'user',
-        content: msg.content || '',
+        content: userText,
       });
     } else {
       bubbleItems.push({
         key: msg.id,
         role: 'ai',
-        content: (
-          <>
-            {header}
-            <MarkdownContent content={msg.content || ''} />
-          </>
-        ),
-        loading: isLastAssistant && isRequesting && !msg.content && !msg.reasoning && !header,
+        content: renderMessageContent(msg),
+        loading: isLastAssistant && isRequesting && 
+          !msg.steps.some(s => s.parts.some(p => 
+            (p.type === 'text' && p.text) || 
+            (p.type === 'reasoning' && p.text) || 
+            p.type === 'tool-call'
+          )),
       });
     }
   });

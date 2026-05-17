@@ -2,6 +2,7 @@ package iface
 
 import (
 	"context"
+	"log"
 
 	"github.com/copcon/server/internal/domain/entity"
 )
@@ -29,7 +30,14 @@ func (c *ChatContext) Events() <-chan entity.Event { return c.events }
 func (c *ChatContext) Emit(event entity.Event) {
 	select {
 	case c.events <- event:
-	case <-c.ctx.Done():
+		// Event sent successfully
+	default:
+		// Channel would block - log warning then block with context check
+		log.Printf("WARNING: SSE event channel near capacity, event type=%s", event.Type)
+		select {
+		case c.events <- event:
+		case <-c.ctx.Done():
+		}
 	}
 }
 
@@ -42,6 +50,6 @@ func NewChatContext(ctx context.Context, sessionID, agentID string) *ChatContext
 		ctx:       ctx,
 		sessionID: sessionID,
 		agentID:   agentID,
-		events:    make(chan entity.Event, 100),
+		events:    make(chan entity.Event, 256),
 	}
 }

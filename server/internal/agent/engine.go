@@ -28,11 +28,20 @@ type deltaExtraFields struct {
 
 // StreamResult encapsulates the result of streaming an LLM response.
 // It contains all accumulated content, reasoning, and tool calls from the stream.
+// ToolCallResult holds the output or error from a tool execution,
+// used to populate PersistedPart state and output at persist time.
+type ToolCallResult struct {
+	Output string
+	Error  string
+}
+
 type StreamResult struct {
 	MessageID        string
+	StepIndex        int
 	Content          string
 	ReasoningContent string
 	ToolCalls        []toolCallInfo
+	ToolResults      map[string]*ToolCallResult // callID → result
 	Usage            openai.CompletionUsage
 }
 
@@ -127,13 +136,15 @@ func (e *AgentEngine) prepareAgentLoop(chatCtx iface.ChatContextInterface, userI
 }
 
 // handleStreaming processes the streaming response from OpenAI, accumulating
-// content, reasoning, and tool calls while emitting events in real-time.
+// content, reasoning, and tool calls while emitting part-level events in real-time.
+// It emits only new UI-layer events (EventPartCreate, EventPartUpdate).
 func (e *AgentEngine) handleStreaming(
 	chatCtx iface.ChatContextInterface,
 	agentDef *AgentDefinition,
 	openAIMessages []openai.ChatCompletionMessageParamUnion,
 	tools []openai.ChatCompletionToolUnionParam,
 	messageID string,
+	stepIndex int,
 ) (*StreamResult, error) {
 	params := openai.ChatCompletionNewParams{
 		Model:             openai.ChatModel(agentDef.Model),
@@ -147,8 +158,15 @@ func (e *AgentEngine) handleStreaming(
 
 	result := &StreamResult{
 		MessageID: messageID,
+		StepIndex: stepIndex,
 	}
 	toolCallMap := make(map[int]*toolCallInfo)
+
+	partIndex := 0
+	textPartCreated := false
+	textPartIndex := -1
+	reasoningPartCreated := false
+	reasoningPartIndex := -1
 
 	for stream.Next() {
 		chunk := stream.Current()
@@ -159,9 +177,31 @@ func (e *AgentEngine) handleStreaming(
 
 			if delta.Content != "" {
 				result.Content += delta.Content
+
+				if !textPartCreated {
+					chatCtx.Emit(entity.Event{
+						Type: entity.EventPartCreate,
+						Data: entity.PartCreateData{
+							MessageID: messageID,
+							StepIndex: stepIndex,
+							PartIndex: partIndex,
+							PartType:  "text",
+							State:     "streaming",
+						},
+					})
+					textPartIndex = partIndex
+					partIndex++
+					textPartCreated = true
+				}
 				chatCtx.Emit(entity.Event{
-					Type: entity.EventMessage,
-					Data: entity.MessageData{MessageID: messageID, Content: delta.Content},
+					Type: entity.EventPartUpdate,
+					Data: entity.PartUpdateData{
+						MessageID: messageID,
+						StepIndex: stepIndex,
+						PartIndex: textPartIndex,
+						PartType:  "text",
+						TextDelta: delta.Content,
+					},
 				})
 			}
 
@@ -169,9 +209,31 @@ func (e *AgentEngine) handleStreaming(
 			if err := json.Unmarshal([]byte(delta.RawJSON()), &extra); err == nil {
 				if extra.ReasoningContent != "" {
 					result.ReasoningContent += extra.ReasoningContent
+
+					if !reasoningPartCreated {
+						chatCtx.Emit(entity.Event{
+							Type: entity.EventPartCreate,
+							Data: entity.PartCreateData{
+								MessageID: messageID,
+								StepIndex: stepIndex,
+								PartIndex: partIndex,
+								PartType:  "reasoning",
+								State:     "streaming",
+							},
+						})
+						reasoningPartIndex = partIndex
+						partIndex++
+						reasoningPartCreated = true
+					}
 					chatCtx.Emit(entity.Event{
-						Type: entity.EventReasoning,
-						Data: entity.ReasoningData{MessageID: messageID, Content: extra.ReasoningContent},
+						Type: entity.EventPartUpdate,
+						Data: entity.PartUpdateData{
+							MessageID: messageID,
+							StepIndex: stepIndex,
+							PartIndex: reasoningPartIndex,
+							PartType:  "reasoning",
+							TextDelta: extra.ReasoningContent,
+						},
 					})
 				}
 			}
@@ -236,6 +298,32 @@ func (e *AgentEngine) handleStreaming(
 
 	result.Usage = acc.Usage
 
+	// Emit part-level state transitions for completed parts
+	if reasoningPartCreated {
+		chatCtx.Emit(entity.Event{
+			Type: entity.EventPartUpdate,
+			Data: entity.PartUpdateData{
+				MessageID: messageID,
+				StepIndex: stepIndex,
+				PartIndex: reasoningPartIndex,
+				PartType:  "reasoning",
+				State:     "done",
+			},
+		})
+	}
+	if textPartCreated {
+		chatCtx.Emit(entity.Event{
+			Type: entity.EventPartUpdate,
+			Data: entity.PartUpdateData{
+				MessageID: messageID,
+				StepIndex: stepIndex,
+				PartIndex: textPartIndex,
+				PartType:  "text",
+				State:     "done",
+			},
+		})
+	}
+
 	log.Printf("========== LLM Response ==========")
 	if result.ReasoningContent != "" {
 		log.Printf("Reasoning: %s", result.ReasoningContent)
@@ -286,8 +374,22 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 	// Generate messageID once for the entire agent loop
 	messageID := uuid.New().String()
 
+	// Track iterations to emit step_create events on subsequent rounds
+	isFirstIteration := true
+	stepIndex := 0
+
 	// Phase 2: Agent Loop
 	for {
+		if !isFirstIteration {
+			chatCtx.Emit(entity.Event{
+				Type: entity.EventStepCreate,
+				Data: entity.StepCreateData{
+					MessageID: messageID,
+					StepIndex: stepIndex,
+				},
+			})
+		}
+		isFirstIteration = false
 
 		// Build LLM context
 		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, agentDef.SystemPrompt)
@@ -301,7 +403,7 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 		e.logLLMRequest(agentDef, messages, tools)
 
 		// Phase 3: Streaming
-		result, err := e.handleStreaming(chatCtx, agentDef, openAIMessages, tools, messageID)
+		result, err := e.handleStreaming(chatCtx, agentDef, openAIMessages, tools, messageID, stepIndex)
 		if err != nil {
 			return err
 		}
@@ -315,6 +417,8 @@ func (e *AgentEngine) runAgentLoop(chatCtx iface.ChatContextInterface, userInput
 		if !shouldContinue {
 			return nil
 		}
+
+		stepIndex++
 	}
 }
 
@@ -327,7 +431,26 @@ func (e *AgentEngine) convertMessages(messages []chat_context.MessageForLLM) []o
 		case "user":
 			result = append(result, openai.UserMessage(msg.Content))
 		case "assistant":
-			result = append(result, openai.AssistantMessage(msg.Content))
+			if len(msg.ToolCalls) > 0 {
+				// Build assistant message with tool_calls
+				toolCalls := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(msg.ToolCalls))
+				for _, tc := range msg.ToolCalls {
+					toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{
+						OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+							ID: tc.ID,
+							Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+								Name:      tc.Function.Name,
+								Arguments: tc.Function.Arguments,
+							},
+						},
+					})
+				}
+				asst := openai.AssistantMessage(msg.Content)
+				asst.OfAssistant.ToolCalls = toolCalls
+				result = append(result, asst)
+			} else {
+				result = append(result, openai.AssistantMessage(msg.Content))
+			}
 		case "tool":
 			result = append(result, openai.ToolMessage(msg.Content, msg.ToolCallID))
 		default:
@@ -340,15 +463,19 @@ func (e *AgentEngine) convertMessages(messages []chat_context.MessageForLLM) []o
 // persistMessage saves an assistant message to the context.
 // If result has ToolCalls, they are included.
 // If isFinal is true, the message ID is set.
+// Parts JSONB is populated from the stream result for UIMessage format.
 func (e *AgentEngine) persistMessage(
 	chatCtx iface.ChatContextInterface,
 	result *StreamResult,
 	isFinal bool,
 ) error {
+	parts := e.buildUIParts(result, result.StepIndex)
+
 	msg := &session.Message{
 		Role:      "assistant",
 		Content:   result.Content,
 		Reasoning: result.ReasoningContent,
+		Parts:     parts,
 	}
 
 	if isFinal {
@@ -364,4 +491,52 @@ func (e *AgentEngine) persistMessage(
 	}
 
 	return nil
+}
+
+func (e *AgentEngine) buildUIParts(result *StreamResult, stepIndex int) session.PersistedParts {
+	var parts session.PersistedParts
+
+	if result.ReasoningContent != "" {
+		parts = append(parts, session.PersistedPart{
+			Type:      "reasoning",
+			Text:      result.ReasoningContent,
+			State:     "done",
+			StepIndex: stepIndex,
+		})
+	}
+
+	if result.Content != "" || len(result.ToolCalls) == 0 {
+		parts = append(parts, session.PersistedPart{
+			Type:      "text",
+			Text:      result.Content,
+			State:     "done",
+			StepIndex: stepIndex,
+		})
+	}
+
+	for _, tc := range result.ToolCalls {
+		part := session.PersistedPart{
+			Type:       "tool-call",
+			ToolCallID: tc.ID,
+			ToolName:   tc.Name,
+			Args:       tc.Arguments,
+			StepIndex:  stepIndex,
+		}
+
+		if tr, ok := result.ToolResults[tc.ID]; ok {
+			if tr.Error != "" {
+				part.State = "error"
+				part.Error = tr.Error
+			} else {
+				part.State = "complete"
+				part.Output = tr.Output
+			}
+		} else {
+			part.State = "pending"
+		}
+
+		parts = append(parts, part)
+	}
+
+	return parts
 }

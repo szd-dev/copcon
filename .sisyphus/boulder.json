@@ -1,34 +1,94 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/tool-display-optimization.md",
-  "started_at": "2026-04-01T16:15:01.703Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/message-architecture-refactor.md",
+  "started_at": "2026-04-19T12:53:01.669Z",
   "session_ids": [
-    "ses_2b6be140cffeBLsYQ6C8iatkbo",
-    "ses_2b62a64e6ffeVbkbTNG7IlkTho",
-    "ses_2b62a64daffeOhNioSe5WmV2sx",
-    "ses_2b625d747ffegpy7Ptshzpsezy",
-    "ses_2b625d73dffe0xq38VHMGgmIxu",
-    "ses_2b6234c68ffeut5dM2ipzNiJ05",
-    "ses_2b61ce1beffe8O2W9WbZeje5EO",
-    "ses_2b14ed938ffe0Ot2gX8qlrBe4b",
-    "ses_2b12d0fffffeq5D3YfGsB5cpw3",
-    "ses_2b12c7dcbffe5D4VH85u8ufK9u",
-    "ses_2b12088caffecwF3QHGIkkE4LT",
-    "ses_2b11bc67bffe86qa203roRav4h",
-    "ses_2b10f3b5effery7gLelUXhqxW0",
-    "ses_2b10f3b5cffeg5oQX3AAm6jab4",
-    "ses_2b10f3b60ffex6X4bOtPJ7bVWk",
-    "ses_2b10f3aedffeVTUi0fpWx2PMBG"
+    "ses_25a32cdc4ffeK4u1WDx8tMSNc9"
   ],
-  "plan_name": "tool-display-optimization",
+  "session_origins": {
+    "ses_25a32cdc4ffeK4u1WDx8tMSNc9": "direct"
+  },
+  "plan_name": "message-architecture-refactor",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "**更新 CopConMessage.tool_calls 类型**",
-      "session_id": "ses_2b10f3b5effery7gLelUXhqxW0",
+      "task_title": "后端事件和数据模型定义",
+      "session_id": "ses_25a2d0adaffeNtxbpG01Bgc0Hr",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-19T13:08:52.488Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "后端持久化模型更新",
+      "session_id": "ses_25a1fb2abffeAObKQQKYdSydgK",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-19T13:20:14.087Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "后端 handleStreaming 重写",
+      "session_id": "ses_25a16b0eaffej5U3Ex8yVjsHQ1",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-19T13:28:44.871Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "后端 persistMessage + buildUIParts 重写",
+      "session_id": "ses_25a0605c2ffevuSDhgoTaEsRFj",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-19T13:57:23.274Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "前端 CopConChatProvider 重写",
+      "session_id": "ses_259f420e6ffe2gdZiTl3wj9cGG",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-19T14:11:23.099Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "前端 useAgentChat + messageUtils 简化",
+      "session_id": "ses_259e8e6f9ffekAOP4nd6dNb002",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-19T14:15:58.929Z"
+    },
+    "todo:10": {
+      "task_key": "todo:10",
+      "task_label": "10",
+      "task_title": "前端渲染逻辑更新",
+      "session_id": "ses_259e4727cffekDsJrlD1iZ1J0A",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-19T14:21:22.213Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "端到端验证 + 清理",
+      "session_id": "ses_259d9b67effeetmmjTg0Cd7zM3",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-19T14:34:36.172Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_259d37ef4ffeGJxSJPowXXfGmp",
       "agent": "oracle",
-      "updated_at": "2026-04-02T16:05:55.714Z"
+      "updated_at": "2026-04-19T14:42:51.239Z"
     }
   }
 }

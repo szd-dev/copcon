@@ -17,6 +17,7 @@ import (
 
 	"github.com/copcon/server/internal/agent"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tools/todo"
@@ -554,4 +555,93 @@ func (m *dbSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextIn
 	sess.Metadata["async_completion_pending"] = pending
 
 	return m.UpdateMetadata(chatCtx, sess.Metadata)
+}
+
+func TestBackfillParts_UserMessage(t *testing.T) {
+	msg := session.Message{
+		ID:      uuid.New(),
+		Role:    "user",
+		Content: "Hello",
+	}
+	parts := backfillParts(msg, nil)
+	require.Len(t, parts, 1)
+	assert.Equal(t, "text", parts[0].Type)
+	assert.Equal(t, "Hello", parts[0].Text)
+	assert.Equal(t, "done", parts[0].State)
+	assert.Equal(t, 0, parts[0].StepIndex)
+}
+
+func TestBackfillParts_AssistantWithToolCalls(t *testing.T) {
+	msg := session.Message{
+		ID:        uuid.New(),
+		Role:      "assistant",
+		Reasoning: "Thinking...",
+		Content:   "Let me check.",
+		ToolCalls: session.ToolCalls{
+			{ID: "call_1", Type: "function", Function: session.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
+		},
+	}
+	toolResults := map[string]string{"call_1": "file.txt"}
+	parts := backfillParts(msg, toolResults)
+	require.Len(t, parts, 3)
+
+	assert.Equal(t, "reasoning", parts[0].Type)
+	assert.Equal(t, "Thinking...", parts[0].Text)
+	assert.Equal(t, 0, parts[0].StepIndex)
+
+	assert.Equal(t, "text", parts[1].Type)
+	assert.Equal(t, "Let me check.", parts[1].Text)
+	assert.Equal(t, 0, parts[1].StepIndex)
+
+	assert.Equal(t, "tool-call", parts[2].Type)
+	assert.Equal(t, "call_1", parts[2].ToolCallID)
+	assert.Equal(t, "bash", parts[2].ToolName)
+	assert.Equal(t, "file.txt", parts[2].Output)
+	assert.Equal(t, 0, parts[2].StepIndex)
+}
+
+func TestBackfillParts_AssistantToolCallOnly(t *testing.T) {
+	msg := session.Message{
+		ID:   uuid.New(),
+		Role: "assistant",
+		ToolCalls: session.ToolCalls{
+			{ID: "call_2", Type: "function", Function: session.FunctionCall{Name: "python", Arguments: `{"code":"1+1"}`}},
+		},
+	}
+	parts := backfillParts(msg, nil)
+	require.Len(t, parts, 1)
+	assert.Equal(t, "tool-call", parts[0].Type)
+	assert.Equal(t, "call_2", parts[0].ToolCallID)
+	assert.Equal(t, 0, parts[0].StepIndex)
+}
+
+func TestGroupPartsByStep_SingleStep(t *testing.T) {
+	parts := session.PersistedParts{
+		{Type: "text", Text: "Hello", StepIndex: 0},
+		{Type: "tool-call", ToolCallID: "c1", StepIndex: 0},
+	}
+	steps := groupPartsByStep(parts)
+	require.Len(t, steps, 1)
+	assert.Equal(t, entity.UIPartStateDone, steps[0].State)
+	require.Len(t, steps[0].Parts, 2)
+	assert.Equal(t, entity.UIPartText, steps[0].Parts[0].Type)
+	assert.Equal(t, entity.UIPartToolCall, steps[0].Parts[1].Type)
+}
+
+func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
+	parts := session.PersistedParts{
+		{Type: "text", Text: "Step 0", StepIndex: 0},
+		{Type: "text", Text: "Step 1", StepIndex: 1},
+		{Type: "tool-call", ToolCallID: "c1", StepIndex: 1},
+	}
+	steps := groupPartsByStep(parts)
+	require.Len(t, steps, 2)
+	require.Len(t, steps[0].Parts, 1)
+	assert.Equal(t, "Step 0", steps[0].Parts[0].Text)
+	require.Len(t, steps[1].Parts, 2)
+}
+
+func TestGroupPartsByStep_Empty(t *testing.T) {
+	steps := groupPartsByStep(nil)
+	assert.Len(t, steps, 0)
 }

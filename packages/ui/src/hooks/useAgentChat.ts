@@ -7,7 +7,7 @@ import CopConChatProvider, {
   CopConSSEOutput,
 } from '../providers/CopConChatProvider';
 import { AgentClient } from '../api/agentClient';
-import { mergeToolMessages } from '../utils/messageUtils';
+
 
 export interface UseAgentChatOptions {
   /** AgentClient instance for API calls */
@@ -74,14 +74,11 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
       setIsLoadingMessages(true);
       try {
         const result = await client.getMessages(sessionId);
-        // Merge tool results into assistant messages
-        const mergedMessages = mergeToolMessages(
-          (result.messages || []) as CopConMessage[]
-        );
-        const messageInfos: MessageInfo<CopConMessage>[] = mergedMessages.map(
+        const messages = result.messages || [];
+        const messageInfos: MessageInfo<CopConMessage>[] = messages.map(
           (msg) => ({
             id: msg.id,
-            message: msg as CopConMessage,
+            message: msg,
             status: 'success' as const,
           })
         );

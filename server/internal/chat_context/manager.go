@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tools/todo"
@@ -82,12 +84,10 @@ func (m *contextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *ses
 func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error) {
 	messages := make([]MessageForLLM, 0)
 
-	// Use provided system prompt or default
 	if systemPrompt == "" {
 		systemPrompt = "You are a helpful AI assistant with access to tools for code execution, file operations, and shell commands. Use these tools when appropriate to help the user."
 	}
 
-	// Inject todo state into system prompt if todoMgr is available
 	if m.todoMgr != nil {
 		todos, err := m.todoMgr.List(chatCtx)
 		if err != nil {
@@ -108,18 +108,37 @@ func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userIn
 		return nil, err
 	}
 
-	for _, msg := range history {
-		messages = append(messages, MessageForLLM{
-			Role:       msg.Role,
-			Content:    msg.Content,
-			Reasoning:  msg.Reasoning,
-			ToolCallID: msg.ToolCallID,
-			ToolCalls:  msg.ToolCalls,
-		})
+	// Build a lookup of tool results by ToolCallID so we can populate
+	// output in tool-call parts when converting from Parts JSONB.
+	toolResultByCallID := buildToolResultLookup(history)
+
+	// Try the UIMessage path for messages that have Parts populated with
+	// complete tool-call output. Fall back to direct MessageForLLM for legacy data.
+	uiMessages, hasFallback := convertDBMessagesToUI(history, toolResultByCallID)
+	if !hasFallback {
+		modelMessages := entity.ConvertToModelMessages(uiMessages)
+		for _, mm := range modelMessages {
+			messages = append(messages, MessageForLLM{
+				Role:       mm.Role,
+				Content:    mm.Content,
+				ToolCallID: mm.ToolCallID,
+				ToolCalls:  convertModelToolCalls(mm.ToolCalls),
+			})
+		}
+	} else {
+		// Legacy path: direct DB → MessageForLLM conversion.
+		// This works correctly now because convertMessages() includes ToolCalls.
+		for _, msg := range history {
+			messages = append(messages, MessageForLLM{
+				Role:       msg.Role,
+				Content:    msg.Content,
+				Reasoning:  msg.Reasoning,
+				ToolCallID: msg.ToolCallID,
+				ToolCalls:  msg.ToolCalls,
+			})
+		}
 	}
 
-	// Only append userInput if it's not empty
-	// (In the agent loop, userInput is already added to history before BuildContext is called)
 	if userInput != "" {
 		messages = append(messages, MessageForLLM{
 			Role:    "user",
@@ -128,6 +147,173 @@ func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userIn
 	}
 
 	return messages, nil
+}
+
+// buildToolResultLookup creates a map from tool call ID to the tool result content.
+func buildToolResultLookup(history []session.Message) map[string]string {
+	lookup := make(map[string]string)
+	for _, msg := range history {
+		if msg.Role == "tool" && msg.ToolCallID != "" {
+			lookup[msg.ToolCallID] = msg.Content
+		}
+	}
+	return lookup
+}
+
+// convertDBMessagesToUI converts database Message records to UIMessages.
+// Returns the UIMessages and a boolean indicating whether any messages
+// need to fall back to the legacy path (no Parts available).
+// Tool-role messages are excluded since ConvertToModelMessages generates them
+// from tool-call parts with output populated from toolResultByCallID.
+func convertDBMessagesToUI(history []session.Message, toolResultByCallID map[string]string) ([]entity.UIMessage, bool) {
+	var uiMessages []entity.UIMessage
+	hasFallback := false
+
+	for _, msg := range history {
+		if msg.Role == "tool" {
+			continue
+		}
+
+		if len(msg.Parts) > 0 {
+			uiParts := convertDBPartsToUIPart(msg.Parts, msg.ID.String(), toolResultByCallID)
+			steps := groupPartsByStep(uiParts)
+			uiMessages = append(uiMessages, entity.UIMessage{
+				ID:    msg.ID.String(),
+				Role:  msg.Role,
+				Steps: steps,
+			})
+		} else {
+			uiMsg := synthesizeUIMessage(msg, toolResultByCallID)
+			if uiMsg != nil {
+				uiMessages = append(uiMessages, *uiMsg)
+			} else {
+				hasFallback = true
+			}
+		}
+	}
+
+	return uiMessages, hasFallback
+}
+
+// convertDBPartsToUIPart converts raw Parts JSONB to typed UIPart slice.
+// Uses toolResultByCallID to populate output for tool-call parts that don't have output stored.
+func convertDBPartsToUIPart(parts session.PersistedParts, messageID string, toolResultByCallID map[string]string) []entity.UIPart {
+	var uiParts []entity.UIPart
+	for _, p := range parts {
+		uiPart := entity.UIPart{
+			Type:       entity.UIPartType(p.Type),
+			Text:       p.Text,
+			State:      entity.UIPartState(p.State),
+			ToolCallID: p.ToolCallID,
+			ToolName:   p.ToolName,
+			Args:       p.Args,
+			Output:     p.Output,
+			Error:      p.Error,
+			StepIndex:  p.StepIndex,
+		}
+
+		if p.Type == "tool-call" && uiPart.ToolCallID != "" && uiPart.Output == "" {
+			if result, ok := toolResultByCallID[uiPart.ToolCallID]; ok {
+				uiPart.Output = result
+			}
+		}
+
+		uiParts = append(uiParts, uiPart)
+	}
+	return uiParts
+}
+
+// groupPartsByStep groups UIParts by StepIndex into UIStep objects.
+func groupPartsByStep(parts []entity.UIPart) []entity.UIStep {
+	stepMap := make(map[int][]entity.UIPart)
+	var stepIndices []int
+	for _, p := range parts {
+		if _, exists := stepMap[p.StepIndex]; !exists {
+			stepIndices = append(stepIndices, p.StepIndex)
+		}
+		stepMap[p.StepIndex] = append(stepMap[p.StepIndex], p)
+	}
+	sort.Ints(stepIndices)
+	var steps []entity.UIStep
+	for _, idx := range stepIndices {
+		steps = append(steps, entity.UIStep{
+			Parts: stepMap[idx],
+			State: entity.UIPartStateDone,
+		})
+	}
+	return steps
+}
+
+// synthesizeUIMessage creates a UIMessage from legacy Content/Reasoning/ToolCalls fields.
+// Returns nil for unsupported roles.
+func synthesizeUIMessage(msg session.Message, toolResultByCallID map[string]string) *entity.UIMessage {
+	switch msg.Role {
+	case "user":
+		parts := []entity.UIPart{
+			{Type: entity.UIPartText, Text: msg.Content, State: entity.UIPartStateDone, StepIndex: 0},
+		}
+		return &entity.UIMessage{
+			ID:    msg.ID.String(),
+			Role:  "user",
+			Steps: groupPartsByStep(parts),
+		}
+	case "assistant":
+		var parts []entity.UIPart
+		if msg.Reasoning != "" {
+			parts = append(parts, entity.UIPart{
+				Type:      entity.UIPartReasoning,
+				Text:      msg.Reasoning,
+				State:     entity.UIPartStateDone,
+				StepIndex: 0,
+			})
+		}
+		if msg.Content != "" || len(msg.ToolCalls) == 0 {
+			parts = append(parts, entity.UIPart{
+				Type:      entity.UIPartText,
+				Text:      msg.Content,
+				State:     entity.UIPartStateDone,
+				StepIndex: 0,
+			})
+		}
+		for _, tc := range msg.ToolCalls {
+			output := toolResultByCallID[tc.ID]
+			parts = append(parts, entity.UIPart{
+				Type:       entity.UIPartToolCall,
+				ToolCallID: tc.ID,
+				ToolName:   tc.Function.Name,
+				Args:       tc.Function.Arguments,
+				Output:     output,
+				State:      entity.UIPartStateDone,
+				StepIndex:  0,
+			})
+		}
+		return &entity.UIMessage{
+			ID:    msg.ID.String(),
+			Role:  "assistant",
+			Steps: groupPartsByStep(parts),
+		}
+	default:
+		return nil
+	}
+}
+
+// convertModelToolCalls converts entity ModelToolCalls to session ToolCalls.
+func convertModelToolCalls(toolCalls []entity.ModelToolCall) []session.ToolCall {
+	if len(toolCalls) == 0 {
+		return nil
+	}
+	result := make([]session.ToolCall, len(toolCalls))
+	for i, tc := range toolCalls {
+		result[i] = session.ToolCall{
+			ID:   tc.ID,
+			Type: tc.Type,
+			Function: session.FunctionCall{
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			},
+		}
+	}
+	return result
 }
 
 func (m *contextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
