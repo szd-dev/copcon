@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/qdrant/go-client/qdrant"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
@@ -15,7 +16,11 @@ import (
 	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/hook"
+	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/plugins"
+	"github.com/copcon/server/internal/plugins/logging"
+	memoryplugin "github.com/copcon/server/internal/plugins/memory"
+	"github.com/copcon/server/internal/plugins/tracing"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 	"github.com/copcon/server/internal/tools"
@@ -50,8 +55,21 @@ func main() {
 	todoMgr := todo.NewTodoManager(db)
 	contextMgr := chat_context.NewContextManager(db, context_builder.New(), logger)
 
+	qdrantClient, err := qdrant.NewClient(&qdrant.Config{
+		Host: cfg.Qdrant.Host,
+		Port: cfg.Qdrant.Port,
+	})
+	if err != nil {
+		logger.Error("Failed to create qdrant client", "error", err)
+		os.Exit(1)
+	}
+	memoryMgr := memory.NewMemoryManager(qdrantClient, "copcon")
+
 	hookRunner := hook.NewHookRunner()
 	hookRunner.Register(plugins.NewTodoInjectionHook(todoMgr))
+	hookRunner.Register(memoryplugin.NewMemoryPlugin(memoryMgr))
+	hookRunner.Register(logging.NewLoggingPlugin())
+	hookRunner.Register(tracing.NewTracingPlugin(nil))
 
 	toolRegistry := tool.NewToolRegistry()
 	if err := toolRegistry.Register(tools.NewCodeExecutor()); err != nil {
