@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/copcon/server/internal/domain/iface"
 )
 
 // HookRunner provides a concurrency-safe, ordered executor for registered
@@ -25,6 +27,11 @@ type HookRunner interface {
 	// Each hook is wrapped in panic recovery and error logging; a
 	// failing hook never aborts the chain.
 	Run(point HookPoint, ctx *HookContext)
+
+	// On is a convenience that auto-fills ChatCtx, SessionID, AgentID,
+	// Logger, and CurrentPoint from the provided chatCtx and logger,
+	// then applies extra fields from the optional HookExtra.
+	On(point HookPoint, chatCtx iface.ChatContextInterface, logger *slog.Logger, extra ...HookExtra)
 }
 
 // hookEntry associates a registered hook with its registration timestamp
@@ -45,6 +52,12 @@ func NewHookRunner() HookRunner {
 	return &hookRunner{
 		entries: make([]hookEntry, 0),
 	}
+}
+
+// NewEmptyRunner creates a new, empty HookRunner. It is an alias for
+// NewHookRunner.
+func NewEmptyRunner() HookRunner {
+	return NewHookRunner()
 }
 
 // Register adds a hook. Safe for concurrent use.
@@ -99,6 +112,37 @@ func (r *hookRunner) Run(point HookPoint, ctx *HookContext) {
 	for _, e := range matched {
 		r.executeHook(e.hook, ctx)
 	}
+}
+
+// On builds a HookContext from chatCtx and logger, applies extra fields
+// from the optional HookExtra, and delegates to Run.
+func (r *hookRunner) On(point HookPoint, chatCtx iface.ChatContextInterface, logger *slog.Logger, extras ...HookExtra) {
+	ctx := &HookContext{
+		ChatCtx:      chatCtx,
+		SessionID:    chatCtx.SessionID(),
+		AgentID:      chatCtx.AgentID(),
+		Logger:       logger,
+		CurrentPoint: point,
+	}
+	if len(extras) > 0 {
+		e := extras[0]
+		if e.ToolName != nil {
+			ctx.ToolName = *e.ToolName
+		}
+		if e.ToolArgs != nil {
+			ctx.ToolArgs = e.ToolArgs
+		}
+		if e.ToolResult != nil {
+			ctx.ToolResult = e.ToolResult
+		}
+		if e.SystemPrompt != nil {
+			ctx.SystemPrompt = e.SystemPrompt
+		}
+		if e.Messages != nil {
+			ctx.Messages = e.Messages
+		}
+	}
+	r.Run(point, ctx)
 }
 
 // executeHook wraps a single hook execution with panic recovery and

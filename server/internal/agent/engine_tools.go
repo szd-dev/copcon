@@ -90,45 +90,15 @@ func (e *engineImpl) executeSync(chatCtx iface.ChatContextInterface, toolMgr too
 	}
 
 	// Hook: BeforeToolExecute
-	if e.hookRunner != nil {
-		e.hookRunner.Run(hook.BeforeToolExecute, &hook.HookContext{
-			ChatCtx:      chatCtx,
-			SessionID:    chatCtx.SessionID(),
-			AgentID:      chatCtx.AgentID(),
-			ToolName:     tc.Name,
-			ToolArgs:     args,
-			Logger:       e.logger,
-			CurrentPoint: hook.BeforeToolExecute,
-		})
-	}
+	e.hookRunner.On(hook.BeforeToolExecute, chatCtx, e.logger, hook.HookExtra{ToolName: &tc.Name, ToolArgs: args})
 
 	result, err := toolMgr.Execute(chatCtx, tc.Name, args)
 
 	// Hook: AfterToolExecute or OnToolError
-	if e.hookRunner != nil {
-		if err != nil {
-			e.hookRunner.Run(hook.OnToolError, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				ToolName:     tc.Name,
-				ToolArgs:     args,
-				ToolResult:   result,
-				Logger:       e.logger,
-				CurrentPoint: hook.OnToolError,
-			})
-		} else {
-			e.hookRunner.Run(hook.AfterToolExecute, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				ToolName:     tc.Name,
-				ToolArgs:     args,
-				ToolResult:   result,
-				Logger:       e.logger,
-				CurrentPoint: hook.AfterToolExecute,
-			})
-		}
+	if err != nil {
+		e.hookRunner.On(hook.OnToolError, chatCtx, e.logger, hook.HookExtra{ToolName: &tc.Name, ToolArgs: args, ToolResult: result})
+	} else {
+		e.hookRunner.On(hook.AfterToolExecute, chatCtx, e.logger, hook.HookExtra{ToolName: &tc.Name, ToolArgs: args, ToolResult: result})
 	}
 
 	tr := &ToolCallResult{}
@@ -212,17 +182,7 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 	}
 
 	// Hook: BeforeToolExecute for the sync portion
-	if e.hookRunner != nil {
-		e.hookRunner.Run(hook.BeforeToolExecute, &hook.HookContext{
-			ChatCtx:      chatCtx,
-			SessionID:    chatCtx.SessionID(),
-			AgentID:      chatCtx.AgentID(),
-			ToolName:     tc.Name,
-			ToolArgs:     args,
-			Logger:       e.logger,
-			CurrentPoint: hook.BeforeToolExecute,
-		})
-	}
+	e.hookRunner.On(hook.BeforeToolExecute, chatCtx, e.logger, hook.HookExtra{ToolName: &tc.Name, ToolArgs: args})
 
 	go func() {
 		defer e.asyncRegistry.Unregister(tc.ID)
@@ -469,44 +429,14 @@ func (e *engineImpl) executeConcurrent(
 			}
 
 			// Execute tool
-			if e.hookRunner != nil {
-				e.hookRunner.Run(hook.BeforeToolExecute, &hook.HookContext{
-					ChatCtx:      chatCtx,
-					SessionID:    chatCtx.SessionID(),
-					AgentID:      chatCtx.AgentID(),
-					ToolName:     p.tc.Name,
-					ToolArgs:     p.args,
-					Logger:       e.logger,
-					CurrentPoint: hook.BeforeToolExecute,
-				})
-			}
+			e.hookRunner.On(hook.BeforeToolExecute, chatCtx, e.logger, hook.HookExtra{ToolName: &p.tc.Name, ToolArgs: p.args})
 
 			execResult, execErr := toolMgr.Execute(chatCtx, p.tc.Name, p.args)
 
-			if e.hookRunner != nil {
-				if execErr != nil {
-					e.hookRunner.Run(hook.OnToolError, &hook.HookContext{
-						ChatCtx:      chatCtx,
-						SessionID:    chatCtx.SessionID(),
-						AgentID:      chatCtx.AgentID(),
-						ToolName:     p.tc.Name,
-						ToolArgs:     p.args,
-						ToolResult:   execResult,
-						Logger:       e.logger,
-						CurrentPoint: hook.OnToolError,
-					})
-				} else {
-					e.hookRunner.Run(hook.AfterToolExecute, &hook.HookContext{
-						ChatCtx:      chatCtx,
-						SessionID:    chatCtx.SessionID(),
-						AgentID:      chatCtx.AgentID(),
-						ToolName:     p.tc.Name,
-						ToolArgs:     p.args,
-						ToolResult:   execResult,
-						Logger:       e.logger,
-						CurrentPoint: hook.AfterToolExecute,
-					})
-				}
+			if execErr != nil {
+				e.hookRunner.On(hook.OnToolError, chatCtx, e.logger, hook.HookExtra{ToolName: &p.tc.Name, ToolArgs: p.args, ToolResult: execResult})
+			} else {
+				e.hookRunner.On(hook.AfterToolExecute, chatCtx, e.logger, hook.HookExtra{ToolName: &p.tc.Name, ToolArgs: p.args, ToolResult: execResult})
 			}
 
 			var result any

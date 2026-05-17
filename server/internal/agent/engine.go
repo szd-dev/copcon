@@ -111,6 +111,7 @@ func NewAgentEngine(
 		sessionMgr:    sessionMgr,
 		contextMgr:    contextMgr,
 		asyncRegistry: asyncRegistry,
+		hookRunner:    hook.NewEmptyRunner(),
 		concurrency:   5,
 		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
@@ -142,15 +143,7 @@ func (e *engineImpl) prepareAgentLoop(chatCtx iface.ChatContextInterface, userIn
 	}
 
 	// Hook: OnSessionResolve
-	if e.hookRunner != nil {
-		e.hookRunner.Run(hook.OnSessionResolve, &hook.HookContext{
-			ChatCtx:      chatCtx,
-			SessionID:    chatCtx.SessionID(),
-			AgentID:      chatCtx.AgentID(),
-			Logger:       e.logger,
-			CurrentPoint: hook.OnSessionResolve,
-		})
-	}
+	e.hookRunner.On(hook.OnSessionResolve, chatCtx, e.logger)
 
 	// Determine which agent to use (3-layer fallback)
 	agentID := chatCtx.AgentID()
@@ -422,28 +415,10 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 
 		// OnSystemPrompt hook (already wired in T11)
 		systemPrompt := agentDef.SystemPrompt
-		if e.hookRunner != nil {
-			e.hookRunner.Run(hook.OnSystemPrompt, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				SystemPrompt: &systemPrompt,
-				Logger:       e.logger,
-				CurrentPoint: hook.OnSystemPrompt,
-			})
-		}
+		e.hookRunner.On(hook.OnSystemPrompt, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
 
 		// Hook: BeforeContextBuild
-		if e.hookRunner != nil {
-			e.hookRunner.Run(hook.BeforeContextBuild, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				SystemPrompt: &systemPrompt,
-				Logger:       e.logger,
-				CurrentPoint: hook.BeforeContextBuild,
-			})
-		}
+		e.hookRunner.On(hook.BeforeContextBuild, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
 
 		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, systemPrompt)
 		if err != nil {
@@ -451,16 +426,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Hook: AfterContextBuild — hooks may inspect or modify the assembled messages
-		if e.hookRunner != nil {
-			e.hookRunner.Run(hook.AfterContextBuild, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				Messages:     &messages,
-				Logger:       e.logger,
-				CurrentPoint: hook.AfterContextBuild,
-			})
-		}
+		e.hookRunner.On(hook.AfterContextBuild, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
 
 		llmMessages := e.convertToLLMMessages(messages)
 		llmTools := convertToLLMTools(tools)
@@ -469,16 +435,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		e.logLLMRequest(agentDef, messages, llmTools, chatCtx.SessionID())
 
 		// Hook: BeforeLLMCall
-		if e.hookRunner != nil {
-			e.hookRunner.Run(hook.BeforeLLMCall, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				Messages:     &messages,
-				Logger:       e.logger,
-				CurrentPoint: hook.BeforeLLMCall,
-			})
-		}
+		e.hookRunner.On(hook.BeforeLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
 
 		// Phase 3: Streaming
 		result, err := e.handleStreaming(chatCtx, agentDef, llmMessages, llmTools, messageID, stepIndex)
@@ -487,16 +444,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Hook: AfterLLMCall
-		if e.hookRunner != nil {
-			e.hookRunner.Run(hook.AfterLLMCall, &hook.HookContext{
-				ChatCtx:      chatCtx,
-				SessionID:    chatCtx.SessionID(),
-				AgentID:      chatCtx.AgentID(),
-				Messages:     &messages,
-				Logger:       e.logger,
-				CurrentPoint: hook.AfterLLMCall,
-			})
-		}
+		e.hookRunner.On(hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
 
 		// Phase 4: Tool Call Handling
 		shouldContinue, err := e.handleToolCalls(chatCtx, agentDef.ToolManager, result)
@@ -599,15 +547,7 @@ func (e *engineImpl) persistMessage(
 		return fmt.Errorf("add assistant message: %w", err)
 	}
 
-	if e.hookRunner != nil {
-		e.hookRunner.Run(hook.OnMessagePersist, &hook.HookContext{
-			ChatCtx:      chatCtx,
-			SessionID:    chatCtx.SessionID(),
-			AgentID:      chatCtx.AgentID(),
-			Logger:       e.logger,
-			CurrentPoint: hook.OnMessagePersist,
-		})
-	}
+	e.hookRunner.On(hook.OnMessagePersist, chatCtx, e.logger)
 
 	return nil
 }

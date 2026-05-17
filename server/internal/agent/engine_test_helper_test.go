@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sync/semaphore"
 
 	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/hook"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 )
@@ -46,6 +47,7 @@ func NewTestEngine(opts ...EngineOption) *engineImpl {
 		agentRegistry: newMockAgentRegistry(),
 		sessionMgr:    newMockSessionManager(),
 		contextMgr:    newMockContextManager(),
+		hookRunner:    hook.NewEmptyRunner(),
 		concurrency:   5,
 		asyncRegistry: tool.NewAsyncToolRegistry(),
 		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),

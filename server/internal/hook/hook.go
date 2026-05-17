@@ -123,6 +123,17 @@ type HookContext struct {
 	CurrentPoint HookPoint
 }
 
+// HookExtra carries the per-call-site fields that vary between hook
+// invocations. Fields are pointers — nil means "not applicable for
+// this call."
+type HookExtra struct {
+	ToolName     *string
+	ToolArgs     map[string]any
+	ToolResult   *tool.ToolResult
+	SystemPrompt *string
+	Messages     *[]entity.MessageForLLM
+}
+
 // Hook defines a piece of logic that executes at one or more points
 // in the agent engine lifecycle. Implementations must be safe for
 // concurrent use if they modify shared state.

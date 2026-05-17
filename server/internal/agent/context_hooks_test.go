@@ -502,8 +502,8 @@ func TestContextHooks(t *testing.T) {
 		assert.Equal(t, sess.ID.String(), records[0].SessionID)
 	})
 
-	t.Run("nil hookRunner does not panic", func(t *testing.T) {
-		// Engine without hookRunner — should not panic
+	t.Run("default empty runner does not panic", func(t *testing.T) {
+		// Engine without WithHookRunner — uses default NewEmptyRunner, should not panic
 		sessionMgr := newMockSessionManager()
 		ctx := context.Background()
 		chatCtxCreate := iface.NewChatContext(ctx, "", "test-agent")
