@@ -13,7 +13,6 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/semaphore"
 
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/domain/entity"
@@ -152,26 +151,12 @@ func (m *mockToolManagerWithTools) GetOpenAITools() []openai.ChatCompletionToolU
 
 // createTestEngine creates a minimal AgentEngine for execution mode testing
 func createTestEngine() *AgentEngine {
-	return &AgentEngine{
-		agentRegistry:  newMockAgentRegistry(),
-		sessionMgr:     newMockSessionManager(),
-		contextMgr:     newMockContextManager(),
-		memoryMgr:      &mockMemoryManager{},
-		concurrencySem: semaphore.NewWeighted(5),
-		asyncRegistry:  tool.NewAsyncToolRegistry(),
-	}
+	return NewTestEngine()
 }
 
 // createTestEngineWithRegistry creates an AgentEngine with a specific async registry
 func createTestEngineWithRegistry(asyncRegistry *tool.AsyncToolRegistry) *AgentEngine {
-	return &AgentEngine{
-		agentRegistry:  newMockAgentRegistry(),
-		sessionMgr:     newMockSessionManager(),
-		contextMgr:     newMockContextManager(),
-		memoryMgr:      &mockMemoryManager{},
-		concurrencySem: semaphore.NewWeighted(5),
-		asyncRegistry:  asyncRegistry,
-	}
+	return NewTestEngineWithRegistry(asyncRegistry)
 }
 
 // trackEvents collects events from a channel with timeout
@@ -719,14 +704,7 @@ func TestResultOrdering(t *testing.T) {
 	// Use a mock context manager that records message order
 	orderedMgr := &mockOrderedContextManager{}
 
-	engine := &AgentEngine{
-		agentRegistry:  newMockAgentRegistry(),
-		sessionMgr:     newMockSessionManager(),
-		contextMgr:     orderedMgr,
-		memoryMgr:      &mockMemoryManager{},
-		concurrencySem: semaphore.NewWeighted(5),
-		asyncRegistry:  tool.NewAsyncToolRegistry(),
-	}
+	engine := NewTestEngine(WithTestContextMgr(orderedMgr))
 
 	ctx := context.Background()
 	sessionID := "test-ordering-session"

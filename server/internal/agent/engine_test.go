@@ -243,7 +243,6 @@ func (m *mockToolManagerForEngine) GetOpenAITools() []openai.ChatCompletionToolU
 func TestAgentEngineChatWithAgent(t *testing.T) {
 	sessionMgr := newMockSessionManager()
 	chat_context := newMockContextManager()
-	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -272,7 +271,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "agent-b")
@@ -288,7 +287,6 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	sessionMgr := newMockSessionManager()
 	chat_context := newMockContextManager()
-	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -308,7 +306,7 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-a")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "")
@@ -324,7 +322,6 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 func TestAgentEngineSystemPrompt(t *testing.T) {
 	sessionMgr := newMockSessionManager()
 	chat_context := newMockContextManager()
-	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -345,7 +342,7 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "coding-agent")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	agentDef, err := agentRegistry.Get("coding-agent")
@@ -365,7 +362,6 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	sessionMgr := newMockSessionManager()
 	chat_context := newMockContextManager()
-	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -385,7 +381,7 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	session, err := sessionMgr.Create(chatCtxForCreate, "Test Session", "agent-1")
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := iface.NewChatContext(ctx, session.ID.String(), "non-existent-agent")
@@ -407,7 +403,6 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 func TestAgentEngineStateless(t *testing.T) {
 	sessionMgr := newMockSessionManager()
 	chat_context := newMockContextManager()
-	memoryMgr := &mockMemoryManager{}
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -422,13 +417,12 @@ func TestAgentEngineStateless(t *testing.T) {
 	agentRegistry.Register("agent-1", agent)
 	agentRegistry.SetDefault("agent-1")
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, memoryMgr, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	assert.NotNil(t, engine.agentRegistry)
 	assert.NotNil(t, engine.sessionMgr)
 	assert.NotNil(t, engine.contextMgr)
-	assert.NotNil(t, engine.memoryMgr)
 }
 
 func TestMessageDataMessageID(t *testing.T) {

@@ -13,7 +13,6 @@ import (
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
-	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 )
@@ -57,7 +56,6 @@ type AgentEngine struct {
 	agentRegistry  AgentRegistry
 	sessionMgr     session.SessionManager
 	contextMgr     chat_context.ContextManager
-	memoryMgr      memory.MemoryManager
 	concurrencySem *semaphore.Weighted     // limit concurrent tool executions
 	asyncRegistry  *tool.AsyncToolRegistry // tracks async tool executions
 }
@@ -66,14 +64,12 @@ func NewAgentEngine(
 	agentRegistry AgentRegistry,
 	sessionMgr session.SessionManager,
 	contextMgr chat_context.ContextManager,
-	memoryMgr memory.MemoryManager,
 	asyncRegistry *tool.AsyncToolRegistry,
 ) *AgentEngine {
 	return &AgentEngine{
 		agentRegistry:  agentRegistry,
 		sessionMgr:     sessionMgr,
 		contextMgr:     contextMgr,
-		memoryMgr:      memoryMgr,
 		concurrencySem: semaphore.NewWeighted(5), // max 5 concurrent tool executions
 		asyncRegistry:  asyncRegistry,
 	}

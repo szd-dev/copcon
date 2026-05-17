@@ -17,7 +17,6 @@ import (
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
-	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
 	"github.com/copcon/server/internal/tool"
@@ -116,7 +115,6 @@ type integrationTestHarness struct {
 	sessionMgr    session.SessionManager
 	contextMgr    chat_context.ContextManager
 	todoMgr       todo.TodoManager
-	memoryMgr     memory.MemoryManager
 	asyncRegistry *tool.AsyncToolRegistry
 	toolManager   tool.ToolManager
 	agentRegistry AgentRegistry
@@ -129,19 +127,17 @@ func newIntegrationTestHarness(t *testing.T) *integrationTestHarness {
 	sessionMgr := session.NewSessionManager(db, nil)
 	todoMgr := todo.NewTodoManager(db)
 	contextMgr := chat_context.NewContextManager(db, todoMgr)
-	memoryMgr := &mockMemoryManager{}
 	asyncRegistry := tool.NewAsyncToolRegistry()
 	toolManager := tool.NewToolManager()
 	agentRegistry := newMockAgentRegistry()
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr, asyncRegistry)
+	engine := NewAgentEngine(agentRegistry, sessionMgr, contextMgr, asyncRegistry)
 
 	return &integrationTestHarness{
 		db:            db,
 		sessionMgr:    sessionMgr,
 		contextMgr:    contextMgr,
 		todoMgr:       todoMgr,
-		memoryMgr:     memoryMgr,
 		asyncRegistry: asyncRegistry,
 		toolManager:   toolManager,
 		agentRegistry: agentRegistry,

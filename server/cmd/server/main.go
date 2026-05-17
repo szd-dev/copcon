@@ -12,7 +12,6 @@ import (
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/config"
-	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 	"github.com/copcon/server/internal/tools"
@@ -41,7 +40,6 @@ func main() {
 	sessionMgr := session.NewSessionManager(db, asyncRegistry)
 	todoMgr := todo.NewTodoManager(db)
 	contextMgr := chat_context.NewContextManager(db, todoMgr)
-	memoryMgr := memory.NewMemoryManager(nil, "agent_memory")
 
 	toolRegistry := tool.NewToolRegistry()
 	if err := toolRegistry.Register(tools.NewCodeExecutor()); err != nil {
@@ -76,7 +74,7 @@ func main() {
 	}
 	log.Printf("Loaded %d agents", len(agentRegistry.List()))
 
-	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, memoryMgr, asyncRegistry)
+	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, asyncRegistry)
 
 	r := gin.Default()
 
