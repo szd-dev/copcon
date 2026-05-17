@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -13,7 +12,6 @@ import (
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
-	"github.com/copcon/server/internal/tools/todo"
 )
 
 var (
@@ -29,13 +27,12 @@ type ContextManager interface {
 
 type contextManager struct {
 	db         *gorm.DB
-	todoMgr    todo.TodoManager
 	ctxBuilder context_builder.ContextBuilder
 	logger     *slog.Logger
 }
 
-func NewContextManager(db *gorm.DB, todoMgr todo.TodoManager, ctxBuilder context_builder.ContextBuilder, logger *slog.Logger) ContextManager {
-	return &contextManager{db: db, todoMgr: todoMgr, ctxBuilder: ctxBuilder, logger: logger}
+func NewContextManager(db *gorm.DB, ctxBuilder context_builder.ContextBuilder, logger *slog.Logger) ContextManager {
+	return &contextManager{db: db, ctxBuilder: ctxBuilder, logger: logger}
 }
 
 func (m *contextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error) {
@@ -78,16 +75,6 @@ func (m *contextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *ses
 func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	if systemPrompt == "" {
 		systemPrompt = "You are a helpful AI assistant with access to tools for code execution, file operations, and shell commands. Use these tools when appropriate to help the user."
-	}
-
-	if m.todoMgr != nil {
-		todos, err := m.todoMgr.List(chatCtx)
-		if err != nil {
-			m.logger.Warn("failed to fetch todos", "session_id", chatCtx.SessionID(), "error", err)
-		} else if len(todos) > 0 {
-			todoState := formatTodoState(todos)
-			systemPrompt = systemPrompt + "\n\n" + todoState
-		}
 	}
 
 	history, err := m.GetHistory(chatCtx, 1024)
@@ -217,46 +204,4 @@ func (m *contextManager) DeleteBySession(chatCtx iface.ChatContextInterface) err
 
 func EstimateTokens(content string) int {
 	return len(content) / 4
-}
-
-func formatTodoState(todos []*session.Todo) string {
-	var pending, inProgress, completed, failed, blocked []string
-
-	for _, t := range todos {
-		content := t.Content
-		if t.ActiveForm != "" {
-			content = t.ActiveForm
-		}
-		switch t.Status {
-		case session.TodoStatusPending:
-			pending = append(pending, content)
-		case session.TodoStatusInProgress:
-			inProgress = append(inProgress, content)
-		case session.TodoStatusCompleted:
-			completed = append(completed, content)
-		case session.TodoStatusFailed:
-			failed = append(failed, content)
-		case session.TodoStatusBlocked:
-			blocked = append(blocked, content)
-		}
-	}
-
-	var parts []string
-	if len(pending) > 0 {
-		parts = append(parts, "pending: "+strings.Join(pending, ", "))
-	}
-	if len(inProgress) > 0 {
-		parts = append(parts, "in_progress: "+strings.Join(inProgress, ", "))
-	}
-	if len(completed) > 0 {
-		parts = append(parts, "completed: "+strings.Join(completed, ", "))
-	}
-	if len(failed) > 0 {
-		parts = append(parts, "failed: "+strings.Join(failed, ", "))
-	}
-	if len(blocked) > 0 {
-		parts = append(parts, "blocked: "+strings.Join(blocked, ", "))
-	}
-
-	return "Current todo list: [" + strings.Join(parts, ", ") + "]"
 }

@@ -1095,7 +1095,7 @@ func TestTodoLoopFix(t *testing.T) {
 		require.NotNil(t, existingTodo)
 
 		// Create a context manager
-		contextMgr := chat_context.NewContextManager(db, todoMgr, context_builder.New(), slog.Default())
+		contextMgr := chat_context.NewContextManager(db, context_builder.New(), slog.Default())
 
 		// Build context - this should include todo state, but currently doesn't
 		messages, err := contextMgr.BuildContext(chatCtx, "", 256000, "You are a helpful assistant.")

@@ -128,7 +128,7 @@ func newIntegrationTestHarness(t *testing.T) *integrationTestHarness {
 
 	sessionMgr := session.NewSessionManager(db, nil)
 	todoMgr := todo.NewTodoManager(db)
-	contextMgr := chat_context.NewContextManager(db, todoMgr, context_builder.New(), slog.Default())
+	contextMgr := chat_context.NewContextManager(db, context_builder.New(), slog.Default())
 	asyncRegistry := tool.NewAsyncToolRegistry()
 	toolManager := tool.NewToolManager()
 	agentRegistry := newMockAgentRegistry()

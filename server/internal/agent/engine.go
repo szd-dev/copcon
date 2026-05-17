@@ -424,7 +424,18 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		isFirstIteration = false
 
 		// Build LLM context
-		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, agentDef.SystemPrompt)
+		systemPrompt := agentDef.SystemPrompt
+		if e.hookRunner != nil {
+			e.hookRunner.Run(hook.OnSystemPrompt, &hook.HookContext{
+				ChatCtx:      chatCtx,
+				SessionID:    chatCtx.SessionID(),
+				AgentID:      chatCtx.AgentID(),
+				SystemPrompt: &systemPrompt,
+				Logger:       e.logger,
+				CurrentPoint: hook.OnSystemPrompt,
+			})
+		}
+		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, systemPrompt)
 		if err != nil {
 			return fmt.Errorf("build context: %w", err)
 		}
