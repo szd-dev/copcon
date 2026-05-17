@@ -14,6 +14,7 @@ import (
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/server/internal/hook"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 )
@@ -79,6 +80,14 @@ func WithLogger(logger *slog.Logger) EngineOption {
 	}
 }
 
+// WithHookRunner sets the hook runner for lifecycle hook execution.
+// When nil (default), hooks are not executed.
+func WithHookRunner(runner hook.HookRunner) EngineOption {
+	return func(e *engineImpl) {
+		e.hookRunner = runner
+	}
+}
+
 type engineImpl struct {
 	logger         *slog.Logger
 	agentRegistry  AgentRegistry
@@ -87,6 +96,7 @@ type engineImpl struct {
 	concurrency    int                     // max concurrent tool executions
 	concurrencySem *semaphore.Weighted     // limit concurrent tool executions
 	asyncRegistry  *tool.AsyncToolRegistry // tracks async tool executions
+	hookRunner     hook.HookRunner         // optional hook runner for lifecycle hooks
 }
 
 var _ AgentEngine = (*engineImpl)(nil)
@@ -373,7 +383,7 @@ func (e *engineImpl) handleStreaming(
 }
 
 // logLLMRequest logs the LLM request parameters for debugging.
-func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []chat_context.MessageForLLM, tools []openai.ChatCompletionToolUnionParam, sessionID string) {
+func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []entity.MessageForLLM, tools []openai.ChatCompletionToolUnionParam, sessionID string) {
 	e.logger.Info("llm_request",
 		"session_id", sessionID,
 		"agent", agentDef.Name,
@@ -444,7 +454,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 	}
 }
 
-func (e *engineImpl) convertMessages(messages []chat_context.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
+func (e *engineImpl) convertMessages(messages []entity.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
 	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {

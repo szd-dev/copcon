@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
@@ -127,7 +128,7 @@ func newIntegrationTestHarness(t *testing.T) *integrationTestHarness {
 
 	sessionMgr := session.NewSessionManager(db, nil)
 	todoMgr := todo.NewTodoManager(db)
-	contextMgr := chat_context.NewContextManager(db, todoMgr, slog.Default())
+	contextMgr := chat_context.NewContextManager(db, todoMgr, context_builder.New(), slog.Default())
 	asyncRegistry := tool.NewAsyncToolRegistry()
 	toolManager := tool.NewToolManager()
 	agentRegistry := newMockAgentRegistry()

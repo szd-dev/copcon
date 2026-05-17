@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/server/internal/hook"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
 	"github.com/copcon/server/internal/tool"
@@ -751,7 +751,7 @@ func (m *mockOrderedContextManager) AddMessage(chatCtx iface.ChatContextInterfac
 	return nil
 }
 
-func (m *mockOrderedContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]chat_context.MessageForLLM, error) {
+func (m *mockOrderedContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
 }
 
@@ -1077,5 +1077,252 @@ func TestContextCancellation(t *testing.T) {
 	assert.Less(t, longTool.GetExecutionCount(), int32(2),
 		"Tool should not complete full execution when context cancelled")
 
+	closeMockChatContext(chatCtx)
+}
+
+// ============================================================================
+// TestToolHooks: Verify hook calls for sync, concurrent, and async execution
+// ============================================================================
+
+type recordingHook struct {
+	records []hookCallRecord
+	mu      sync.Mutex
+}
+
+type hookCallRecord struct {
+	Point    hook.HookPoint
+	ToolName string
+}
+
+func (h *recordingHook) Name() string  { return "recording" }
+func (h *recordingHook) Priority() int { return 100 }
+
+func (h *recordingHook) Points() []hook.HookPoint {
+	return []hook.HookPoint{
+		hook.BeforeToolExecute,
+		hook.AfterToolExecute,
+		hook.OnToolError,
+	}
+}
+
+func (h *recordingHook) Execute(ctx *hook.HookContext) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, hookCallRecord{
+		Point:    ctx.CurrentPoint,
+		ToolName: ctx.ToolName,
+	})
+	return nil
+}
+
+func (h *recordingHook) Records() []hookCallRecord {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	cpy := make([]hookCallRecord, len(h.records))
+	copy(cpy, h.records)
+	return cpy
+}
+
+func TestToolHooksSyncExecution(t *testing.T) {
+	toolMgr := newMockToolManagerWithTools()
+
+	syncTool := &mockControllableTool{
+		name:     "sync_hook_tool",
+		duration: 10 * time.Millisecond,
+		result:   &tool.ToolResult{Success: true, Data: map[string]any{"value": "ok"}},
+	}
+	toolMgr.Register(syncTool)
+
+	recHook := &recordingHook{}
+	hookRunner := hook.NewHookRunner()
+	hookRunner.Register(recHook)
+
+	engine := NewTestEngine(WithHookRunner(hookRunner))
+
+	ctx := context.Background()
+	chatCtx := testutil.NewMockChatContext(ctx, "test-hook-sync", "test-agent")
+
+	tc := toolCallInfo{
+		MessageID: "msg-hook-001",
+		ID:        "call-hook-001",
+		Name:      "sync_hook_tool",
+		Arguments: "{}",
+	}
+
+	err := engine.executeSync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil, make(map[string]*ToolCallResult))
+	require.NoError(t, err)
+
+	records := recHook.Records()
+	require.Len(t, records, 2, "expected BeforeToolExecute + AfterToolExecute")
+	assert.Equal(t, hook.BeforeToolExecute, records[0].Point)
+	assert.Equal(t, "sync_hook_tool", records[0].ToolName)
+	assert.Equal(t, hook.AfterToolExecute, records[1].Point)
+	assert.Equal(t, "sync_hook_tool", records[1].ToolName)
+
+	closeMockChatContext(chatCtx)
+}
+
+func TestToolHooksSyncError(t *testing.T) {
+	toolMgr := newMockToolManagerWithTools()
+
+	failTool := &mockControllableTool{
+		name:     "fail_hook_tool",
+		duration: 10 * time.Millisecond,
+		err:      errors.New("tool failure"),
+	}
+	toolMgr.Register(failTool)
+
+	recHook := &recordingHook{}
+	hookRunner := hook.NewHookRunner()
+	hookRunner.Register(recHook)
+
+	engine := NewTestEngine(WithHookRunner(hookRunner))
+
+	ctx := context.Background()
+	chatCtx := testutil.NewMockChatContext(ctx, "test-hook-error", "test-agent")
+
+	tc := toolCallInfo{
+		MessageID: "msg-hook-err",
+		ID:        "call-hook-err",
+		Name:      "fail_hook_tool",
+		Arguments: "{}",
+	}
+
+	err := engine.executeSync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil, make(map[string]*ToolCallResult))
+	require.NoError(t, err) // executeSync does not return tool errors
+
+	records := recHook.Records()
+	require.Len(t, records, 2, "expected BeforeToolExecute + OnToolError")
+	assert.Equal(t, hook.BeforeToolExecute, records[0].Point)
+	assert.Equal(t, hook.OnToolError, records[1].Point)
+
+	closeMockChatContext(chatCtx)
+}
+
+func TestToolHooksConcurrentExecution(t *testing.T) {
+	toolMgr := newMockToolManagerWithTools()
+
+	t1 := &mockControllableTool{
+		name:     "hook_concurrent_1",
+		duration: 20 * time.Millisecond,
+		result:   &tool.ToolResult{Success: true, Data: map[string]any{"v": 1}},
+	}
+	t2 := &mockControllableTool{
+		name:     "hook_concurrent_2",
+		duration: 30 * time.Millisecond,
+		result:   &tool.ToolResult{Success: true, Data: map[string]any{"v": 2}},
+	}
+	toolMgr.Register(t1)
+	toolMgr.Register(t2)
+
+	recHook := &recordingHook{}
+	hookRunner := hook.NewHookRunner()
+	hookRunner.Register(recHook)
+
+	engine := NewTestEngine(WithHookRunner(hookRunner))
+
+	ctx := context.Background()
+	chatCtx := testutil.NewMockChatContext(ctx, "test-hook-concurrent", "test-agent")
+
+	toolCalls := []parsedToolCall{
+		{tc: toolCallInfo{ID: "call-hc-1", MessageID: "msg-hc", Name: "hook_concurrent_1", Arguments: "{}"}, args: map[string]any{}},
+		{tc: toolCallInfo{ID: "call-hc-2", MessageID: "msg-hc", Name: "hook_concurrent_2", Arguments: "{}"}, args: map[string]any{}},
+	}
+
+	err := engine.executeConcurrent(chatCtx, toolMgr, toolCalls, "", 0, nil, make(map[string]*ToolCallResult))
+	require.NoError(t, err)
+
+	records := recHook.Records()
+	require.Len(t, records, 4, "expected 2 BeforeToolExecute + 2 AfterToolExecute")
+
+	beforeCount := 0
+	afterCount := 0
+	for _, r := range records {
+		switch r.Point {
+		case hook.BeforeToolExecute:
+			beforeCount++
+		case hook.AfterToolExecute:
+			afterCount++
+		}
+	}
+	assert.Equal(t, 2, beforeCount)
+	assert.Equal(t, 2, afterCount)
+
+	closeMockChatContext(chatCtx)
+}
+
+func TestToolHooksAsyncExecution(t *testing.T) {
+	toolMgr := newMockToolManagerWithTools()
+
+	asyncTool := &mockControllableTool{
+		name:     "hook_async_tool",
+		duration: 100 * time.Millisecond,
+		result:   &tool.ToolResult{Success: true, Data: map[string]any{"v": "async"}},
+	}
+	toolMgr.Register(asyncTool)
+
+	recHook := &recordingHook{}
+	hookRunner := hook.NewHookRunner()
+	hookRunner.Register(recHook)
+
+	asyncRegistry := tool.NewAsyncToolRegistry()
+	engine := NewTestEngineWithRegistry(asyncRegistry, WithHookRunner(hookRunner))
+
+	ctx := context.Background()
+	chatCtx := testutil.NewMockChatContext(ctx, "test-hook-async", "test-agent")
+
+	tc := toolCallInfo{
+		MessageID: "msg-ha",
+		ID:        "call-ha",
+		Name:      "hook_async_tool",
+		Arguments: "{}",
+	}
+
+	err := engine.executeAsync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil)
+	require.NoError(t, err)
+
+	// Only BeforeToolExecute is called synchronously for async
+	records := recHook.Records()
+	require.Len(t, records, 1, "expected only BeforeToolExecute before goroutine launch")
+	assert.Equal(t, hook.BeforeToolExecute, records[0].Point)
+	assert.Equal(t, "hook_async_tool", records[0].ToolName)
+
+	// Wait for async tool completion
+	time.Sleep(200 * time.Millisecond)
+
+	// No additional hooks should have fired (goroutine body has no hook calls)
+	records = recHook.Records()
+	assert.Len(t, records, 1, "no additional hook calls should fire in async goroutine")
+
+	closeMockChatContext(chatCtx)
+}
+
+func TestToolHooksWithoutHookRunner(t *testing.T) {
+	toolMgr := newMockToolManagerWithTools()
+
+	syncTool := &mockControllableTool{
+		name:     "no_hook_tool",
+		duration: 10 * time.Millisecond,
+		result:   &tool.ToolResult{Success: true, Data: map[string]any{"value": "ok"}},
+	}
+	toolMgr.Register(syncTool)
+
+	// Engine without hookRunner (nil = default)
+	engine := NewTestEngine()
+
+	ctx := context.Background()
+	chatCtx := testutil.NewMockChatContext(ctx, "test-no-hook", "test-agent")
+
+	tc := toolCallInfo{
+		MessageID: "msg-no-hook",
+		ID:        "call-no-hook",
+		Name:      "no_hook_tool",
+		Arguments: "{}",
+	}
+
+	err := engine.executeSync(chatCtx, toolMgr, tc, map[string]any{}, "", 0, nil, make(map[string]*ToolCallResult))
+	require.NoError(t, err)
+
+	// Should not panic — nil hookRunner is handled gracefully
 	closeMockChatContext(chatCtx)
 }

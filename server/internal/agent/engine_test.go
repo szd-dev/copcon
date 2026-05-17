@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/memory"
@@ -86,12 +87,12 @@ func (m *mockSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContext
 }
 
 type mockContextManager struct {
-	messages map[string][]chat_context.MessageForLLM
+	messages map[string][]entity.MessageForLLM
 }
 
 func newMockContextManager() *mockContextManager {
 	return &mockContextManager{
-		messages: make(map[string][]chat_context.MessageForLLM),
+		messages: make(map[string][]entity.MessageForLLM),
 	}
 }
 
@@ -103,7 +104,7 @@ func (m *mockContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg 
 	return nil
 }
 
-func (m *mockContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]chat_context.MessageForLLM, error) {
+func (m *mockContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
 }
 
@@ -1094,7 +1095,7 @@ func TestTodoLoopFix(t *testing.T) {
 		require.NotNil(t, existingTodo)
 
 		// Create a context manager
-		contextMgr := chat_context.NewContextManager(db, todoMgr, slog.Default())
+		contextMgr := chat_context.NewContextManager(db, todoMgr, context_builder.New(), slog.Default())
 
 		// Build context - this should include todo state, but currently doesn't
 		messages, err := contextMgr.BuildContext(chatCtx, "", 256000, "You are a helpful assistant.")

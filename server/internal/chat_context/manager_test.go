@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/session"
 )
@@ -17,7 +18,7 @@ func TestSynthesizeUIMessage_UserMessage(t *testing.T) {
 		Role:    "user",
 		Content: "Hello",
 	}
-	uiMsg := synthesizeUIMessage(msg, nil)
+	uiMsg := context_builder.SynthesizeUIMessage(msg, nil)
 	require.NotNil(t, uiMsg)
 	assert.Equal(t, "user", uiMsg.Role)
 	assert.Equal(t, msg.ID.String(), uiMsg.ID)
@@ -40,7 +41,7 @@ func TestSynthesizeUIMessage_AssistantWithToolCalls(t *testing.T) {
 		},
 	}
 	toolResults := map[string]string{"call_1": "file.txt"}
-	uiMsg := synthesizeUIMessage(msg, toolResults)
+	uiMsg := context_builder.SynthesizeUIMessage(msg, toolResults)
 	require.NotNil(t, uiMsg)
 	assert.Equal(t, "assistant", uiMsg.Role)
 	require.Len(t, uiMsg.Steps, 1, "legacy assistant message should have one step (StepIndex=0)")
@@ -70,7 +71,7 @@ func TestSynthesizeUIMessage_AssistantToolCallOnly(t *testing.T) {
 			{ID: "call_2", Type: "function", Function: session.FunctionCall{Name: "python", Arguments: `{"code":"1+1"}`}},
 		},
 	}
-	uiMsg := synthesizeUIMessage(msg, nil)
+	uiMsg := context_builder.SynthesizeUIMessage(msg, nil)
 	require.NotNil(t, uiMsg)
 	require.Len(t, uiMsg.Steps, 1)
 	require.Len(t, uiMsg.Steps[0].Parts, 1)
@@ -84,7 +85,7 @@ func TestSynthesizeUIMessage_UnsupportedRole(t *testing.T) {
 		Role:    "system",
 		Content: "You are helpful.",
 	}
-	uiMsg := synthesizeUIMessage(msg, nil)
+	uiMsg := context_builder.SynthesizeUIMessage(msg, nil)
 	assert.Nil(t, uiMsg, "unsupported roles should return nil")
 }
 
@@ -93,7 +94,7 @@ func TestGroupPartsByStep_SingleStep(t *testing.T) {
 		{Type: entity.UIPartText, Text: "Hello", StepIndex: 0},
 		{Type: entity.UIPartToolCall, ToolCallID: "c1", StepIndex: 0},
 	}
-	steps := groupPartsByStep(parts)
+	steps := context_builder.GroupPartsByStep(parts)
 	require.Len(t, steps, 1)
 	assert.Equal(t, entity.UIPartStateDone, steps[0].State)
 	require.Len(t, steps[0].Parts, 2)
@@ -105,7 +106,7 @@ func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
 		{Type: entity.UIPartText, Text: "Step 1", StepIndex: 1},
 		{Type: entity.UIPartToolCall, ToolCallID: "c1", StepIndex: 1},
 	}
-	steps := groupPartsByStep(parts)
+	steps := context_builder.GroupPartsByStep(parts)
 	require.Len(t, steps, 2)
 	require.Len(t, steps[0].Parts, 1)
 	assert.Equal(t, "Step 0", steps[0].Parts[0].Text)
@@ -113,7 +114,7 @@ func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
 }
 
 func TestGroupPartsByStep_Empty(t *testing.T) {
-	steps := groupPartsByStep(nil)
+	steps := context_builder.GroupPartsByStep(nil)
 	assert.Len(t, steps, 0)
 }
 

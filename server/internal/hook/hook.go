@@ -11,7 +11,7 @@ package hook
 import (
 	"log/slog"
 
-	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/tool"
 )
@@ -97,7 +97,7 @@ type HookContext struct {
 	// current LLM call. Hooks at AfterContextBuild or BeforeLLMCall
 	// may modify the message list. Populated for: AfterContextBuild,
 	// BeforeLLMCall, AfterLLMCall.
-	Messages *[]chat_context.MessageForLLM
+	Messages *[]entity.MessageForLLM
 
 	// ToolName is the name of the tool being executed. Populated
 	// for: BeforeToolExecute, AfterToolExecute, OnToolError.

@@ -20,6 +20,7 @@ import (
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
@@ -187,7 +188,7 @@ func TestIntegrationAllIssues(t *testing.T) {
 			_, err = todoMgr.Create(chatCtx3, "IntegrationTest: context injection task 2")
 			require.NoError(t, err)
 
-			contextMgr := chat_context.NewContextManager(db, todoMgr)
+			contextMgr := chat_context.NewContextManager(db, todoMgr, context_builder.New(), nil)
 
 			systemPrompt := "You are a helpful assistant."
 			_, err = contextMgr.BuildContext(chatCtx3, "", 256000, systemPrompt)

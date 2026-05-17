@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
@@ -23,26 +23,19 @@ var (
 type ContextManager interface {
 	GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error)
 	AddMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
-	BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error)
+	BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error)
 	DeleteBySession(chatCtx iface.ChatContextInterface) error
 }
 
-type MessageForLLM struct {
-	Role       string             `json:"role"`
-	Content    string             `json:"content"`
-	Reasoning  string             `json:"reasoning,omitempty"`
-	ToolCallID string             `json:"tool_call_id,omitempty"`
-	ToolCalls  []session.ToolCall `json:"tool_calls,omitempty"`
-}
-
 type contextManager struct {
-	db      *gorm.DB
-	todoMgr todo.TodoManager
-	logger  *slog.Logger
+	db         *gorm.DB
+	todoMgr    todo.TodoManager
+	ctxBuilder context_builder.ContextBuilder
+	logger     *slog.Logger
 }
 
-func NewContextManager(db *gorm.DB, todoMgr todo.TodoManager, logger *slog.Logger) ContextManager {
-	return &contextManager{db: db, todoMgr: todoMgr, logger: logger}
+func NewContextManager(db *gorm.DB, todoMgr todo.TodoManager, ctxBuilder context_builder.ContextBuilder, logger *slog.Logger) ContextManager {
+	return &contextManager{db: db, todoMgr: todoMgr, ctxBuilder: ctxBuilder, logger: logger}
 }
 
 func (m *contextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error) {
@@ -82,9 +75,7 @@ func (m *contextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *ses
 	return m.db.WithContext(chatCtx.Context()).Create(msg).Error
 }
 
-func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]MessageForLLM, error) {
-	messages := make([]MessageForLLM, 0)
-
+func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	if systemPrompt == "" {
 		systemPrompt = "You are a helpful AI assistant with access to tools for code execution, file operations, and shell commands. Use these tools when appropriate to help the user."
 	}
@@ -99,49 +90,38 @@ func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userIn
 		}
 	}
 
-	messages = append(messages, MessageForLLM{
-		Role:    "system",
-		Content: systemPrompt,
-	})
-
 	history, err := m.GetHistory(chatCtx, 1024)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build a lookup of tool results by ToolCallID so we can populate
-	// output in tool-call parts when converting from Parts JSONB.
 	toolResultByCallID := buildToolResultLookup(history)
 
-	// Try the UIMessage path for messages that have Parts populated with
-	// complete tool-call output. Fall back to direct MessageForLLM for legacy data.
 	uiMessages, hasFallback := convertDBMessagesToUI(history, toolResultByCallID)
 	if !hasFallback {
-		modelMessages := entity.ConvertToModelMessages(uiMessages)
-		for _, mm := range modelMessages {
-			messages = append(messages, MessageForLLM{
-				Role:       mm.Role,
-				Content:    mm.Content,
-				ToolCallID: mm.ToolCallID,
-				ToolCalls:  convertModelToolCalls(mm.ToolCalls),
-			})
-		}
-	} else {
-		// Legacy path: direct DB → MessageForLLM conversion.
-		// This works correctly now because convertMessages() includes ToolCalls.
-		for _, msg := range history {
-			messages = append(messages, MessageForLLM{
-				Role:       msg.Role,
-				Content:    msg.Content,
-				Reasoning:  msg.Reasoning,
-				ToolCallID: msg.ToolCallID,
-				ToolCalls:  msg.ToolCalls,
-			})
-		}
+		return m.ctxBuilder.Build(chatCtx.Context(), uiMessages, systemPrompt, userInput)
+	}
+
+	// Legacy fallback: direct DB → MessageForLLM conversion
+	messages := make([]entity.MessageForLLM, 0)
+
+	messages = append(messages, entity.MessageForLLM{
+		Role:    "system",
+		Content: systemPrompt,
+	})
+
+	for _, msg := range history {
+		messages = append(messages, entity.MessageForLLM{
+			Role:       msg.Role,
+			Content:    msg.Content,
+			Reasoning:  msg.Reasoning,
+			ToolCallID: msg.ToolCallID,
+			ToolCalls:  context_builder.ConvertSessionToolCalls(msg.ToolCalls),
+		})
 	}
 
 	if userInput != "" {
-		messages = append(messages, MessageForLLM{
+		messages = append(messages, entity.MessageForLLM{
 			Role:    "user",
 			Content: userInput,
 		})
@@ -177,14 +157,14 @@ func convertDBMessagesToUI(history []session.Message, toolResultByCallID map[str
 
 		if len(msg.Parts) > 0 {
 			uiParts := convertDBPartsToUIPart(msg.Parts, msg.ID.String(), toolResultByCallID)
-			steps := groupPartsByStep(uiParts)
+			steps := context_builder.GroupPartsByStep(uiParts)
 			uiMessages = append(uiMessages, entity.UIMessage{
 				ID:    msg.ID.String(),
 				Role:  msg.Role,
 				Steps: steps,
 			})
 		} else {
-			uiMsg := synthesizeUIMessage(msg, toolResultByCallID)
+			uiMsg := context_builder.SynthesizeUIMessage(msg, toolResultByCallID)
 			if uiMsg != nil {
 				uiMessages = append(uiMessages, *uiMsg)
 			} else {
@@ -222,99 +202,6 @@ func convertDBPartsToUIPart(parts session.PersistedParts, messageID string, tool
 		uiParts = append(uiParts, uiPart)
 	}
 	return uiParts
-}
-
-// groupPartsByStep groups UIParts by StepIndex into UIStep objects.
-func groupPartsByStep(parts []entity.UIPart) []entity.UIStep {
-	stepMap := make(map[int][]entity.UIPart)
-	var stepIndices []int
-	for _, p := range parts {
-		if _, exists := stepMap[p.StepIndex]; !exists {
-			stepIndices = append(stepIndices, p.StepIndex)
-		}
-		stepMap[p.StepIndex] = append(stepMap[p.StepIndex], p)
-	}
-	sort.Ints(stepIndices)
-	var steps []entity.UIStep
-	for _, idx := range stepIndices {
-		steps = append(steps, entity.UIStep{
-			Parts: stepMap[idx],
-			State: entity.UIPartStateDone,
-		})
-	}
-	return steps
-}
-
-// synthesizeUIMessage creates a UIMessage from legacy Content/Reasoning/ToolCalls fields.
-// Returns nil for unsupported roles.
-func synthesizeUIMessage(msg session.Message, toolResultByCallID map[string]string) *entity.UIMessage {
-	switch msg.Role {
-	case "user":
-		parts := []entity.UIPart{
-			{Type: entity.UIPartText, Text: msg.Content, State: entity.UIPartStateDone, StepIndex: 0},
-		}
-		return &entity.UIMessage{
-			ID:    msg.ID.String(),
-			Role:  "user",
-			Steps: groupPartsByStep(parts),
-		}
-	case "assistant":
-		var parts []entity.UIPart
-		if msg.Reasoning != "" {
-			parts = append(parts, entity.UIPart{
-				Type:      entity.UIPartReasoning,
-				Text:      msg.Reasoning,
-				State:     entity.UIPartStateDone,
-				StepIndex: 0,
-			})
-		}
-		if msg.Content != "" || len(msg.ToolCalls) == 0 {
-			parts = append(parts, entity.UIPart{
-				Type:      entity.UIPartText,
-				Text:      msg.Content,
-				State:     entity.UIPartStateDone,
-				StepIndex: 0,
-			})
-		}
-		for _, tc := range msg.ToolCalls {
-			output := toolResultByCallID[tc.ID]
-			parts = append(parts, entity.UIPart{
-				Type:       entity.UIPartToolCall,
-				ToolCallID: tc.ID,
-				ToolName:   tc.Function.Name,
-				Args:       tc.Function.Arguments,
-				Output:     output,
-				State:      entity.UIPartStateDone,
-				StepIndex:  0,
-			})
-		}
-		return &entity.UIMessage{
-			ID:    msg.ID.String(),
-			Role:  "assistant",
-			Steps: groupPartsByStep(parts),
-		}
-	default:
-		return nil
-	}
-}
-
-// convertModelToolCalls converts entity ModelToolCalls to session ToolCalls.
-func convertModelToolCalls(toolCalls []entity.ModelToolCall) []session.ToolCall {
-	if len(toolCalls) == 0 {
-		return nil
-	}
-	result := make([]session.ToolCall, len(toolCalls))
-	for i, tc := range toolCalls {
-		result[i] = session.ToolCall{
-			ID:   tc.ID,
-			Type: tc.Type,
-			Function: session.FunctionCall{
-				Name:      tc.Function.Name,
-				Arguments: tc.Function.Arguments,
-			},
-		}
-	}
-	return result
 }
 
 func (m *contextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {

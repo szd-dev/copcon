@@ -13,6 +13,7 @@ import (
 
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/server/internal/hook"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 )
@@ -88,7 +89,47 @@ func (e *engineImpl) executeSync(chatCtx iface.ChatContextInterface, toolMgr too
 		})
 	}
 
+	// Hook: BeforeToolExecute
+	if e.hookRunner != nil {
+		e.hookRunner.Run(hook.BeforeToolExecute, &hook.HookContext{
+			ChatCtx:      chatCtx,
+			SessionID:    chatCtx.SessionID(),
+			AgentID:      chatCtx.AgentID(),
+			ToolName:     tc.Name,
+			ToolArgs:     args,
+			Logger:       e.logger,
+			CurrentPoint: hook.BeforeToolExecute,
+		})
+	}
+
 	result, err := toolMgr.Execute(chatCtx, tc.Name, args)
+
+	// Hook: AfterToolExecute or OnToolError
+	if e.hookRunner != nil {
+		if err != nil {
+			e.hookRunner.Run(hook.OnToolError, &hook.HookContext{
+				ChatCtx:      chatCtx,
+				SessionID:    chatCtx.SessionID(),
+				AgentID:      chatCtx.AgentID(),
+				ToolName:     tc.Name,
+				ToolArgs:     args,
+				ToolResult:   result,
+				Logger:       e.logger,
+				CurrentPoint: hook.OnToolError,
+			})
+		} else {
+			e.hookRunner.Run(hook.AfterToolExecute, &hook.HookContext{
+				ChatCtx:      chatCtx,
+				SessionID:    chatCtx.SessionID(),
+				AgentID:      chatCtx.AgentID(),
+				ToolName:     tc.Name,
+				ToolArgs:     args,
+				ToolResult:   result,
+				Logger:       e.logger,
+				CurrentPoint: hook.AfterToolExecute,
+			})
+		}
+	}
 
 	tr := &ToolCallResult{}
 	if err != nil {
@@ -167,6 +208,19 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				PartType:  "tool-call",
 				State:     "running",
 			},
+		})
+	}
+
+	// Hook: BeforeToolExecute for the sync portion
+	if e.hookRunner != nil {
+		e.hookRunner.Run(hook.BeforeToolExecute, &hook.HookContext{
+			ChatCtx:      chatCtx,
+			SessionID:    chatCtx.SessionID(),
+			AgentID:      chatCtx.AgentID(),
+			ToolName:     tc.Name,
+			ToolArgs:     args,
+			Logger:       e.logger,
+			CurrentPoint: hook.BeforeToolExecute,
 		})
 	}
 
@@ -415,7 +469,45 @@ func (e *engineImpl) executeConcurrent(
 			}
 
 			// Execute tool
+			if e.hookRunner != nil {
+				e.hookRunner.Run(hook.BeforeToolExecute, &hook.HookContext{
+					ChatCtx:      chatCtx,
+					SessionID:    chatCtx.SessionID(),
+					AgentID:      chatCtx.AgentID(),
+					ToolName:     p.tc.Name,
+					ToolArgs:     p.args,
+					Logger:       e.logger,
+					CurrentPoint: hook.BeforeToolExecute,
+				})
+			}
+
 			execResult, execErr := toolMgr.Execute(chatCtx, p.tc.Name, p.args)
+
+			if e.hookRunner != nil {
+				if execErr != nil {
+					e.hookRunner.Run(hook.OnToolError, &hook.HookContext{
+						ChatCtx:      chatCtx,
+						SessionID:    chatCtx.SessionID(),
+						AgentID:      chatCtx.AgentID(),
+						ToolName:     p.tc.Name,
+						ToolArgs:     p.args,
+						ToolResult:   execResult,
+						Logger:       e.logger,
+						CurrentPoint: hook.OnToolError,
+					})
+				} else {
+					e.hookRunner.Run(hook.AfterToolExecute, &hook.HookContext{
+						ChatCtx:      chatCtx,
+						SessionID:    chatCtx.SessionID(),
+						AgentID:      chatCtx.AgentID(),
+						ToolName:     p.tc.Name,
+						ToolArgs:     p.args,
+						ToolResult:   execResult,
+						Logger:       e.logger,
+						CurrentPoint: hook.AfterToolExecute,
+					})
+				}
+			}
 
 			var result any
 			if execErr != nil {

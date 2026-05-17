@@ -13,6 +13,7 @@ import (
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 	"github.com/copcon/server/internal/tools"
@@ -45,7 +46,7 @@ func main() {
 
 	sessionMgr := session.NewSessionManager(db, asyncRegistry)
 	todoMgr := todo.NewTodoManager(db)
-	contextMgr := chat_context.NewContextManager(db, todoMgr, logger)
+	contextMgr := chat_context.NewContextManager(db, todoMgr, context_builder.New(), logger)
 
 	toolRegistry := tool.NewToolRegistry()
 	if err := toolRegistry.Register(tools.NewCodeExecutor()); err != nil {
