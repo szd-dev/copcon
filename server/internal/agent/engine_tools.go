@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -269,7 +268,12 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				Content:    string(resultJSON),
 				ToolCallID: tc.ID,
 			}); addErr != nil {
-				log.Printf("failed to persist async tool error: %v", addErr)
+				e.logger.Error("persist_async_tool_error",
+					"session_id", sessionID,
+					"tool_name", tc.Name,
+					"call_id", tc.ID,
+					"error", addErr,
+				)
 			}
 
 			pendingEvent := map[string]any{
@@ -282,7 +286,13 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				"error":        err.Error(),
 			}
 			if addErr := e.sessionMgr.AddAsyncCompletionPending(chatCtx, pendingEvent); addErr != nil {
-				log.Printf("failed to record async completion pending: %v", addErr)
+				e.logger.Error("record_async_completion_pending_error",
+					"session_id", sessionID,
+					"tool_name", tc.Name,
+					"call_id", tc.ID,
+					"status", "failed",
+					"error", addErr,
+				)
 			}
 		} else {
 			e.asyncRegistry.Complete(tc.ID, result)
@@ -317,7 +327,12 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				Content:    string(resultJSON),
 				ToolCallID: tc.ID,
 			}); addErr != nil {
-				log.Printf("failed to persist async tool result: %v", addErr)
+				e.logger.Error("persist_async_tool_result_error",
+					"session_id", sessionID,
+					"tool_name", tc.Name,
+					"call_id", tc.ID,
+					"error", addErr,
+				)
 			}
 
 			pendingEvent := map[string]any{
@@ -329,7 +344,13 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				"status":       "completed",
 			}
 			if addErr := e.sessionMgr.AddAsyncCompletionPending(chatCtx, pendingEvent); addErr != nil {
-				log.Printf("failed to record async completion pending: %v", addErr)
+				e.logger.Error("record_async_completion_pending_error",
+					"session_id", sessionID,
+					"tool_name", tc.Name,
+					"call_id", tc.ID,
+					"status", "completed",
+					"error", addErr,
+				)
 			}
 		}
 	}()

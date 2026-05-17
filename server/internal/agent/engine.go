@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
@@ -71,7 +72,15 @@ func WithConcurrency(n int) EngineOption {
 	}
 }
 
+// WithLogger sets the structured logger on the engine.
+func WithLogger(logger *slog.Logger) EngineOption {
+	return func(e *engineImpl) {
+		e.logger = logger
+	}
+}
+
 type engineImpl struct {
+	logger         *slog.Logger
 	agentRegistry  AgentRegistry
 	sessionMgr     session.SessionManager
 	contextMgr     chat_context.ContextManager
@@ -95,6 +104,7 @@ func NewAgentEngine(
 		contextMgr:    contextMgr,
 		asyncRegistry: asyncRegistry,
 		concurrency:   5,
+		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -314,9 +324,10 @@ func (e *engineImpl) handleStreaming(
 	}
 
 	if err := stream.Err(); err != nil {
-		log.Printf("========== LLM Error ==========")
-		log.Printf("Error: %v", err)
-		log.Printf("===============================")
+		e.logger.Error("llm_stream_error",
+			"session_id", chatCtx.SessionID(),
+			"error", err,
+		)
 		return nil, fmt.Errorf("stream error: %w", err)
 	}
 
@@ -348,41 +359,28 @@ func (e *engineImpl) handleStreaming(
 		})
 	}
 
-	log.Printf("========== LLM Response ==========")
-	if result.ReasoningContent != "" {
-		log.Printf("Reasoning: %s", result.ReasoningContent)
-	}
-	if result.Content != "" {
-		log.Printf("Content: %s", result.Content)
-	}
-	if len(result.ToolCalls) > 0 {
-		log.Printf("Tool calls: %d", len(result.ToolCalls))
-		for i, tc := range result.ToolCalls {
-			log.Printf("  [%d] %s(%s) id=%s", i, tc.Name, tc.Arguments, tc.ID)
-		}
-	}
-	if result.Usage.TotalTokens > 0 {
-		log.Printf("Tokens - Prompt: %d, Completion: %d, Total: %d",
-			result.Usage.PromptTokens, result.Usage.CompletionTokens, result.Usage.TotalTokens)
-	}
-	log.Printf("==================================")
+	e.logger.Info("llm_response",
+		"session_id", chatCtx.SessionID(),
+		"reasoning_len", len(result.ReasoningContent),
+		"content_len", len(result.Content),
+		"tool_calls", len(result.ToolCalls),
+		"prompt_tokens", result.Usage.PromptTokens,
+		"completion_tokens", result.Usage.CompletionTokens,
+		"total_tokens", result.Usage.TotalTokens,
+	)
 
 	return result, nil
 }
 
 // logLLMRequest logs the LLM request parameters for debugging.
-func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []chat_context.MessageForLLM, tools []openai.ChatCompletionToolUnionParam) {
-	log.Printf("========== LLM Request ==========")
-	log.Printf("Agent: %s", agentDef.Name)
-	log.Printf("Model: %s", agentDef.Model)
-	log.Printf("Message count: %d", len(messages))
-	for i, msg := range messages {
-		log.Printf("  [%d] role=%s content=%s", i, msg.Role, msg.Content)
-	}
-	if len(tools) > 0 {
-		log.Printf("Tools available: %d", len(tools))
-	}
-	log.Printf("=================================")
+func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []chat_context.MessageForLLM, tools []openai.ChatCompletionToolUnionParam, sessionID string) {
+	e.logger.Info("llm_request",
+		"session_id", sessionID,
+		"agent", agentDef.Name,
+		"model", agentDef.Model,
+		"message_count", len(messages),
+		"tool_count", len(tools),
+	)
 }
 
 func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput string) error {
@@ -424,7 +422,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		openAIMessages := e.convertMessages(messages)
 
 		// Log request
-		e.logLLMRequest(agentDef, messages, tools)
+		e.logLLMRequest(agentDef, messages, tools, chatCtx.SessionID())
 
 		// Phase 3: Streaming
 		result, err := e.handleStreaming(chatCtx, agentDef, openAIMessages, tools, messageID, stepIndex)
