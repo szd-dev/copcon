@@ -143,8 +143,12 @@ type FunctionCall struct {
 
 // ToolCallDelta is an incremental update to a tool call during streaming.
 // It is used inside StreamChunk.ToolCalls. The caller accumulates deltas by
-// matching on ID.
+// matching on Index (preferred) or ID.
 type ToolCallDelta struct {
+	// Index is the tool call index within the response (0-based).
+	// Multiple deltas with the same index belong to the same tool call.
+	Index int `json:"index"`
+
 	// ID is the unique tool call identifier. It may arrive in a later chunk
 	// than Name/Arguments, so the caller should accumulate by index until the
 	// ID is known.

@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type deltaExtraFields struct {
+	ReasoningContent string `json:"reasoning_content"`
+}
+
 // MockOpenAIStream simulates OpenAI streaming behavior for testing.
 // It implements the streaming interface used by engine.go (Next, Current, Err).
 type MockOpenAIStream struct {

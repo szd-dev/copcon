@@ -91,6 +91,7 @@ func (a *OpenAIAdapter) Stream(ctx context.Context, params StreamParams) (<-chan
 					for _, tc := range delta.ToolCalls {
 						idx := int(tc.Index)
 						delta := ToolCallDelta{
+							Index:     idx,
 							ID:        tc.ID,
 							Name:      tc.Function.Name,
 							Arguments: tc.Function.Arguments,
@@ -108,6 +109,7 @@ func (a *OpenAIAdapter) Stream(ctx context.Context, params StreamParams) (<-chan
 							// Forward the delta so callers can see incremental
 							// tool call data in real time.
 							chunkOut.ToolCalls = append(chunkOut.ToolCalls, ToolCallDelta{
+								Index:     idx,
 								ID:        existing.ID,
 								Name:      existing.Name,
 								Arguments: tc.Function.Arguments,
@@ -141,6 +143,7 @@ func (a *OpenAIAdapter) Stream(ctx context.Context, params StreamParams) (<-chan
 							Arguments: finished.Arguments,
 						}
 						chunkOut.ToolCalls = append(chunkOut.ToolCalls, ToolCallDelta{
+							Index:     len(toolCallMap) - 1,
 							ID:        finished.ID,
 							Name:      finished.Name,
 							Arguments: finished.Arguments,

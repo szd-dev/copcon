@@ -8,13 +8,14 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	"github.com/openai/openai-go/v3"
+	openai "github.com/openai/openai-go/v3"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/hook"
+	"github.com/copcon/server/internal/llm"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
 )
@@ -22,10 +23,6 @@ import (
 var (
 	ErrNoSession = errors.New("session not found")
 )
-
-type deltaExtraFields struct {
-	ReasoningContent string `json:"reasoning_content"`
-}
 
 // StreamResult encapsulates the result of streaming an LLM response.
 // It contains all accumulated content, reasoning, and tool calls from the stream.
@@ -43,15 +40,7 @@ type StreamResult struct {
 	ReasoningContent string
 	ToolCalls        []toolCallInfo
 	ToolResults      map[string]*ToolCallResult // callID → result
-	Usage            openai.CompletionUsage
-}
-
-// LLMRequest encapsulates the parameters for an LLM API call.
-// It groups the model, messages, and tools for cleaner function signatures.
-type LLMRequest struct {
-	Model    string
-	Messages []openai.ChatCompletionMessageParamUnion
-	Tools    []openai.ChatCompletionToolUnionParam
+	Usage            *llm.Usage
 }
 
 // AgentEngine defines the public interface for the agent engine.
@@ -88,11 +77,20 @@ func WithHookRunner(runner hook.HookRunner) EngineOption {
 	}
 }
 
+// WithLLMProvider sets the LLM provider for the engine.
+// When nil (default), an OpenAIClient from the agent definition is used.
+func WithLLMProvider(p llm.LLMProvider) EngineOption {
+	return func(e *engineImpl) {
+		e.llmProvider = p
+	}
+}
+
 type engineImpl struct {
 	logger         *slog.Logger
 	agentRegistry  AgentRegistry
 	sessionMgr     session.SessionManager
 	contextMgr     chat_context.ContextManager
+	llmProvider    llm.LLMProvider         // LLM provider (defaults to agent definition's provider)
 	concurrency    int                     // max concurrent tool executions
 	concurrencySem *semaphore.Weighted     // limit concurrent tool executions
 	asyncRegistry  *tool.AsyncToolRegistry // tracks async tool executions
@@ -190,26 +188,29 @@ func (e *engineImpl) prepareAgentLoop(chatCtx iface.ChatContextInterface, userIn
 	return &agentDef, nil
 }
 
-// handleStreaming processes the streaming response from OpenAI, accumulating
-// content, reasoning, and tool calls while emitting part-level events in real-time.
-// It emits only new UI-layer events (EventPartCreate, EventPartUpdate).
+// handleStreaming processes the streaming response from the LLM provider,
+// accumulating content, reasoning, and tool calls while emitting part-level
+// events in real time (EventPartCreate, EventPartUpdate).
 func (e *engineImpl) handleStreaming(
 	chatCtx iface.ChatContextInterface,
 	agentDef *AgentDefinition,
-	openAIMessages []openai.ChatCompletionMessageParamUnion,
-	tools []openai.ChatCompletionToolUnionParam,
+	llmMessages []llm.Message,
+	tools []llm.ToolDef,
 	messageID string,
 	stepIndex int,
 ) (*StreamResult, error) {
-	params := openai.ChatCompletionNewParams{
-		Model:             openai.ChatModel(agentDef.Model),
-		Messages:          openAIMessages,
-		Tools:             tools,
-		ParallelToolCalls: openai.Bool(true),
+	provider := e.llmProvider
+	if provider == nil {
+		provider = agentDef.LLMProvider
 	}
 
-	stream := agentDef.OpenAIClient.Chat.Completions.NewStreaming(chatCtx.Context(), params)
-	acc := openai.ChatCompletionAccumulator{}
+	params := llm.StreamParams{
+		Model:    agentDef.Model,
+		Messages: llmMessages,
+		Tools:    tools,
+	}
+
+	ch, errc := provider.Stream(chatCtx.Context(), params)
 
 	result := &StreamResult{
 		MessageID: messageID,
@@ -223,118 +224,93 @@ func (e *engineImpl) handleStreaming(
 	reasoningPartCreated := false
 	reasoningPartIndex := -1
 
-	for stream.Next() {
-		chunk := stream.Current()
-		acc.AddChunk(chunk)
+	for chunk := range ch {
+		if chunk.Content != "" {
+			result.Content += chunk.Content
 
-		if len(chunk.Choices) > 0 {
-			delta := chunk.Choices[0].Delta
-
-			if delta.Content != "" {
-				result.Content += delta.Content
-
-				if !textPartCreated {
-					chatCtx.Emit(entity.Event{
-						Type: entity.EventPartCreate,
-						Data: entity.PartCreateData{
-							MessageID: messageID,
-							StepIndex: stepIndex,
-							PartIndex: partIndex,
-							PartType:  "text",
-							State:     "streaming",
-						},
-					})
-					textPartIndex = partIndex
-					partIndex++
-					textPartCreated = true
-				}
+			if !textPartCreated {
 				chatCtx.Emit(entity.Event{
-					Type: entity.EventPartUpdate,
-					Data: entity.PartUpdateData{
+					Type: entity.EventPartCreate,
+					Data: entity.PartCreateData{
 						MessageID: messageID,
 						StepIndex: stepIndex,
-						PartIndex: textPartIndex,
+						PartIndex: partIndex,
 						PartType:  "text",
-						TextDelta: delta.Content,
+						State:     "streaming",
 					},
 				})
+				textPartIndex = partIndex
+				partIndex++
+				textPartCreated = true
 			}
+			chatCtx.Emit(entity.Event{
+				Type: entity.EventPartUpdate,
+				Data: entity.PartUpdateData{
+					MessageID: messageID,
+					StepIndex: stepIndex,
+					PartIndex: textPartIndex,
+					PartType:  "text",
+					TextDelta: chunk.Content,
+				},
+			})
+		}
 
-			var extra deltaExtraFields
-			if err := json.Unmarshal([]byte(delta.RawJSON()), &extra); err == nil {
-				if extra.ReasoningContent != "" {
-					result.ReasoningContent += extra.ReasoningContent
+		if chunk.ReasoningContent != "" {
+			result.ReasoningContent += chunk.ReasoningContent
 
-					if !reasoningPartCreated {
-						chatCtx.Emit(entity.Event{
-							Type: entity.EventPartCreate,
-							Data: entity.PartCreateData{
-								MessageID: messageID,
-								StepIndex: stepIndex,
-								PartIndex: partIndex,
-								PartType:  "reasoning",
-								State:     "streaming",
-							},
-						})
-						reasoningPartIndex = partIndex
-						partIndex++
-						reasoningPartCreated = true
+			if !reasoningPartCreated {
+				chatCtx.Emit(entity.Event{
+					Type: entity.EventPartCreate,
+					Data: entity.PartCreateData{
+						MessageID: messageID,
+						StepIndex: stepIndex,
+						PartIndex: partIndex,
+						PartType:  "reasoning",
+						State:     "streaming",
+					},
+				})
+				reasoningPartIndex = partIndex
+				partIndex++
+				reasoningPartCreated = true
+			}
+			chatCtx.Emit(entity.Event{
+				Type: entity.EventPartUpdate,
+				Data: entity.PartUpdateData{
+					MessageID: messageID,
+					StepIndex: stepIndex,
+					PartIndex: reasoningPartIndex,
+					PartType:  "reasoning",
+					TextDelta: chunk.ReasoningContent,
+				},
+			})
+		}
+
+		if len(chunk.ToolCalls) > 0 {
+			for _, tc := range chunk.ToolCalls {
+				idx := tc.Index
+				if existing, ok := toolCallMap[idx]; ok {
+					if tc.Name != "" {
+						existing.Name = tc.Name
 					}
-					chatCtx.Emit(entity.Event{
-						Type: entity.EventPartUpdate,
-						Data: entity.PartUpdateData{
-							MessageID: messageID,
-							StepIndex: stepIndex,
-							PartIndex: reasoningPartIndex,
-							PartType:  "reasoning",
-							TextDelta: extra.ReasoningContent,
-						},
-					})
-				}
-			}
-
-			if len(delta.ToolCalls) > 0 {
-				for _, tc := range delta.ToolCalls {
-					idx := int(tc.Index)
-					if existing, ok := toolCallMap[idx]; ok {
-						if tc.Function.Name != "" {
-							existing.Name = tc.Function.Name
-						}
-						if tc.Function.Arguments != "" {
-							existing.Arguments += tc.Function.Arguments
-						}
-						if tc.ID != "" {
-							existing.ID = tc.ID
-						}
-					} else {
-						toolCallMap[idx] = &toolCallInfo{
-							ID:        tc.ID,
-							Name:      tc.Function.Name,
-							Arguments: tc.Function.Arguments,
-							MessageID: messageID,
-						}
+					if tc.Arguments != "" {
+						existing.Arguments += tc.Arguments
+					}
+					if tc.ID != "" {
+						existing.ID = tc.ID
+					}
+				} else {
+					toolCallMap[idx] = &toolCallInfo{
+						ID:        tc.ID,
+						Name:      tc.Name,
+						Arguments: tc.Arguments,
+						MessageID: messageID,
 					}
 				}
 			}
 		}
 
-		// JustFinishedToolCall handles edge cases where tool call info
-		// arrives via accumulator rather than delta.ToolCalls
-		if tool, ok := acc.JustFinishedToolCall(); ok {
-			found := false
-			for _, tc := range toolCallMap {
-				if tc.ID == tool.ID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				toolCallMap[len(toolCallMap)] = &toolCallInfo{
-					ID:        tool.ID,
-					Name:      tool.Name,
-					Arguments: tool.Arguments,
-				}
-			}
+		if chunk.Usage != nil {
+			result.Usage = chunk.Usage
 		}
 	}
 
@@ -344,15 +320,23 @@ func (e *engineImpl) handleStreaming(
 		}
 	}
 
-	if err := stream.Err(); err != nil {
-		e.logger.Error("llm_stream_error",
-			"session_id", chatCtx.SessionID(),
-			"error", err,
-		)
-		return nil, fmt.Errorf("stream error: %w", err)
+	// Check for stream errors (consumed concurrently via errc)
+	var streamErr error
+	select {
+	case err, ok := <-errc:
+		if ok && err != nil {
+			streamErr = err
+		}
+	default:
 	}
 
-	result.Usage = acc.Usage
+	if streamErr != nil {
+		e.logger.Error("llm_stream_error",
+			"session_id", chatCtx.SessionID(),
+			"error", streamErr,
+		)
+		return nil, fmt.Errorf("stream error: %w", streamErr)
+	}
 
 	// Emit part-level state transitions for completed parts
 	if reasoningPartCreated {
@@ -380,21 +364,23 @@ func (e *engineImpl) handleStreaming(
 		})
 	}
 
-	e.logger.Info("llm_response",
-		"session_id", chatCtx.SessionID(),
-		"reasoning_len", len(result.ReasoningContent),
-		"content_len", len(result.Content),
-		"tool_calls", len(result.ToolCalls),
-		"prompt_tokens", result.Usage.PromptTokens,
-		"completion_tokens", result.Usage.CompletionTokens,
-		"total_tokens", result.Usage.TotalTokens,
-	)
+	if result.Usage != nil {
+		e.logger.Info("llm_response",
+			"session_id", chatCtx.SessionID(),
+			"reasoning_len", len(result.ReasoningContent),
+			"content_len", len(result.Content),
+			"tool_calls", len(result.ToolCalls),
+			"prompt_tokens", result.Usage.PromptTokens,
+			"completion_tokens", result.Usage.CompletionTokens,
+			"total_tokens", result.Usage.TotalTokens,
+		)
+	}
 
 	return result, nil
 }
 
 // logLLMRequest logs the LLM request parameters for debugging.
-func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []entity.MessageForLLM, tools []openai.ChatCompletionToolUnionParam, sessionID string) {
+func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []entity.MessageForLLM, tools []llm.ToolDef, sessionID string) {
 	e.logger.Info("llm_request",
 		"session_id", sessionID,
 		"agent", agentDef.Name,
@@ -476,10 +462,11 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 			})
 		}
 
-		openAIMessages := e.convertMessages(messages)
+		llmMessages := e.convertToLLMMessages(messages)
+		llmTools := convertToLLMTools(tools)
 
 		// Log request
-		e.logLLMRequest(agentDef, messages, tools, chatCtx.SessionID())
+		e.logLLMRequest(agentDef, messages, llmTools, chatCtx.SessionID())
 
 		// Hook: BeforeLLMCall
 		if e.hookRunner != nil {
@@ -494,7 +481,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Phase 3: Streaming
-		result, err := e.handleStreaming(chatCtx, agentDef, openAIMessages, tools, messageID, stepIndex)
+		result, err := e.handleStreaming(chatCtx, agentDef, llmMessages, llmTools, messageID, stepIndex)
 		if err != nil {
 			return err
 		}
@@ -525,39 +512,58 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 	}
 }
 
-func (e *engineImpl) convertMessages(messages []entity.MessageForLLM) []openai.ChatCompletionMessageParamUnion {
-	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
+func (e *engineImpl) convertToLLMMessages(messages []entity.MessageForLLM) []llm.Message {
+	result := make([]llm.Message, 0, len(messages))
 	for _, msg := range messages {
 		switch msg.Role {
 		case "system":
-			result = append(result, openai.SystemMessage(msg.Content))
+			result = append(result, llm.Message{Role: llm.RoleSystem, Content: msg.Content})
 		case "user":
-			result = append(result, openai.UserMessage(msg.Content))
+			result = append(result, llm.Message{Role: llm.RoleUser, Content: msg.Content})
 		case "assistant":
+			m := llm.Message{Role: llm.RoleAssistant, Content: msg.Content}
 			if len(msg.ToolCalls) > 0 {
-				// Build assistant message with tool_calls
-				toolCalls := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(msg.ToolCalls))
+				m.ToolCalls = make([]llm.ToolCall, 0, len(msg.ToolCalls))
 				for _, tc := range msg.ToolCalls {
-					toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{
-						OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-							ID: tc.ID,
-							Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-								Name:      tc.Function.Name,
-								Arguments: tc.Function.Arguments,
-							},
+					m.ToolCalls = append(m.ToolCalls, llm.ToolCall{
+						ID:   tc.ID,
+						Type: "function",
+						Function: llm.FunctionCall{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
 						},
 					})
 				}
-				asst := openai.AssistantMessage(msg.Content)
-				asst.OfAssistant.ToolCalls = toolCalls
-				result = append(result, asst)
-			} else {
-				result = append(result, openai.AssistantMessage(msg.Content))
 			}
+			result = append(result, m)
 		case "tool":
-			result = append(result, openai.ToolMessage(msg.Content, msg.ToolCallID))
+			result = append(result, llm.Message{
+				Role:       llm.RoleTool,
+				Content:    msg.Content,
+				ToolCallID: msg.ToolCallID,
+			})
 		default:
-			result = append(result, openai.UserMessage(msg.Content))
+			result = append(result, llm.Message{Role: llm.RoleUser, Content: msg.Content})
+		}
+	}
+	return result
+}
+
+// convertToLLMTools converts OpenAI tool definitions to provider-agnostic ToolDef values.
+func convertToLLMTools(tools []openai.ChatCompletionToolUnionParam) []llm.ToolDef {
+	result := make([]llm.ToolDef, 0, len(tools))
+	for _, t := range tools {
+		if t.OfFunction != nil {
+			fn := t.OfFunction.Function
+			td := llm.ToolDef{
+				Name:        fn.Name,
+				Description: fn.Description.Value,
+			}
+			if fn.Parameters != nil {
+				paramsJSON, _ := json.Marshal(fn.Parameters)
+				td.Parameters = paramsJSON
+			}
+			result = append(result, td)
 		}
 	}
 	return result

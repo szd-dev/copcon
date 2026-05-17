@@ -163,7 +163,7 @@ func TestAgentRegistryGet(t *testing.T) {
 	assert.Equal(t, "gpt-4o", agent.Model)
 	assert.Equal(t, "You are agent 1.", agent.SystemPrompt)
 	assert.NotNil(t, agent.ToolManager)
-	assert.NotNil(t, agent.OpenAIClient)
+	assert.NotNil(t, agent.LLMProvider)
 
 	_, err = registry.Get("non-existent")
 	assert.ErrorIs(t, err, ErrAgentNotFound)

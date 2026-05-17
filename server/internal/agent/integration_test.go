@@ -161,7 +161,7 @@ func (h *integrationTestHarness) registerAgent(t *testing.T, agentID string, too
 		Model:        "gpt-4o",
 		SystemPrompt: "You are a test agent.",
 		ToolManager:  toolMgr,
-		// OpenAIClient is nil - we'll test executeAsync directly without LLM
+		// LLMProvider is nil - we'll test executeAsync directly without LLM
 	}
 	h.agentRegistry.(*mockAgentRegistry).Register(agentID, agentDef)
 	return agentDef

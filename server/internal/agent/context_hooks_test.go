@@ -18,6 +18,7 @@ import (
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/hook"
+	"github.com/copcon/server/internal/llm"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
 	"github.com/copcon/server/internal/tool"
@@ -179,7 +180,7 @@ func TestContextHooks(t *testing.T) {
 			Model:        "gpt-4o",
 			SystemPrompt: "You are a test assistant.",
 			ToolManager:  &mockToolManagerForEngine{},
-			OpenAIClient: mockClient,
+			LLMProvider:  llm.NewOpenAIAdapter(&mockClient, "gpt-4o"),
 		}
 		agentRegistry.Register("test-agent", agent)
 		agentRegistry.SetDefault("test-agent")
@@ -375,7 +376,7 @@ func TestContextHooks(t *testing.T) {
 			Model:        "gpt-4o",
 			SystemPrompt: "You are a test assistant.",
 			ToolManager:  toolMgr,
-			OpenAIClient: mockClient,
+			LLMProvider:  llm.NewOpenAIAdapter(&mockClient, "gpt-4o"),
 		}
 		agentRegistry.Register("test-agent", agent)
 		agentRegistry.SetDefault("test-agent")
@@ -568,7 +569,7 @@ func TestContextHooks(t *testing.T) {
 			Model:        "gpt-4o",
 			SystemPrompt: "System prompt",
 			ToolManager:  &mockToolManagerForEngine{},
-			OpenAIClient: mockClient,
+			LLMProvider:  llm.NewOpenAIAdapter(&mockClient, "gpt-4o"),
 		}
 		agentRegistry.Register("test-agent", agent)
 		agentRegistry.SetDefault("test-agent")
@@ -629,7 +630,7 @@ func TestContextHooks(t *testing.T) {
 			Model:        "gpt-4o",
 			SystemPrompt: "Original system prompt",
 			ToolManager:  &mockToolManagerForEngine{},
-			OpenAIClient: mockClient,
+			LLMProvider:  llm.NewOpenAIAdapter(&mockClient, "gpt-4o"),
 		}
 		agentRegistry.Register("test-agent", agent)
 		agentRegistry.SetDefault("test-agent")

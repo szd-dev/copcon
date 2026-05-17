@@ -9,6 +9,7 @@ import (
 	"github.com/openai/openai-go/v3/option"
 
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/llm"
 	"github.com/copcon/server/internal/tool"
 )
 
@@ -23,7 +24,7 @@ type AgentDefinition struct {
 	Model        string
 	SystemPrompt string
 	ToolManager  tool.ToolManager
-	OpenAIClient openai.Client
+	LLMProvider  llm.LLMProvider
 }
 
 type AgentInfo struct {
@@ -82,6 +83,7 @@ func NewAgentRegistry(cfg *config.Config, toolRegistry tool.ToolRegistry) (Agent
 			opts = append(opts, option.WithBaseURL(baseURL))
 		}
 		client := openai.NewClient(opts...)
+		provider := llm.NewOpenAIAdapter(&client, agentConfig.Model)
 
 		// Create agent definition
 		agent := AgentDefinition{
@@ -90,7 +92,7 @@ func NewAgentRegistry(cfg *config.Config, toolRegistry tool.ToolRegistry) (Agent
 			Model:        agentConfig.Model,
 			SystemPrompt: agentConfig.SystemPrompt,
 			ToolManager:  toolMgr,
-			OpenAIClient: client,
+			LLMProvider:  provider,
 		}
 
 		registry.agents[agentConfig.ID] = agent

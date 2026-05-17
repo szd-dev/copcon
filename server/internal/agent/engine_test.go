@@ -19,6 +19,7 @@ import (
 	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
 	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/server/internal/llm"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
@@ -254,6 +255,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent A.",
 		ToolManager:  &mockToolManagerForEngine{},
+			LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentB := AgentDefinition{
@@ -262,6 +264,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 		Model:        "gpt-4o-mini",
 		SystemPrompt: "You are Agent B.",
 		ToolManager:  &mockToolManagerForEngine{},
+			LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-a", agentA)
@@ -298,6 +301,7 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent A.",
 		ToolManager:  &mockToolManagerForEngine{},
+			LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-a", agentA)
@@ -334,6 +338,7 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: customPrompt,
 		ToolManager:  &mockToolManagerForEngine{},
+			LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("coding-agent", agent)
@@ -373,6 +378,7 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent 1.",
 		ToolManager:  &mockToolManagerForEngine{},
+			LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-1", agent)
@@ -414,6 +420,7 @@ func TestAgentEngineStateless(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent 1.",
 		ToolManager:  &mockToolManagerForEngine{},
+			LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-1", agent)
