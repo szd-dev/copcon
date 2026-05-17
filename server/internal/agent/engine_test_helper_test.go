@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"log/slog"
+	"os"
+
 	"golang.org/x/sync/semaphore"
 
 	"github.com/copcon/server/internal/chat_context"
@@ -45,6 +48,7 @@ func NewTestEngine(opts ...EngineOption) *engineImpl {
 		contextMgr:    newMockContextManager(),
 		concurrency:   5,
 		asyncRegistry: tool.NewAsyncToolRegistry(),
+		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	for _, opt := range opts {
 		opt(e)
