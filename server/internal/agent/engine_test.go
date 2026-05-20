@@ -226,6 +226,23 @@ func (r *mockAgentRegistry) Default() (AgentDefinition, error) {
 	return r.Get(r.defaultAgent)
 }
 
+func (r *mockAgentRegistry) RegisterFactory(id, name, model string, allowDelegate bool, factory AgentFactory) {
+}
+
+func (r *mockAgentRegistry) GetFactory(id string) (AgentFactory, error) {
+	agent, ok := r.agents[id]
+	if !ok {
+		return nil, ErrAgentNotFound
+	}
+	return func(ctx context.Context, params CreateParams) (AgentDefinition, error) {
+		return agent, nil
+	}, nil
+}
+
+func (r *mockAgentRegistry) ListDelegatable() []AgentInfo {
+	return r.List()
+}
+
 type mockToolManagerForEngine struct {
 	tools []openai.ChatCompletionToolUnionParam
 }

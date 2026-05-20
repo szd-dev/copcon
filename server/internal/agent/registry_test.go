@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -336,4 +337,76 @@ func TestAgentInfoEquality(t *testing.T) {
 
 	assert.Equal(t, info1, info2)
 	assert.NotEqual(t, info1, info3)
+}
+
+func TestFactoryRegistry(t *testing.T) {
+	t.Run("register factory and create with task", func(t *testing.T) {
+		reg := &agentRegistry{
+			factories: make(map[string]factoryEntry),
+		}
+
+		factory := func(ctx context.Context, params CreateParams) (AgentDefinition, error) {
+			sp := "You are a helpful assistant."
+			if params.Task != "" {
+				sp += "\n\nCurrent Task: " + params.Task
+			}
+			return AgentDefinition{
+				ID:           "test-agent",
+				Name:         "Test Agent",
+				Model:        "gpt-4o",
+				SystemPrompt: sp,
+				ToolManager:  &registryMockToolManager{tools: map[string]tool.Tool{}},
+			}, nil
+		}
+
+		reg.RegisterFactory("test-agent", "Test Agent", "gpt-4o", true, factory)
+
+		f, err := reg.GetFactory("test-agent")
+		require.NoError(t, err)
+		require.NotNil(t, f)
+
+		def, err := f(context.Background(), CreateParams{Task: "Solve this problem"})
+		require.NoError(t, err)
+		assert.Contains(t, def.SystemPrompt, "Solve this problem")
+		assert.Contains(t, def.SystemPrompt, "Current Task:")
+
+		defNoTask, err := f(context.Background(), CreateParams{})
+		require.NoError(t, err)
+		assert.NotContains(t, defNoTask.SystemPrompt, "Current Task:")
+	})
+
+	t.Run("GetFactory for unregistered agent returns error", func(t *testing.T) {
+		reg := &agentRegistry{
+			factories: make(map[string]factoryEntry),
+		}
+
+		f, err := reg.GetFactory("nonexistent")
+		assert.ErrorIs(t, err, ErrAgentNotFound)
+		assert.Nil(t, f)
+	})
+
+	t.Run("ListDelegatable only returns allowDelegate agents", func(t *testing.T) {
+		reg := &agentRegistry{
+			factories: make(map[string]factoryEntry),
+		}
+
+		noopFactory := func(ctx context.Context, params CreateParams) (AgentDefinition, error) {
+			return AgentDefinition{}, nil
+		}
+
+		reg.RegisterFactory("agent-a", "Agent A", "gpt-4o", true, noopFactory)
+		reg.RegisterFactory("agent-b", "Agent B", "gpt-4o-mini", false, noopFactory)
+		reg.RegisterFactory("agent-c", "Agent C", "gpt-3.5-turbo", true, noopFactory)
+
+		delegatable := reg.ListDelegatable()
+		require.Len(t, delegatable, 2)
+
+		ids := make(map[string]bool)
+		for _, info := range delegatable {
+			ids[info.ID] = true
+		}
+		assert.True(t, ids["agent-a"])
+		assert.False(t, ids["agent-b"])
+		assert.True(t, ids["agent-c"])
+	})
 }

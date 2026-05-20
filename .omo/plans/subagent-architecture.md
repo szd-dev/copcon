@@ -213,7 +213,7 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
 
 ## TODOs
 
-- [ ] 0. **Ringbuf Validation Spike**
+- [x] 0. **Ringbuf Validation Spike**
 
   **What to do**:
   - Create a standalone Go test file that imports `github.com/golang-cz/ringbuf`
@@ -298,7 +298,7 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
   - Files: `server/internal/chat_context/ringbuf_spike_test.go`
   - Pre-commit: `go test ./internal/chat_context/... -run Spike -race -v`
 
-- [ ] 1. **ChatContextInterface — Add Close()/Closed()/Depth()/Subscribe()**
+- [x] 1. **ChatContextInterface — Add Close()/Closed()/Depth()/Subscribe()**
 
   **What to do**:
   - Add `Close()` method to `ChatContextInterface` (called when agent finishes)
@@ -371,7 +371,7 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
   - Files: `server/internal/domain/iface/chat.go`
   - Pre-commit: `go test ./... -v`
 
-- [ ] 2. **Ringbuf ChatContext Implementation**
+- [x] 2. **Ringbuf ChatContext Implementation**
 
   **What to do**:
   - Replace internal `chan entity.Event` with `ringbuf.RingBuffer[entity.Event]`
@@ -462,7 +462,7 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
   - Files: `server/internal/domain/iface/chat.go`, `server/internal/chat_context/ringbuf.go`
   - Pre-commit: `go test ./internal/... -race -v`
 
-- [ ] 3. **SessionAgentStore — Concurrency-Safe Implementation**
+- [x] 3. **SessionAgentStore — Concurrency-Safe Implementation**
 
   **What to do**:
   - Create `SessionAgentStore` struct with `sync.RWMutex`-protected `map[string]*ChatContext`
@@ -537,7 +537,7 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
   - Files: `server/internal/chat_context/store.go`
   - Pre-commit: `go test ./internal/chat_context/... -race -v`
 
-- [ ] 4. **Unified SSE Handler — First-Connect + Reconnect**
+- [x] 4. **Unified SSE Handler — First-Connect + Reconnect**
 
   **What to do**:
   - Modify `POST /api/sessions/{id}/chat` handler to support:
@@ -638,7 +638,7 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
   - Files: `server/internal/api/handlers.go`
   - Pre-commit: `go test ./internal/api/... -v`
 
-- [ ] 5. **Engine Integration — Step Limit + Ringbuf Migration + Depth Check**
+- [x] 5. **Engine Integration — Step Limit + Ringbuf Migration + Depth Check**
 
   **What to do**:
   - Add `maxSteps` constant (=50) to agent loop; terminate with error event if exceeded
@@ -726,208 +726,11 @@ P0 → Task 2 → Task 5 → Task 8 → Task 13 → Task 15 → Task 18 → Task
   - Files: `server/internal/agent/engine.go`, `server/internal/api/handlers.go`
   - Pre-commit: `go test ./... -v`
 
-- [ ] 6. **DB Migration — parent_session_id Column**
-
-  **What to do**:
-  - Add `parent_session_id` column to `sessions` table (nullable UUID, FK → sessions.id)
-  - Write migration SQL: `ALTER TABLE sessions ADD COLUMN parent_session_id UUID REFERENCES sessions(id)`
-  - Update `session.Session` model struct with `ParentSessionID *uuid.UUID` field
-  - Update `SessionManager.Create` to accept optional parent session ID
-  - TDD: Write migration test — verify column exists, verify FK constraint, verify NULL default
-
-  **Must NOT do**:
-  - Do NOT modify existing session creation flow (parent default is nil)
-  - Do NOT add this column to any other table
-
-  **Recommended Agent Profile**:
-  - **Category**: `quick`
-  - **Skills**: `[]`
-  - **Reason**: Single column migration, well-defined scope
-
-  **Parallelization**:
-  - **Can Run In Parallel**: YES (with Tasks 7,8,9)
-  - **Parallel Group**: Wave 2
-  - **Blocks**: Task 14
-  - **Blocked By**: None (can start immediately)
-
-  **References**:
-  - `server/internal/session/schema.sql` — current schema
-  - `server/internal/session/model.go:269-278` — Session struct
-  - `server/internal/session/manager.go` — SessionManager.Create
-  - `docs/subagent-architecture-design.md` — §7.2, sub-session creation
-
-  **Acceptance Criteria**:
-  - [ ] Migration file: `server/migrations/001_add_parent_session_id.sql`
-  - [ ] Test: `server/internal/session/manager_test.go` — `TestParentSessionID` PASS
-  - [ ] Test: session created with parent → ParentSessionID populated
-  - [ ] Test: FK constraint — delete parent fails if children exist
-  - [ ] `go test ./internal/session/... -v` → PASS
-
-  **QA Scenarios**:
-
-  ```
-  Scenario: Create sub-session with parent
-    Tool: Bash (go test)
-    Preconditions: Parent session exists in DB
-    Steps:
-      1. Create parent session, then child with parentSessionID=parent.ID
-      2. Fetch child from DB, assert child.ParentSessionID == parent.ID
-      3. Assert parent.ParentSessionID is nil
-    Expected Result: Correct parent-child relationship
-    Evidence: .omo/evidence/task-6-parent.txt
-  ```
-
-  **Commit**: YES
-  - Message: `feat(db): add parent_session_id to sessions table`
-  - Files: `server/migrations/001_add_parent_session_id.sql`, `server/internal/session/model.go`, `server/internal/session/manager.go`
-  - Pre-commit: `go test ./internal/session/... -v`
-
-- [ ] 7. **AgentDefinition.Hooks + Hook Composition**
-
-  **What to do**:
-  - Add `Hooks []hook.Hook` field to `AgentDefinition` struct
-  - Implement `composeHooks(globalHooks []Hook, agentHooks []Hook) []Hook` in engine
-  - Composition order: agent hooks first → global hooks (global can override agent)
-  - Priority range: agent hooks 0-49, global hooks 50-99 (predictable ordering)
-  - TDD: Write hook composition test — verify order, verify both sets execute
-
-  **Must NOT do**:
-  - Do NOT change Hook interface
-  - Do NOT remove global hook registration (plugins continue to work)
-
-  **Recommended Agent Profile**:
-  - **Category**: `quick`
-  - **Skills**: `[]`
-
-  **Parallelization**:
-  - **Can Run In Parallel**: YES (with Tasks 6,8,9)
-  - **Parallel Group**: Wave 2
-  - **Blocks**: Task 8
-  - **Blocked By**: None
-
-  **References**:
-  - `server/internal/agent/registry.go:21-28` — AgentDefinition struct
-  - `server/internal/hook/hook.go:143-153` — Hook Priority
-  - `server/internal/agent/engine.go` — hookRunner.On call sites
-
-  **Acceptance Criteria**:
-  - [ ] Test: composeHooks with 2 global + 2 agent → result has 4, agent hooks first
-  - [ ] `go test ./...` → no regressions
-
-  **QA Scenarios**:
-
-  ```
-  Scenario: Hook composition order
-    Tool: Bash (go test)
-    Steps:
-      1. composeHooks([GHook(prio=50)], [AHook(prio=10)])
-      2. Execute at BeforeLLMCall
-      3. Assert AHook executes before GHook
-    Evidence: .omo/evidence/task-7-compose.txt
-  ```
-
-  **Commit**: YES
-  - Message: `feat(agent): AgentDefinition.Hooks + hook composition`
-  - Files: `server/internal/agent/registry.go`, `server/internal/agent/engine.go`
-  - Pre-commit: `go test ./internal/agent/... -v`
-
-- [ ] 8. **Factory-Based AgentRegistry**
-
-  **What to do**:
-  - Define `AgentFactory` type: `func(ctx, params CreateParams) (AgentDefinition, error)`
-  - Define `CreateParams`: Task, ParentContext, ModelOverride string; Extra map[string]any
-  - Add `RegisterFactory(id, name, model, factory)` and `GetFactory(id)` to AgentRegistry
-  - Add `allowDelegate` flag for delegate_to agent_id enum
-  - TDD: Write factory registration + invocation test
-
-  **Must NOT do**:
-  - Do NOT remove existing `NewAgentRegistry(cfg)` (backward compat)
-  - Do NOT lazy-invoke factory (call only when needed)
-
-  **Recommended Agent Profile**:
-  - **Category**: `deep`
-  - **Skills**: `[]`
-
-  **Parallelization**:
-  - **Can Run In Parallel**: YES (with Tasks 6,7,9)
-  - **Parallel Group**: Wave 2
-  - **Blocks**: Task 13
-  - **Blocked By**: Task 7
-
-  **References**:
-  - `server/internal/agent/registry.go` — current registry
-  - `docs/subagent-architecture-design.md` — §3
-
-  **Acceptance Criteria**:
-  - [ ] Test: RegisterFactory → GetFactory returns same factory
-  - [ ] Test: factory.Create(ctx, params) → AgentDefinition with params.Task in SystemPrompt
-  - [ ] `go test ./...` → no regressions
-
-  **QA Scenarios**:
-
-  ```
-  Scenario: Factory invocation with params
-    Tool: Bash (go test)
-    Steps:
-      1. factory(ctx, CreateParams{Task:"review main.go"})
-      2. Assert SystemPrompt contains "review main.go"
-    Evidence: .omo/evidence/task-8-factory.txt
-  ```
-
-  **Commit**: YES
-  - Message: `feat(agent): factory-based AgentRegistry with CreateParams`
-  - Files: `server/internal/agent/registry.go`
-  - Pre-commit: `go test ./internal/agent/... -v`
-
+- [x] 6. **DB Migration — parent_session_id Column**
+- [x] 7. **AgentDefinition.Hooks + Hook Composition**
+- [x] 10. **XRequest Reconnect Spike + AgentClient Reconnect**
+- [x] 8. **Factory-Based AgentRegistry**
 - [ ] 9. **Config Deprecation + Backward Compatibility**
-
-  **What to do**:
-  - Add deprecation warning log when agents defined in config.yaml
-  - Migrate existing config agents to simple factories in main.go
-  - Keep `NewAgentRegistry(cfg)` working internally via factory registration
-  - TDD: Verify config agents still work, deprecation warning emitted
-
-  **Must NOT do**:
-  - Do NOT remove config agents support (graceful deprecation)
-
-  **Recommended Agent Profile**:
-  - **Category**: `quick`
-  - **Skills**: `[]`
-
-  **Parallelization**:
-  - **Can Run In Parallel**: YES (with Tasks 6,7,8)
-  - **Parallel Group**: Wave 2
-  - **Blocks**: None
-  - **Blocked By**: Task 8
-
-  **References**:
-  - `server/internal/config/config.go` — AgentConfig
-  - `server/cmd/server/main.go` — agent registration
-  - `server/config.yaml` — current agents
-
-  **Acceptance Criteria**:
-  - [ ] Test: config.yaml agents still work
-  - [ ] Deprecation warning logged
-  - [ ] `GET /api/agents` returns same agents as before
-
-  **QA Scenarios**:
-
-  ```
-  Scenario: Config agents functional + deprecation warning
-    Tool: Bash (go test + curl)
-    Steps:
-      1. Start server with existing config.yaml
-      2. curl GET /api/agents → assert code-assistant present
-      3. Assert deprecation log message
-    Evidence: .omo/evidence/task-9-config-compat.txt
-  ```
-
-  **Commit**: YES
-  - Message: `feat(config): deprecate config agents, add migration path`
-  - Files: `server/internal/agent/registry.go`, `server/cmd/server/main.go`
-  - Pre-commit: `go test ./... -v`
-
-- [ ] 10. **XRequest Reconnect Spike + AgentClient Reconnect**
 
   **What to do**:
   - Verify `@ant-design/x-sdk` XRequest can pass custom POST body parameters (`reconnect`, `last_event_seq`)
