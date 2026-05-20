@@ -13,6 +13,15 @@ type ChatContextInterface interface {
 	AgentID() string
 	Events() <-chan entity.Event
 	Emit(event entity.Event)
+	Close()
+	Closed() <-chan struct{}
+	Depth() int
+	Subscribe(fromSeq int64) (*Subscriber, bool)
+}
+
+// Subscriber receives a filtered view of events emitted on a ChatContext.
+type Subscriber struct {
+	Events <-chan entity.Event
 }
 
 type ChatContext struct {
@@ -20,6 +29,8 @@ type ChatContext struct {
 	sessionID string
 	agentID   string
 	events    chan entity.Event
+	depth     int
+	closed    chan struct{}
 }
 
 func (c *ChatContext) Context() context.Context    { return c.ctx }
@@ -45,11 +56,33 @@ func (c *ChatContext) Close() {
 	close(c.events)
 }
 
+func (c *ChatContext) Closed() <-chan struct{} {
+	return c.closed
+}
+
+func (c *ChatContext) Depth() int {
+	return c.depth
+}
+
+func (c *ChatContext) Subscribe(fromSeq int64) (*Subscriber, bool) {
+	return nil, false
+}
+
 func NewChatContext(ctx context.Context, sessionID, agentID string) *ChatContext {
+	closed := make(chan struct{})
+	close(closed)
 	return &ChatContext{
 		ctx:       ctx,
 		sessionID: sessionID,
 		agentID:   agentID,
 		events:    make(chan entity.Event, 256),
+		closed:    closed,
 	}
 }
+
+func (c *ChatContext) WithDepth(d int) *ChatContext {
+	c.depth = d
+	return c
+}
+
+var _ ChatContextInterface = (*ChatContext)(nil)

@@ -47,5 +47,19 @@ func (m *MockChatContext) Close() {
 	close(m.events)
 }
 
+func (m *MockChatContext) Closed() <-chan struct{} {
+	closed := make(chan struct{})
+	close(closed)
+	return closed
+}
+
+func (m *MockChatContext) Depth() int {
+	return 0
+}
+
+func (m *MockChatContext) Subscribe(fromSeq int64) (*iface.Subscriber, bool) {
+	return nil, false
+}
+
 // Ensure MockChatContext implements iface.ChatContextInterface
 var _ iface.ChatContextInterface = (*MockChatContext)(nil)

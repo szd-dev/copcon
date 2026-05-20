@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/copcon/server/internal/domain/entity"
+	"github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/hook"
 	"github.com/copcon/server/internal/tool"
 )
@@ -23,11 +24,15 @@ type stubChatContext struct {
 	agentID   string
 }
 
-func (s *stubChatContext) Context() context.Context    { return s.ctx }
-func (s *stubChatContext) SessionID() string           { return s.sessionID }
-func (s *stubChatContext) AgentID() string             { return s.agentID }
-func (s *stubChatContext) Events() <-chan entity.Event { return nil }
-func (s *stubChatContext) Emit(_ entity.Event)         {}
+func (s *stubChatContext) Context() context.Context                  { return s.ctx }
+func (s *stubChatContext) SessionID() string                         { return s.sessionID }
+func (s *stubChatContext) AgentID() string                           { return s.agentID }
+func (s *stubChatContext) Events() <-chan entity.Event               { return nil }
+func (s *stubChatContext) Emit(_ entity.Event)                       {}
+func (s *stubChatContext) Close()                                    {}
+func (s *stubChatContext) Closed() <-chan struct{}                   { ch := make(chan struct{}); close(ch); return ch }
+func (s *stubChatContext) Depth() int                                { return 0 }
+func (s *stubChatContext) Subscribe(int64) (*iface.Subscriber, bool) { return nil, false }
 
 // newTestLogger creates a slog.Logger that writes to a bytes.Buffer
 // so tests can inspect the log output.

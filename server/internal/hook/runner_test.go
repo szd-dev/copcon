@@ -16,11 +16,15 @@ type stubChatCtx struct {
 	ctx context.Context
 }
 
-func (s *stubChatCtx) Context() context.Context    { return s.ctx }
-func (s *stubChatCtx) SessionID() string           { return "test-session" }
-func (s *stubChatCtx) AgentID() string             { return "test-agent" }
-func (s *stubChatCtx) Events() <-chan entity.Event { return nil }
-func (s *stubChatCtx) Emit(entity.Event)           {}
+func (s *stubChatCtx) Context() context.Context                  { return s.ctx }
+func (s *stubChatCtx) SessionID() string                         { return "test-session" }
+func (s *stubChatCtx) AgentID() string                           { return "test-agent" }
+func (s *stubChatCtx) Events() <-chan entity.Event               { return nil }
+func (s *stubChatCtx) Emit(entity.Event)                         {}
+func (s *stubChatCtx) Close()                                    {}
+func (s *stubChatCtx) Closed() <-chan struct{}                   { ch := make(chan struct{}); close(ch); return ch }
+func (s *stubChatCtx) Depth() int                                { return 0 }
+func (s *stubChatCtx) Subscribe(int64) (*iface.Subscriber, bool) { return nil, false }
 
 // trackableHook is a test hook that records execution order for assertions.
 type trackableHook struct {
