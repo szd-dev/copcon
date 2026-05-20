@@ -57,3 +57,6 @@ temp/
 # Project specific
 server/server
 .sisyphus/evidence/
+.omo/evidence
+.omo/notepads
+.omp/
