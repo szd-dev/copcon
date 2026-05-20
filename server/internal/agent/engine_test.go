@@ -37,7 +37,7 @@ func newMockSessionManager() *mockSessionManager {
 	}
 }
 
-func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
+func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	s := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,

@@ -15,8 +15,18 @@ var (
 	ErrSessionNotFound = errors.New("session not found")
 )
 
+// CreateOption configures the session creation.
+type CreateOption func(*Session)
+
+// WithParentSessionID sets the parent session for the new session.
+func WithParentSessionID(id uuid.UUID) CreateOption {
+	return func(s *Session) {
+		s.ParentSessionID = &id
+	}
+}
+
 type SessionManager interface {
-	Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*Session, error)
+	Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...CreateOption) (*Session, error)
 	Get(chatCtx iface.ChatContextInterface) (*Session, error)
 	List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*Session, int64, error)
 	Delete(chatCtx iface.ChatContextInterface) error
@@ -36,7 +46,7 @@ func NewSessionManager(db *gorm.DB, asyncRegistry *tool.AsyncToolRegistry) Sessi
 	return &sessionManager{db: db, asyncRegistry: asyncRegistry}
 }
 
-func (m *sessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*Session, error) {
+func (m *sessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...CreateOption) (*Session, error) {
 	session := &Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -44,6 +54,10 @@ func (m *sessionManager) Create(chatCtx iface.ChatContextInterface, title, defau
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		Metadata:       make(map[string]any),
+	}
+
+	for _, opt := range opts {
+		opt(session)
 	}
 
 	if err := m.db.WithContext(chatCtx.Context()).Create(session).Error; err != nil {

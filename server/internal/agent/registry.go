@@ -9,6 +9,7 @@ import (
 	"github.com/openai/openai-go/v3/option"
 
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/hook"
 	"github.com/copcon/server/internal/llm"
 	"github.com/copcon/server/internal/tool"
 )
@@ -25,6 +26,7 @@ type AgentDefinition struct {
 	SystemPrompt string
 	ToolManager  tool.ToolManager
 	LLMProvider  llm.LLMProvider
+	Hooks        []hook.Hook
 }
 
 type AgentInfo struct {

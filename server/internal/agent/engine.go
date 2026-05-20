@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 
 	"github.com/google/uuid"
 	openai "github.com/openai/openai-go/v3"
@@ -79,6 +80,14 @@ func WithHookRunner(runner hook.HookRunner) EngineOption {
 	}
 }
 
+// WithGlobalHooks stores the list of globally registered hooks for
+// composition with per-agent hooks during chat execution.
+func WithGlobalHooks(hooks ...hook.Hook) EngineOption {
+	return func(e *engineImpl) {
+		e.globalHooks = hooks
+	}
+}
+
 // WithLLMProvider sets the LLM provider for the engine.
 // When nil (default), an OpenAIClient from the agent definition is used.
 func WithLLMProvider(p llm.LLMProvider) EngineOption {
@@ -97,6 +106,7 @@ type engineImpl struct {
 	concurrencySem *semaphore.Weighted     // limit concurrent tool executions
 	asyncRegistry  *tool.AsyncToolRegistry // tracks async tool executions
 	hookRunner     hook.HookRunner         // optional hook runner for lifecycle hooks
+	globalHooks    []hook.Hook
 }
 
 var _ AgentEngine = (*engineImpl)(nil)
@@ -405,6 +415,14 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 	isFirstIteration := true
 	stepIndex := 0
 
+	// Compose hooks: if the agent has hooks, combine them with global hooks.
+	// Agent hooks (priority 0-49) execute before global hooks (priority 50-99).
+	// When agent has no hooks, fall back to the global hook runner.
+	var composedHooks []hook.Hook
+	if len(agentDef.Hooks) > 0 {
+		composedHooks = composeHooks(e.globalHooks, agentDef.Hooks)
+	}
+
 	// Phase 2: Agent Loop
 	for {
 		if stepIndex >= maxSteps {
@@ -426,12 +444,20 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 		isFirstIteration = false
 
-		// OnSystemPrompt hook (already wired in T11)
+		// OnSystemPrompt hook
 		systemPrompt := agentDef.SystemPrompt
-		e.hookRunner.On(hook.OnSystemPrompt, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
+		if composedHooks != nil {
+			runComposedHooks(composedHooks, hook.OnSystemPrompt, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
+		} else {
+			e.hookRunner.On(hook.OnSystemPrompt, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
+		}
 
 		// Hook: BeforeContextBuild
-		e.hookRunner.On(hook.BeforeContextBuild, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
+		if composedHooks != nil {
+			runComposedHooks(composedHooks, hook.BeforeContextBuild, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
+		} else {
+			e.hookRunner.On(hook.BeforeContextBuild, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
+		}
 
 		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, systemPrompt)
 		if err != nil {
@@ -439,7 +465,11 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Hook: AfterContextBuild — hooks may inspect or modify the assembled messages
-		e.hookRunner.On(hook.AfterContextBuild, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		if composedHooks != nil {
+			runComposedHooks(composedHooks, hook.AfterContextBuild, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		} else {
+			e.hookRunner.On(hook.AfterContextBuild, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		}
 
 		llmMessages := e.convertToLLMMessages(messages)
 		llmTools := convertToLLMTools(tools)
@@ -448,7 +478,11 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		e.logLLMRequest(agentDef, messages, llmTools, chatCtx.SessionID())
 
 		// Hook: BeforeLLMCall
-		e.hookRunner.On(hook.BeforeLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		if composedHooks != nil {
+			runComposedHooks(composedHooks, hook.BeforeLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		} else {
+			e.hookRunner.On(hook.BeforeLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		}
 
 		// Phase 3: Streaming
 		result, err := e.handleStreaming(chatCtx, agentDef, llmMessages, llmTools, messageID, stepIndex)
@@ -457,7 +491,11 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Hook: AfterLLMCall
-		e.hookRunner.On(hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		if composedHooks != nil {
+			runComposedHooks(composedHooks, hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		} else {
+			e.hookRunner.On(hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+		}
 
 		// Phase 4: Tool Call Handling
 		shouldContinue, err := e.handleToolCalls(chatCtx, agentDef.ToolManager, result)
@@ -611,4 +649,79 @@ func (e *engineImpl) buildUIParts(result *StreamResult, stepIndex int) session.P
 	}
 
 	return parts
+}
+
+// composeHooks combines agent and global hooks, sorted by priority ascending
+// (lower priority = executes first). Agent hooks are typically 0-49, global
+// hooks 50-99, ensuring agent hooks execute before global hooks.
+func composeHooks(globalHooks []hook.Hook, agentHooks []hook.Hook) []hook.Hook {
+	all := make([]hook.Hook, 0, len(globalHooks)+len(agentHooks))
+	all = append(all, agentHooks...)
+	all = append(all, globalHooks...)
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Priority() < all[j].Priority()
+	})
+	return all
+}
+
+// runComposedHooks executes all hooks from a composed list that are registered
+// for the given HookPoint. Hooks are run in list order (ascending priority).
+func runComposedHooks(hooks []hook.Hook, point hook.HookPoint, chatCtx iface.ChatContextInterface, logger *slog.Logger, extras ...hook.HookExtra) {
+	for _, h := range hooks {
+		matches := false
+		for _, p := range h.Points() {
+			if p == point {
+				matches = true
+				break
+			}
+		}
+		if !matches {
+			continue
+		}
+
+		ctx := &hook.HookContext{
+			ChatCtx:      chatCtx,
+			SessionID:    chatCtx.SessionID(),
+			AgentID:      chatCtx.AgentID(),
+			Logger:       logger,
+			CurrentPoint: point,
+		}
+		if len(extras) > 0 {
+			e := extras[0]
+			if e.ToolName != nil {
+				ctx.ToolName = *e.ToolName
+			}
+			if e.ToolArgs != nil {
+				ctx.ToolArgs = e.ToolArgs
+			}
+			if e.ToolResult != nil {
+				ctx.ToolResult = e.ToolResult
+			}
+			if e.SystemPrompt != nil {
+				ctx.SystemPrompt = e.SystemPrompt
+			}
+			if e.Messages != nil {
+				ctx.Messages = e.Messages
+			}
+		}
+
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					logger.Error("hook panicked",
+						"hook", h.Name(),
+						"panic", rec,
+						"point", point,
+					)
+				}
+			}()
+			if err := h.Execute(ctx); err != nil {
+				logger.Warn("hook returned error",
+					"hook", h.Name(),
+					"error", err,
+					"point", point,
+				)
+			}
+		}()
+	}
 }

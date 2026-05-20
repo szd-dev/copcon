@@ -77,4 +77,36 @@ export class AgentClient {
     if (!response.ok) throw new Error(`Failed to get updates: ${response.statusText}`);
     return response.json();
   }
+
+  /**
+   * Reconnect to an existing SSE chat stream.
+   *
+   * Sends a POST to /api/sessions/{sessionId}/chat with reconnect=true and the
+   * last known event sequence number. The backend will resume streaming events
+   * from that point forward.
+   *
+   * NOTE: Uses fetch directly rather than XRequest because XRequest always
+   * constructs the POST body from its `params` option (see @ant-design/x-sdk
+   * source: body = JSON.stringify({...params, ...extraParams})). There is no
+   * way to pass a custom body like { reconnect, last_event_seq } through
+   * XRequestOptions without type changes.
+   *
+   * @param sessionId - The session to reconnect to.
+   * @param lastEventSeq - The last received event sequence number.
+   * @returns The raw Response whose body is an SSE stream.
+   */
+  async reconnect(sessionId: string, lastEventSeq: number): Promise<Response> {
+    const response = await fetch(
+      `${this.baseUrl}/api/sessions/${sessionId}/chat`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reconnect: true, last_event_seq: lastEventSeq }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to reconnect: ${response.statusText}`);
+    }
+    return response;
+  }
 }

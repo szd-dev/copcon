@@ -169,3 +169,58 @@ func TestCreateSessionWithAgent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, agentID, retrieved.DefaultAgentID)
 }
+
+func TestParentSessionID(t *testing.T) {
+	db := setupTestDB(t)
+	mgr := NewSessionManager(db, nil)
+	ctx := context.Background()
+
+	chatCtx := testutil.NewMockChatContext(ctx, "", "")
+
+	// Create parent session
+	parent, err := mgr.Create(chatCtx, "Parent Session", "")
+	require.NoError(t, err)
+	require.NotNil(t, parent)
+
+	// Create child session with parent reference
+	child, err := mgr.Create(chatCtx, "Child Session", "", WithParentSessionID(parent.ID))
+	require.NoError(t, err)
+	require.NotNil(t, child)
+	require.NotNil(t, child.ParentSessionID)
+	assert.Equal(t, parent.ID, *child.ParentSessionID)
+
+	// Verify persistence
+	chatCtxForGet := testutil.NewMockChatContext(ctx, child.ID.String(), "")
+	retrieved, err := mgr.Get(chatCtxForGet)
+	require.NoError(t, err)
+	require.NotNil(t, retrieved.ParentSessionID)
+	assert.Equal(t, parent.ID, *retrieved.ParentSessionID)
+}
+
+func TestParentSessionID_FKConstraint(t *testing.T) {
+	db := setupTestDB(t)
+
+	// AutoMigrate does not create FK constraints for standalone *uuid.UUID fields,
+	// so we add the constraint manually to test the database-level FK enforcement.
+	db.Exec("ALTER TABLE sessions DROP CONSTRAINT IF EXISTS fk_sessions_parent")
+	err := db.Exec("ALTER TABLE sessions ADD CONSTRAINT fk_sessions_parent FOREIGN KEY (parent_session_id) REFERENCES sessions(id)").Error
+	require.NoError(t, err)
+
+	mgr := NewSessionManager(db, nil)
+	ctx := context.Background()
+
+	chatCtx := testutil.NewMockChatContext(ctx, "", "")
+
+	// Create parent + child
+	parent, err := mgr.Create(chatCtx, "Parent", "")
+	require.NoError(t, err)
+
+	_, err = mgr.Create(chatCtx, "Child", "", WithParentSessionID(parent.ID))
+	require.NoError(t, err)
+
+	// Deleting parent should fail due to FK constraint from child
+	chatCtxForDelete := testutil.NewMockChatContext(ctx, parent.ID.String(), "")
+	err = mgr.Delete(chatCtxForDelete)
+	assert.Error(t, err, "deleting parent session with children should violate FK constraint")
+	assert.Contains(t, err.Error(), "violates foreign key constraint")
+}
