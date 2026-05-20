@@ -255,7 +255,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent A.",
 		ToolManager:  &mockToolManagerForEngine{},
-			LLMProvider:  llm.NewMockProvider(),
+		LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentB := AgentDefinition{
@@ -264,7 +264,7 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 		Model:        "gpt-4o-mini",
 		SystemPrompt: "You are Agent B.",
 		ToolManager:  &mockToolManagerForEngine{},
-			LLMProvider:  llm.NewMockProvider(),
+		LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-a", agentA)
@@ -301,7 +301,7 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent A.",
 		ToolManager:  &mockToolManagerForEngine{},
-			LLMProvider:  llm.NewMockProvider(),
+		LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-a", agentA)
@@ -338,7 +338,7 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: customPrompt,
 		ToolManager:  &mockToolManagerForEngine{},
-			LLMProvider:  llm.NewMockProvider(),
+		LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("coding-agent", agent)
@@ -378,7 +378,7 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent 1.",
 		ToolManager:  &mockToolManagerForEngine{},
-			LLMProvider:  llm.NewMockProvider(),
+		LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-1", agent)
@@ -420,7 +420,7 @@ func TestAgentEngineStateless(t *testing.T) {
 		Model:        "gpt-4o",
 		SystemPrompt: "You are Agent 1.",
 		ToolManager:  &mockToolManagerForEngine{},
-			LLMProvider:  llm.NewMockProvider(),
+		LLMProvider:  llm.NewMockProvider(),
 	}
 
 	agentRegistry.Register("agent-1", agent)
@@ -1245,4 +1245,131 @@ func TestNewAgentEngineWithConcurrency(t *testing.T) {
 	require.NotNil(t, engine)
 	eng := engine.(*engineImpl)
 	assert.Equal(t, 3, eng.concurrency)
+}
+
+// ============================================================================
+// Step limit and depth rejection tests (Task 5)
+// ============================================================================
+
+// stepLimitTestProvider is an LLM provider that always returns a tool call,
+// causing the agent loop to iterate indefinitely until the maxSteps limit.
+type stepLimitTestProvider struct{}
+
+func (p *stepLimitTestProvider) Stream(ctx context.Context, params llm.StreamParams) (<-chan llm.StreamChunk, <-chan error) {
+	ch := make(chan llm.StreamChunk, 1)
+	errc := make(chan error, 1)
+
+	go func() {
+		ch <- llm.StreamChunk{
+			ToolCalls: []llm.ToolCallDelta{
+				{
+					Index:     0,
+					ID:        "call-step-limit",
+					Name:      "test_tool",
+					Arguments: "{}",
+				},
+			},
+		}
+		close(ch)
+		close(errc)
+	}()
+
+	return ch, errc
+}
+
+// TestStepLimit verifies that the agent loop terminates with an error event
+// after maxSteps (50) iterations, even when the LLM keeps requesting tool calls.
+func TestStepLimit(t *testing.T) {
+	ctx := context.Background()
+
+	// Configure agent with a provider that always returns tool calls
+	agentRegistry := newMockAgentRegistry()
+	agent := AgentDefinition{
+		ID:           "test-agent",
+		Name:         "Test Agent",
+		Model:        "gpt-4o",
+		SystemPrompt: "You are a test agent.",
+		ToolManager:  &mockToolManagerForEngine{},
+		LLMProvider:  &stepLimitTestProvider{},
+	}
+	agentRegistry.Register("test-agent", agent)
+	agentRegistry.SetDefault("test-agent")
+
+	sessionMgr := newMockSessionManager()
+	session, err := sessionMgr.Create(iface.NewChatContext(ctx, "", "test-agent"), "Test Session", "test-agent")
+	require.NoError(t, err)
+
+	chatCtx := iface.NewChatContext(ctx, session.ID.String(), "test-agent")
+
+	engine := NewAgentEngine(agentRegistry, sessionMgr, newMockContextManager(), tool.NewAsyncToolRegistry())
+
+	// Collect events in background
+	var events []entity.Event
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for e := range chatCtx.Events() {
+			events = append(events, e)
+		}
+	}()
+
+	// Run Chat — should not block forever due to step limit
+	err = engine.Chat(chatCtx, "Hello")
+	require.NoError(t, err) // Chat returns nil; errors go via events
+
+	// Close context to stop event collection
+	chatCtx.Close()
+	<-done
+
+	// Verify the error event was emitted
+	var errorEvents []entity.Event
+	for _, e := range events {
+		if e.Type == entity.EventError {
+			errorEvents = append(errorEvents, e)
+		}
+	}
+
+	require.Len(t, errorEvents, 1, "expected exactly one error event from step limit")
+	errData, ok := errorEvents[0].Data.(entity.ErrorData)
+	require.True(t, ok, "error event data should be ErrorData")
+	assert.Contains(t, errData.Error, "step limit exceeded")
+}
+
+// TestDepthRejection verifies that Chat() returns an error immediately
+// when the ChatContext has a depth of 3 or greater.
+func TestDepthRejection(t *testing.T) {
+	ctx := context.Background()
+	chatCtx := iface.NewChatContext(ctx, "test-depth-session", "test-agent").WithDepth(3)
+
+	engine := NewTestEngine()
+	err := engine.Chat(chatCtx, "Hello")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max subagent depth exceeded")
+}
+
+// TestDepthAllowed verifies that Chat() does NOT reject depth < 3.
+func TestDepthAllowed(t *testing.T) {
+	ctx := context.Background()
+
+	// Depth 0 — should work fine (as existing tests rely on this)
+	chatCtx0 := iface.NewChatContext(ctx, "test-depth-0", "test-agent")
+	sessionMgr0 := newMockSessionManager()
+	_, err := sessionMgr0.Create(iface.NewChatContext(ctx, "", "test-agent"), "Test", "test-agent")
+	require.NoError(t, err)
+
+	engine0 := NewTestEngine(WithTestSessionMgr(sessionMgr0))
+	err = engine0.Chat(chatCtx0, "Hello")
+	require.NoError(t, err)
+	chatCtx0.Close()
+
+	// Depth 2 — should also work fine
+	chatCtx2 := iface.NewChatContext(ctx, "test-depth-2", "test-agent").WithDepth(2)
+	sessionMgr2 := newMockSessionManager()
+	_, err = sessionMgr2.Create(iface.NewChatContext(ctx, "", "test-agent"), "Test", "test-agent")
+	require.NoError(t, err)
+
+	engine2 := NewTestEngine(WithTestSessionMgr(sessionMgr2))
+	err = engine2.Chat(chatCtx2, "Hello")
+	require.NoError(t, err)
+	chatCtx2.Close()
 }

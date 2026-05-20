@@ -24,6 +24,8 @@ var (
 	ErrNoSession = errors.New("session not found")
 )
 
+const maxSteps = 50
+
 // StreamResult encapsulates the result of streaming an LLM response.
 // It contains all accumulated content, reasoning, and tool calls from the stream.
 // ToolCallResult holds the output or error from a tool execution,
@@ -123,6 +125,9 @@ func NewAgentEngine(
 }
 
 func (e *engineImpl) Chat(chatCtx iface.ChatContextInterface, userInput string) error {
+	if chatCtx.Depth() >= 3 {
+		return fmt.Errorf("max subagent depth exceeded")
+	}
 	if err := e.runAgentLoop(chatCtx, userInput); err != nil {
 		chatCtx.Emit(entity.Event{
 			Type: entity.EventError,
@@ -402,6 +407,14 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 
 	// Phase 2: Agent Loop
 	for {
+		if stepIndex >= maxSteps {
+			chatCtx.Emit(entity.Event{
+				Type: entity.EventError,
+				Data: entity.ErrorData{Error: "step limit exceeded"},
+			})
+			return nil
+		}
+
 		if !isFirstIteration {
 			chatCtx.Emit(entity.Event{
 				Type: entity.EventStepCreate,
