@@ -2,9 +2,11 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -644,4 +646,319 @@ func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
 func TestGroupPartsByStep_Empty(t *testing.T) {
 	steps := groupPartsByStep(nil)
 	assert.Len(t, steps, 0)
+}
+
+// mockAgentEngine implements agent.AgentEngine for testing.
+type mockAgentEngine struct {
+	chatFn func(chatCtx iface.ChatContextInterface, userInput string) error
+}
+
+func (m *mockAgentEngine) Chat(chatCtx iface.ChatContextInterface, userInput string) error {
+	if m.chatFn != nil {
+		return m.chatFn(chatCtx, userInput)
+	}
+	return nil
+}
+
+func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, *SessionAgentStore, func()) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{
+		DefaultAgentID: "default-agent",
+		Agents: []config.AgentConfig{
+			{ID: "default-agent", Name: "Default"},
+			{ID: "code-assistant", Name: "Code Assistant"},
+		},
+	}
+
+	sessionMgr := newMockSessionManager()
+	todoMgr := &mockTodoManager{}
+	agentRegistry := newMockAgentRegistry("default-agent")
+
+	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
+	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
+
+	handler := NewHandler(cfg, sessionMgr, todoMgr, mockAgent, agentRegistry)
+
+	cleanup := func() {}
+
+	return handler, handler.sessionAgentStore, cleanup
+}
+
+func createSessionViaHandler(t *testing.T, router *gin.Engine) string {
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBufferString(`{"title":"Test Session"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	return resp["id"].(string)
+}
+
+func parseSSEEvents(t *testing.T, body string) []map[string]interface{} {
+	t.Helper()
+	var events []map[string]interface{}
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "data: ") {
+			var event map[string]interface{}
+			err := json.Unmarshal([]byte(line[6:]), &event)
+			require.NoError(t, err, "failed to parse SSE event: %s", line[6:])
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+func TestChat_FirstConnect(t *testing.T) {
+	emitDone := make(chan struct{})
+	agent := &mockAgentEngine{
+		chatFn: func(chatCtx iface.ChatContextInterface, userInput string) error {
+			chatCtx.Emit(entity.Event{Type: entity.EventMessage, Data: entity.MessageData{MessageID: "m1", Content: "hello"}})
+			chatCtx.Emit(entity.Event{Type: entity.EventDone, Data: entity.DoneData{MessageID: "m1"}})
+			close(emitDone)
+			return nil
+		},
+	}
+	handler, _, cleanup := setupChatTestHandler(t, agent)
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	body := `{"content":"hello","agent_id":"default-agent"}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+
+	events := parseSSEEvents(t, w.Body.String())
+	require.Len(t, events, 2, "expected 2 SSE events")
+	assert.Equal(t, string(entity.EventMessage), events[0]["type"])
+	assert.Equal(t, string(entity.EventDone), events[1]["type"])
+}
+
+func TestChat_Reconnect(t *testing.T) {
+	handler, store, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx.Emit(entity.Event{Type: entity.EventMessage, Data: entity.MessageData{MessageID: "m1", Content: "existing"}})
+	chatCtx.Emit(entity.Event{Type: entity.EventDone, Data: entity.DoneData{MessageID: "m1"}})
+	store.Put(sessionID, chatCtx)
+
+	body := `{"reconnect":true}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+
+	events := parseSSEEvents(t, w.Body.String())
+	require.Len(t, events, 2, "expected 2 SSE events from reconnect")
+	assert.Equal(t, string(entity.EventMessage), events[0]["type"])
+	assert.Equal(t, string(entity.EventDone), events[1]["type"])
+}
+
+func TestChat_ReconnectNoActiveAgent(t *testing.T) {
+	handler, _, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	body := `{"reconnect":true}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestChat_ContentWithActiveAgentConflict(t *testing.T) {
+	handler, store, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	store.Put(sessionID, chatCtx)
+
+	body := `{"content":"hello"}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Contains(t, resp["error"], "active agent")
+}
+
+func TestChat_ReconnectWithLastEventSeq(t *testing.T) {
+	handler, store, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx.Emit(entity.Event{Type: "first", Data: "data0"})
+	chatCtx.Emit(entity.Event{Type: "second", Data: "data1"})
+	chatCtx.Emit(entity.Event{Type: "third", Data: "data2"})
+	store.Put(sessionID, chatCtx)
+
+	body := `{"reconnect":true,"last_event_seq":1}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+
+	events := parseSSEEvents(t, w.Body.String())
+	require.Len(t, events, 1, "expected 1 SSE event from last_event_seq=1")
+	assert.Equal(t, "third", events[0]["type"])
+}
+
+func TestChat_FirstConnectInvalidJSON(t *testing.T) {
+	handler, _, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	req, _ := http.NewRequest("POST", "/api/sessions/"+uuid.New().String()+"/chat", bytes.NewBufferString("{invalid"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Contains(t, resp["error"], "invalid")
+}
+
+func TestChat_FirstConnectEmptyContent(t *testing.T) {
+	handler, _, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	body := `{"content":""}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Contains(t, resp["error"], "content is required")
+}
+
+func TestSessionAgentStore(t *testing.T) {
+	store := NewSessionAgentStore()
+
+	_, ok := store.Get("nonexistent")
+	assert.False(t, ok)
+
+	chatCtx := iface.NewChatContext(context.Background(), "sess-1", "agent-1")
+	store.Put("sess-1", chatCtx)
+
+	got, ok := store.Get("sess-1")
+	assert.True(t, ok)
+	assert.Equal(t, "sess-1", got.SessionID())
+	assert.Equal(t, "agent-1", got.AgentID())
+
+	store.Remove("sess-1")
+	_, ok = store.Get("sess-1")
+	assert.False(t, ok)
+
+	store.Put("a", iface.NewChatContext(context.Background(), "a", ""))
+	store.Put("b", iface.NewChatContext(context.Background(), "b", ""))
+	store.Put("c", iface.NewChatContext(context.Background(), "c", ""))
+
+	got, ok = store.Get("b")
+	assert.True(t, ok)
+	assert.Equal(t, "b", got.SessionID())
+
+	store.Remove("b")
+	_, ok = store.Get("b")
+	assert.False(t, ok)
+
+	_, ok = store.Get("a")
+	assert.True(t, ok)
+	_, ok = store.Get("c")
+	assert.True(t, ok)
+}
+
+func TestChat_EventsLostOnReconnect(t *testing.T) {
+	handler, store, cleanup := setupChatTestHandler(t, &mockAgentEngine{})
+	defer cleanup()
+
+	router := gin.New()
+	router.POST("/api/sessions", handler.CreateSession)
+	router.POST("/api/sessions/:sessionId/chat", handler.Chat)
+
+	sessionID := createSessionViaHandler(t, router)
+
+	// Put a closed ChatContext (no events, already closed)
+	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx.Close()
+	store.Put(sessionID, chatCtx)
+
+	// Subscribe from seq that's beyond what's available (seq=0 but currentSeq=0, fromSeq=5)
+	body := `{"reconnect":true,"last_event_seq":5}`
+	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+
+	events := parseSSEEvents(t, w.Body.String())
+	require.Len(t, events, 1, "expected 1 SSE event (events_lost)")
+	assert.Equal(t, "events_lost", events[0]["type"])
 }

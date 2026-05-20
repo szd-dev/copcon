@@ -21,6 +21,11 @@ type ChatContextInterface interface {
 	Subscribe(fromSeq int64) (*Subscriber, bool)
 }
 
+// Storer removes a session from a store.
+type Storer interface {
+	Remove(sessionID string)
+}
+
 // Subscriber receives a filtered view of events emitted on a ChatContext.
 type Subscriber struct {
 	Events <-chan entity.Event
@@ -34,6 +39,7 @@ type ChatContext struct {
 	seq       atomic.Int64
 	depth     int
 	closed    chan struct{}
+	store     Storer
 }
 
 func (c *ChatContext) Context() context.Context { return c.ctx }
@@ -70,11 +76,20 @@ func (c *ChatContext) Emit(event entity.Event) {
 	c.seq.Add(1)
 }
 
-// Close terminates the ring buffer stream and signals completion via the closed channel.
-// After Close(), subscribers drain remaining data then receive io.EOF.
+// Close terminates the ring buffer stream, signals completion via the closed channel,
+// and removes the session from its associated store.
 func (c *ChatContext) Close() {
 	c.rb.Close()
 	close(c.closed)
+	if c.store != nil {
+		c.store.Remove(c.sessionID)
+	}
+}
+
+// SetStore associates a store with this ChatContext.
+// When Close() is called, the session is automatically removed from the store.
+func (c *ChatContext) SetStore(s Storer) {
+	c.store = s
 }
 
 // Closed returns a channel that fires once after Close() completes.

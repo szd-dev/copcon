@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,21 +19,55 @@ import (
 	"github.com/copcon/server/internal/tools/todo"
 )
 
+// SessionAgentStore stores active ChatContext instances keyed by session ID.
+// It is used to reconnect to an in-progress agent session.
+type SessionAgentStore struct {
+	mu       sync.RWMutex
+	contexts map[string]iface.ChatContextInterface
+}
+
+func NewSessionAgentStore() *SessionAgentStore {
+	return &SessionAgentStore{
+		contexts: make(map[string]iface.ChatContextInterface),
+	}
+}
+
+func (s *SessionAgentStore) Put(sessionID string, ctx iface.ChatContextInterface) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.contexts[sessionID] = ctx
+}
+
+func (s *SessionAgentStore) Get(sessionID string) (iface.ChatContextInterface, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ctx, ok := s.contexts[sessionID]
+	return ctx, ok
+}
+
+func (s *SessionAgentStore) Remove(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.contexts, sessionID)
+}
+
 type Handler struct {
-	config        *config.Config
-	sessionMgr    session.SessionManager
-	todoMgr       todo.TodoManager
-	agent         agent.AgentEngine
-	agentRegistry agent.AgentRegistry
+	config            *config.Config
+	sessionMgr        session.SessionManager
+	todoMgr           todo.TodoManager
+	agent             agent.AgentEngine
+	agentRegistry     agent.AgentRegistry
+	sessionAgentStore *SessionAgentStore
 }
 
 func NewHandler(cfg *config.Config, sessionMgr session.SessionManager, todoMgr todo.TodoManager, agentEngine agent.AgentEngine, agentRegistry agent.AgentRegistry) *Handler {
 	return &Handler{
-		config:        cfg,
-		sessionMgr:    sessionMgr,
-		todoMgr:       todoMgr,
-		agent:         agentEngine,
-		agentRegistry: agentRegistry,
+		config:            cfg,
+		sessionMgr:        sessionMgr,
+		todoMgr:           todoMgr,
+		agent:             agentEngine,
+		agentRegistry:     agentRegistry,
+		sessionAgentStore: NewSessionAgentStore(),
 	}
 }
 
@@ -309,22 +344,15 @@ func (h *Handler) Chat(c *gin.Context) {
 	sessionID := c.Param("sessionId")
 
 	var req struct {
-		Content string `json:"content"`
-		AgentID string `json:"agent_id"`
+		Content      string `json:"content"`
+		AgentID      string `json:"agent_id"`
+		Reconnect    bool   `json:"reconnect"`
+		LastEventSeq int64  `json:"last_event_seq"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-
-	chatCtx := iface.NewChatContext(c.Request.Context(), sessionID, req.AgentID)
-
-	go func() {
-		defer chatCtx.Close()
-		if err := h.agent.Chat(chatCtx, req.Content); err != nil {
-			slog.Error("Agent chat error", "session_id", sessionID, "error", err)
-		}
-	}()
 
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -336,7 +364,62 @@ func (h *Handler) Chat(c *gin.Context) {
 		return
 	}
 
-	for event := range chatCtx.Events() {
+	var chatCtx iface.ChatContextInterface
+	var sub *iface.Subscriber
+
+	if req.Reconnect {
+		// Reconnect path: resume SSE from existing active agent
+		var found bool
+		chatCtx, found = h.sessionAgentStore.Get(sessionID)
+		if !found {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		fromSeq := req.LastEventSeq + 1
+		sub, found = chatCtx.Subscribe(fromSeq)
+		if !found {
+			data, _ := json.Marshal(entity.Event{Type: "events_lost"})
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			flusher.Flush()
+			return
+		}
+	} else {
+		// First-connect path: validate, create context, start agent
+		if req.Content == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+			return
+		}
+
+		if _, active := h.sessionAgentStore.Get(sessionID); active {
+			c.JSON(http.StatusConflict, gin.H{"error": "session already has an active agent"})
+			return
+		}
+
+		chatCtx = iface.NewChatContext(c.Request.Context(), sessionID, req.AgentID)
+		h.sessionAgentStore.Put(sessionID, chatCtx)
+
+		go func() {
+			defer func() {
+				h.sessionAgentStore.Remove(sessionID)
+				chatCtx.Close()
+			}()
+			if err := h.agent.Chat(chatCtx, req.Content); err != nil {
+				slog.Error("Agent chat error", "session_id", sessionID, "error", err)
+			}
+		}()
+
+		var ok bool
+		sub, ok = chatCtx.Subscribe(0)
+		if !ok {
+			data, _ := json.Marshal(entity.Event{Type: "events_lost"})
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			flusher.Flush()
+			return
+		}
+	}
+
+	// Unified SSE loop — used by both first-connect and reconnect paths
+	for event := range sub.Events {
 		data, _ := json.Marshal(event)
 		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 		flusher.Flush()
