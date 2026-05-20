@@ -20,12 +20,17 @@ export type {
 } from './api/types';
 
 export { useAgentChat } from './hooks/useAgentChat';
+export { useSubagentSSE } from './hooks/useSubagentSSE';
+export type { UseSubagentSSEOptions, UseSubagentSSEReturn } from './hooks/useSubagentSSE';
 
 export { TodoItem } from './components/TodoItem';
 export type { TodoItemProps } from './components/TodoItem';
 
 export { TodoList } from './components/TodoList';
 export type { TodoListProps } from './components/TodoList';
+
+export { SubagentCard } from './components/SubagentCard';
+export type { SubagentCardProps } from './components/SubagentCard';
 
 export { default as CopConChatProvider } from './providers/CopConChatProvider';
 export type { CopConMessage, CopConInput, CopConSSEOutput } from './providers/CopConChatProvider';

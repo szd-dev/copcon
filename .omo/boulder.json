@@ -98,11 +98,22 @@
       "updated_at": "2026-05-20T18:57:55.737Z",
       "started_at": "2026-05-20T18:57:55.737Z",
       "status": "running"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "**Config Deprecation + Backward Compatibility**",
+      "session_id": "ses_1b93a4bbaffe7fjs1BYwHwRoQn",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T19:05:41.187Z",
+      "started_at": "2026-05-20T19:05:41.187Z",
+      "status": "running"
     }
   },
   "active_work_id": "subagent-architecture-9de47090",
   "status": "active",
-  "updated_at": "2026-05-20T18:57:55.737Z",
+  "updated_at": "2026-05-20T19:05:41.186Z",
   "schema_version": 2,
   "works": {
     "message-architecture-refactor-legacy": {
@@ -393,7 +404,7 @@
       "plan_name": "subagent-architecture",
       "status": "active",
       "started_at": "2026-05-20T17:41:45.218Z",
-      "updated_at": "2026-05-20T18:57:55.737Z",
+      "updated_at": "2026-05-20T19:05:41.186Z",
       "session_ids": [
         "ses_1b9ef5b27ffeRQpWg6IH5wAe8A"
       ],
@@ -489,6 +500,17 @@
           "category": "deep",
           "updated_at": "2026-05-20T18:57:55.737Z",
           "started_at": "2026-05-20T18:57:55.737Z",
+          "status": "running"
+        },
+        "todo:9": {
+          "task_key": "todo:9",
+          "task_label": "9",
+          "task_title": "**Config Deprecation + Backward Compatibility**",
+          "session_id": "ses_1b93a4bbaffe7fjs1BYwHwRoQn",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "updated_at": "2026-05-20T19:05:41.187Z",
+          "started_at": "2026-05-20T19:05:41.187Z",
           "status": "running"
         }
       }

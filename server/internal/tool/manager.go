@@ -35,6 +35,14 @@ type Tool interface {
 	Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*ToolResult, error)
 }
 
+// DelegationTool identifies tools that delegate work to sub-agents.
+// Tools implementing this interface are excluded from the automatic
+// execution_mode injection in GetOpenAITools to avoid schema collisions
+// with the tool's own mode parameter.
+type DelegationTool interface {
+	IsDelegationTool() bool
+}
+
 type ToolManager interface {
 	Register(tool Tool) error
 	Unregister(name string) error
@@ -193,12 +201,15 @@ func (m *toolManager) GetOpenAITools() []openai.ChatCompletionToolUnionParam {
 		}
 		props := schemaCopy["properties"].(map[string]any)
 
-		// Not required - uses default value
-		props["execution_mode"] = map[string]any{
-			"type":        "string",
-			"enum":        []string{"sync", "concurrent", "async"},
-			"default":     "sync",
-			"description": "Execution mode: 'sync' (wait for result), 'concurrent' (parallel with other tools), 'async' (background execution). Default: sync.",
+		// Delegation tools define their own mode parameter; skip auto-injection
+		// to avoid schema collisions.
+		if _, isDelegation := t.(DelegationTool); !isDelegation {
+			props["execution_mode"] = map[string]any{
+				"type":        "string",
+				"enum":        []string{"sync", "concurrent", "async"},
+				"default":     "sync",
+				"description": "Execution mode: 'sync' (wait for result), 'concurrent' (parallel with other tools), 'async' (background execution). Default: sync.",
+			}
 		}
 
 		tools = append(tools, openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{

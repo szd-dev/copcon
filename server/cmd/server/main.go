@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
@@ -15,6 +19,7 @@ import (
 	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/hook"
+	"github.com/copcon/server/internal/llm"
 	"github.com/copcon/server/internal/memory"
 	"github.com/copcon/server/internal/plugins"
 	"github.com/copcon/server/internal/plugins/logging"
@@ -103,6 +108,61 @@ func main() {
 		logger.Error("Failed to create agent registry", "error", err)
 		os.Exit(1)
 	}
+
+	// Register built-in agent factories (overrides config-registered agents)
+	// This is the migration path from config.yaml to code registration.
+	for _, ac := range cfg.Agents {
+		switch ac.ID {
+		case "code-assistant", "chat-assistant":
+			ac := ac
+			allowDelegate := ac.ID == "code-assistant"
+			agentRegistry.RegisterFactory(ac.ID, ac.Name, ac.Model, allowDelegate, func(ctx context.Context, params agent.CreateParams) (agent.AgentDefinition, error) {
+				model := ac.Model
+				if params.ModelOverride != "" {
+					model = params.ModelOverride
+				}
+
+				toolMgr := tool.NewToolManager()
+				for _, toolName := range ac.Tools {
+					t, err := toolRegistry.Get(toolName)
+					if err != nil {
+						return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to get tool %s: %w", ac.ID, toolName, err)
+					}
+					if err := toolMgr.Register(t); err != nil {
+						return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to register tool %s: %w", ac.ID, toolName, err)
+					}
+				}
+
+				opts := []option.RequestOption{
+					option.WithAPIKey(cfg.OpenAI.APIKey),
+				}
+				baseURL := ac.BaseURL
+				if baseURL == "" {
+					baseURL = cfg.OpenAI.BaseURL
+				}
+				if baseURL != "" {
+					opts = append(opts, option.WithBaseURL(baseURL))
+				}
+				client := openai.NewClient(opts...)
+				provider := llm.NewOpenAIAdapter(&client, model)
+
+				systemPrompt := ac.SystemPrompt
+				if params.Task != "" {
+					systemPrompt = systemPrompt + "\n\nCurrent Task: " + params.Task
+				}
+
+				return agent.AgentDefinition{
+					ID:           ac.ID,
+					Name:         ac.Name,
+					Model:        model,
+					SystemPrompt: systemPrompt,
+					ToolManager:  toolMgr,
+					LLMProvider:  provider,
+				}, nil
+			})
+		}
+	}
+
 	logger.Info("Loaded agents", "count", len(agentRegistry.List()))
 
 	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, asyncRegistry, agent.WithHookRunner(hookRunner))

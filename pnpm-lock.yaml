@@ -47,6 +47,10 @@ importers:
         version: 6.4.1
 
   packages/ui:
+    dependencies:
+      '@ant-design/x-markdown':
+        specifier: ^2.0.0
+        version: 2.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
     devDependencies:
       '@ant-design/x':
         specifier: ^2.4.0

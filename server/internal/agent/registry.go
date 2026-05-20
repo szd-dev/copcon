@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/openai/openai-go/v3"
@@ -84,6 +85,10 @@ func NewAgentRegistry(cfg *config.Config, toolRegistry tool.ToolRegistry) (Agent
 	registry := &agentRegistry{
 		factories:    make(map[string]factoryEntry),
 		defaultAgent: cfg.DefaultAgentID,
+	}
+
+	if len(cfg.Agents) > 0 {
+		slog.Warn("config.yaml agents are deprecated, migrate to code registration via RegisterFactory")
 	}
 
 	for _, agentConfig := range cfg.Agents {
