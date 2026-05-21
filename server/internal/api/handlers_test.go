@@ -36,7 +36,7 @@ func newMockSessionManager() *mockSessionManager {
 	}
 }
 
-func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
+func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -174,6 +174,17 @@ func (r *mockAgentRegistry) Default() (agent.AgentDefinition, error) {
 		return agent.AgentDefinition{}, agent.ErrNoDefaultAgent
 	}
 	return r.Get(r.defaultAgent)
+}
+
+func (r *mockAgentRegistry) RegisterFactory(id, name, model string, allowDelegate bool, factory agent.AgentFactory) {
+}
+
+func (r *mockAgentRegistry) GetFactory(id string) (agent.AgentFactory, error) {
+	return nil, agent.ErrAgentNotFound
+}
+
+func (r *mockAgentRegistry) ListDelegatable() []agent.AgentInfo {
+	return nil
 }
 
 func setupTestHandler(t *testing.T) (*Handler, func()) {
@@ -484,7 +495,7 @@ type dbSessionManager struct {
 	db *gorm.DB
 }
 
-func (m *dbSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
+func (m *dbSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,

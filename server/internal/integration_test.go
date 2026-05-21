@@ -263,7 +263,7 @@ type dbSessionManagerForIntegration struct {
 	db *gorm.DB
 }
 
-func (m *dbSessionManagerForIntegration) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string) (*session.Session, error) {
+func (m *dbSessionManagerForIntegration) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -352,4 +352,15 @@ func (r *mockAgentRegistryForIntegration) List() []agent.AgentInfo {
 
 func (r *mockAgentRegistryForIntegration) Default() (agent.AgentDefinition, error) {
 	return r.Get(r.defaultAgent)
+}
+
+func (r *mockAgentRegistryForIntegration) RegisterFactory(id, name, model string, allowDelegate bool, factory agent.AgentFactory) {
+}
+
+func (r *mockAgentRegistryForIntegration) GetFactory(id string) (agent.AgentFactory, error) {
+	return nil, agent.ErrAgentNotFound
+}
+
+func (r *mockAgentRegistryForIntegration) ListDelegatable() []agent.AgentInfo {
+	return nil
 }
