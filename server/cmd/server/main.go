@@ -139,6 +139,11 @@ func main() {
 							return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to register delegate_to: %w", ac.ID, err)
 						}
 					}
+					if t, err := toolRegistry.Get("read_sub_session"); err == nil {
+						if err := toolMgr.Register(t); err != nil {
+							return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to register read_sub_session: %w", ac.ID, err)
+						}
+					}
 				}
 
 				opts := []option.RequestOption{
@@ -179,6 +184,11 @@ func main() {
 	delegateTool := tools.NewDelegateToTool(agentRegistry, sessionMgr, contextMgr, agentEngine)
 	if err := toolRegistry.Register(delegateTool); err != nil {
 		logger.Error("Failed to register delegate_to tool", "error", err)
+		os.Exit(1)
+	}
+	readSubSessionTool := tools.NewReadSubSessionTool(sessionMgr, contextMgr)
+	if err := toolRegistry.Register(readSubSessionTool); err != nil {
+		logger.Error("Failed to register read_sub_session tool", "error", err)
 		os.Exit(1)
 	}
 

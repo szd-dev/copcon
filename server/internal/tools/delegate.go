@@ -8,6 +8,8 @@ import (
 
 	"github.com/copcon/server/internal/agent"
 	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/server/internal/context_builder"
+	"github.com/copcon/server/internal/domain/entity"
 	chatcontextpkg "github.com/copcon/server/internal/domain/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/tool"
@@ -166,3 +168,142 @@ func collectSummary(contextMgr chat_context.ContextManager, chatCtx chatcontextp
 
 var _ tool.Tool = (*DelegateToTool)(nil)
 var _ tool.DelegationTool = (*DelegateToTool)(nil)
+
+// ReadSubSessionTool retrieves messages from a sub-session created by delegate_to.
+type ReadSubSessionTool struct {
+	sessionMgr session.SessionManager
+	contextMgr chat_context.ContextManager
+}
+
+func NewReadSubSessionTool(sessionMgr session.SessionManager, contextMgr chat_context.ContextManager) *ReadSubSessionTool {
+	return &ReadSubSessionTool{
+		sessionMgr: sessionMgr,
+		contextMgr: contextMgr,
+	}
+}
+
+func (t *ReadSubSessionTool) Name() string {
+	return "read_sub_session"
+}
+
+func (t *ReadSubSessionTool) Description() string {
+	return "Read messages from a sub-session created by delegate_to"
+}
+
+func (t *ReadSubSessionTool) InputSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"sub_session_id": map[string]any{
+				"type":        "string",
+				"description": "ID of the sub-session to read",
+			},
+		},
+		"required": []string{"sub_session_id"},
+	}
+}
+
+func (t *ReadSubSessionTool) Execute(chatCtx chatcontextpkg.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
+	subSessionID, _ := args["sub_session_id"].(string)
+	if subSessionID == "" {
+		return &tool.ToolResult{Success: false, Error: "sub_session_id is required"}, nil
+	}
+
+	subChatCtx := chatcontextpkg.NewChatContext(chatCtx.Context(), subSessionID, "")
+	subSession, err := t.sessionMgr.Get(subChatCtx)
+	if err != nil {
+		return &tool.ToolResult{Success: false, Error: "sub-session not found"}, nil
+	}
+
+	// Verify the sub-session is a child of the current session
+	if subSession.ParentSessionID == nil || subSession.ParentSessionID.String() != chatCtx.SessionID() {
+		return &tool.ToolResult{Success: false, Error: "sub-session not found"}, nil
+	}
+
+	messages, err := t.contextMgr.GetHistory(subChatCtx, 0)
+	if err != nil {
+		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("failed to get messages: %v", err)}, nil
+	}
+
+	uiMessages := convertMessagesToUI(messages)
+
+	return &tool.ToolResult{
+		Success: true,
+		Data: map[string]any{
+			"messages": uiMessages,
+		},
+	}, nil
+}
+
+// convertMessagesToUI converts session.Message records to entity.UIMessage format,
+// matching the structure returned by the GET /messages endpoint.
+func convertMessagesToUI(messages []session.Message) []entity.UIMessage {
+	// Build tool-result lookup: ToolCallID → Content
+	toolResultByCallID := make(map[string]string)
+	for _, msg := range messages {
+		if msg.Role == "tool" && msg.ToolCallID != "" {
+			toolResultByCallID[msg.ToolCallID] = msg.Content
+		}
+	}
+
+	var uiMessages []entity.UIMessage
+	for _, msg := range messages {
+		// Skip tool-role messages; their content is embedded in tool-call parts
+		if msg.Role == "tool" {
+			continue
+		}
+
+		if len(msg.Parts) > 0 {
+			uiParts := make([]entity.UIPart, 0, len(msg.Parts))
+			for _, p := range msg.Parts {
+				uiPart := entity.UIPart{
+					Type:       entity.UIPartType(p.Type),
+					Text:       p.Text,
+					State:      entity.UIPartState(p.State),
+					ToolCallID: p.ToolCallID,
+					ToolName:   p.ToolName,
+					Args:       p.Args,
+					Output:     p.Output,
+					Error:      p.Error,
+					StepIndex:  p.StepIndex,
+				}
+				// Populate output from tool-result lookup for tool-call parts
+				if p.Type == "tool-call" && uiPart.ToolCallID != "" && uiPart.Output == "" {
+					if result, ok := toolResultByCallID[uiPart.ToolCallID]; ok {
+						uiPart.Output = result
+					}
+				}
+				uiParts = append(uiParts, uiPart)
+			}
+			steps := context_builder.GroupPartsByStep(uiParts)
+			uiMessages = append(uiMessages, entity.UIMessage{
+				ID:        msg.ID.String(),
+				SessionID: msg.SessionID.String(),
+				Role:      msg.Role,
+				Steps:     steps,
+				Metadata: entity.UIMetadata{
+					CreatedAt:  msg.CreatedAt,
+					Model:      msg.Model,
+					TokenCount: msg.TokenCount,
+					DurationMs: msg.DurationMs,
+				},
+			})
+		} else {
+			uiMsg := context_builder.SynthesizeUIMessage(msg, toolResultByCallID)
+			if uiMsg != nil {
+				uiMsg.SessionID = msg.SessionID.String()
+				uiMsg.Metadata = entity.UIMetadata{
+					CreatedAt:  msg.CreatedAt,
+					Model:      msg.Model,
+					TokenCount: msg.TokenCount,
+					DurationMs: msg.DurationMs,
+				}
+				uiMessages = append(uiMessages, *uiMsg)
+			}
+		}
+	}
+
+	return uiMessages
+}
+
+var _ tool.Tool = (*ReadSubSessionTool)(nil)
