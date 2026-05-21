@@ -23,6 +23,9 @@ export { useAgentChat } from './hooks/useAgentChat';
 export { useSubagentSSE } from './hooks/useSubagentSSE';
 export type { UseSubagentSSEOptions, UseSubagentSSEReturn } from './hooks/useSubagentSSE';
 
+export { HumanInteraction } from './components/HumanInteraction';
+export type { HumanInteractionProps } from './components/HumanInteraction';
+
 export { TodoItem } from './components/TodoItem';
 export type { TodoItemProps } from './components/TodoItem';
 

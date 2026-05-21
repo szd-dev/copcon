@@ -66,6 +66,14 @@ export interface AsyncCompletionPendingData {
   completed_at: string;
 }
 
+export interface InterruptPayload {
+  interruptId: string;
+  interruptType: 'approval' | 'question';
+  message: string;
+  summary?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
 export interface ToolExecution {
   id: string;
   name: string;
@@ -97,7 +105,8 @@ export interface ToolCallPart {
   args: string;
   output: string;
   error: string;
-  state: 'pending' | 'running' | 'complete' | 'error';
+  state: 'pending' | 'running' | 'complete' | 'error' | 'waiting_for_input';
+  interrupt?: InterruptPayload;
 }
 
 export type Part = TextPart | ReasoningPart | ToolCallPart;
@@ -149,6 +158,7 @@ export interface PartCreateEvent {
     toolCallId?: string;
     toolName?: string;
     args?: string;
+    interrupt?: InterruptPayload;
   };
 }
 
@@ -163,6 +173,7 @@ export interface PartUpdateEvent {
     state?: string;
     output?: string;
     error?: string;
+    interrupt?: InterruptPayload;
   };
 }
 

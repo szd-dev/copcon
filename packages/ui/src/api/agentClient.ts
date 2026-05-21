@@ -109,4 +109,49 @@ export class AgentClient {
     }
     return response;
   }
+
+  /**
+   * Resume a session after a human-in-the-loop interrupt.
+   *
+   * Sends the user's decision (approve/decline/submit/cancel) to the backend,
+   * optionally with form data (content). The backend will unblock the agent
+   * loop and continue processing the interrupted tool call.
+   *
+   * @param sessionId - The session to resume.
+   * @param interruptId - The interrupt to respond to.
+   * @param action - The user's decision.
+   * @param content - Optional structured data from a form response.
+   */
+  async resume(
+    sessionId: string,
+    interruptId: string,
+    action: 'approve' | 'decline' | 'submit' | 'cancel',
+    content?: Record<string, unknown>,
+  ): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interrupt_id: interruptId, action, content }),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to resume: ${response.statusText}`);
+    }
+  }
+
+  /**
+   * Stop a running session.
+   *
+   * Sends a POST to /api/sessions/{sessionId}/stop. The backend will abort
+   * the current agent loop and mark the session as stopped.
+   *
+   * @param sessionId - The session to stop.
+   */
+  async stop(sessionId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/stop`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to stop: ${response.statusText}`);
+    }
+  }
 }

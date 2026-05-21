@@ -3,7 +3,7 @@ import { Bubble, Conversations, Sender, Think, Welcome, XProvider, ThoughtChain 
 import { XMarkdown } from '@ant-design/x-markdown';
 import { theme, Button, Divider, Flex, Spin, Typography } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
-import { AgentClient, useAgentChat, Session, CopConMessage, Step, ToolCallPart, TodoList, TodoItemProps, Todo } from '@copcon/ui';
+import { AgentClient, useAgentChat, Session, CopConMessage, Step, ToolCallPart, TodoList, TodoItemProps, Todo, HumanInteraction } from '@copcon/ui';
 import './App.css';
 
 const { useToken } = theme;
@@ -32,7 +32,7 @@ interface BubbleItem {
   loading?: boolean;
 }
 
-const StepContent: React.FC<{ step: Step }> = ({ step }) => {
+const StepContent: React.FC<{ step: Step; sessionId: string }> = ({ step, sessionId }) => {
   const toolCallParts: ToolCallPart[] = [];
 
   return (
@@ -48,6 +48,17 @@ const StepContent: React.FC<{ step: Step }> = ({ step }) => {
               </Think>
             );
           case 'tool-call':
+            if (part.state === 'waiting_for_input' && part.interrupt) {
+              return (
+                <HumanInteraction
+                  key={index}
+                  interrupt={part.interrupt}
+                  onRespond={(action, content) => {
+                    client.resume(sessionId, part.interrupt!.interruptId, action, content);
+                  }}
+                />
+              );
+            }
             toolCallParts.push(part);
             return null; // Will render as ThoughtChain below
           default:
@@ -180,7 +191,7 @@ const App: React.FC = () => {
         {msg.steps.map((step, stepIndex) => (
           <React.Fragment key={stepIndex}>
             {stepIndex > 0 && <Divider style={{ margin: '8px 0' }} />}
-            <StepContent step={step} />
+            <StepContent step={step} sessionId={activeKey} />
           </React.Fragment>
         ))}
       </>
@@ -368,7 +379,12 @@ const App: React.FC = () => {
                   ref={senderRef}
                   loading={isRequesting}
                   onSubmit={handleSubmit}
-                  onCancel={abort}
+                  onCancel={async () => {
+                    if (activeKey) {
+                      try { await client.stop(activeKey); } catch {}
+                    }
+                    abort();
+                  }}
                   placeholder="Type a message..."
                   style={{
                     flex: 1,

@@ -7,6 +7,7 @@ import type {
   ReasoningPart,
   ToolCallPart,
   UIMessageMeta,
+  InterruptPayload,
 } from '../api/types';
 
 /**
@@ -163,6 +164,7 @@ export default class CopConChatProvider extends AbstractChatProvider<
               data.state === 'running' ? 'running' :
               data.state === 'complete' ? 'complete' :
               data.state === 'error' ? 'error' :
+              data.state === 'waiting_for_input' ? 'waiting_for_input' :
               'pending';
             newPart = {
               type: 'tool-call',
@@ -174,6 +176,7 @@ export default class CopConChatProvider extends AbstractChatProvider<
               output: '',
               error: '',
               state,
+              ...(data.interrupt ? { interrupt: data.interrupt as InterruptPayload } : {}),
             };
             break;
           }
@@ -246,6 +249,7 @@ export default class CopConChatProvider extends AbstractChatProvider<
               data.state === 'running' ? 'running' :
               data.state === 'complete' ? 'complete' :
               data.state === 'error' ? 'error' :
+              data.state === 'waiting_for_input' ? 'waiting_for_input' :
               part.state;
             updatedPart = {
               ...part,
@@ -256,6 +260,7 @@ export default class CopConChatProvider extends AbstractChatProvider<
               ...(data.error !== undefined && typeof data.error === 'string'
                 ? { error: data.error }
                 : {}),
+              ...(data.interrupt !== undefined ? { interrupt: data.interrupt as InterruptPayload } : {}),
             };
             break;
           }
