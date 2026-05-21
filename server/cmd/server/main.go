@@ -101,6 +101,14 @@ func main() {
 		logger.Error("Failed to register list_async_tools", "error", err)
 		os.Exit(1)
 	}
+	if err := toolRegistry.Register(tools.NewConfirmActionTool()); err != nil {
+		logger.Error("Failed to register confirm_action", "error", err)
+		os.Exit(1)
+	}
+	if err := toolRegistry.Register(tools.NewAskUserTool()); err != nil {
+		logger.Error("Failed to register ask_user", "error", err)
+		os.Exit(1)
+	}
 	logger.Info("Registered tools in registry", "count", len(toolRegistry.List()))
 
 	agentRegistry, err := agent.NewAgentRegistry(cfg, toolRegistry)
@@ -142,6 +150,14 @@ func main() {
 					if t, err := toolRegistry.Get("read_sub_session"); err == nil {
 						if err := toolMgr.Register(t); err != nil {
 							return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to register read_sub_session: %w", ac.ID, err)
+						}
+					}
+				}
+
+				for _, hitlToolName := range []string{"ask_user", "confirm_action"} {
+					if t, err := toolRegistry.Get(hitlToolName); err == nil {
+						if err := toolMgr.Register(t); err != nil {
+							return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to register %s: %w", ac.ID, hitlToolName, err)
 						}
 					}
 				}

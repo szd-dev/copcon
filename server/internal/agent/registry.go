@@ -117,6 +117,14 @@ func NewAgentRegistry(cfg *config.Config, toolRegistry tool.ToolRegistry) (Agent
 				}
 			}
 
+			for _, hitlToolName := range []string{"ask_user", "confirm_action"} {
+				if t, err := toolRegistry.Get(hitlToolName); err == nil {
+					if err := toolMgr.Register(t); err != nil {
+						return AgentDefinition{}, fmt.Errorf("agent %s: failed to register %s: %w", ac.ID, hitlToolName, err)
+					}
+				}
+			}
+
 			opts := []option.RequestOption{
 				option.WithAPIKey(cfg.OpenAI.APIKey),
 			}
