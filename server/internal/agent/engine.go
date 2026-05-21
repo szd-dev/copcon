@@ -27,6 +27,10 @@ var (
 
 const maxSteps = 50
 
+// deltaPersistInterval controls how many text deltas accumulate before
+// checkpointing the current Parts to the database via persistMessageUpsert.
+const deltaPersistInterval = 10
+
 // StreamResult encapsulates the result of streaming an LLM response.
 // It contains all accumulated content, reasoning, and tool calls from the stream.
 // ToolCallResult holds the output or error from a tool execution,
@@ -196,9 +200,6 @@ func (e *engineImpl) prepareAgentLoop(chatCtx iface.ChatContextInterface, userIn
 	return &agentDef, nil
 }
 
-// handleStreaming processes the streaming response from the LLM provider,
-// accumulating content, reasoning, and tool calls while emitting part-level
-// events in real time (EventPartCreate, EventPartUpdate).
 func (e *engineImpl) handleStreaming(
 	chatCtx iface.ChatContextInterface,
 	agentDef *AgentDefinition,
@@ -206,6 +207,8 @@ func (e *engineImpl) handleStreaming(
 	tools []llm.ToolDef,
 	messageID string,
 	stepIndex int,
+	persistedMsgUUID *string,
+	accumulatedParts *session.PersistedParts,
 ) (*StreamResult, error) {
 	provider := e.llmProvider
 	if provider == nil {
@@ -231,10 +234,12 @@ func (e *engineImpl) handleStreaming(
 	textPartIndex := -1
 	reasoningPartCreated := false
 	reasoningPartIndex := -1
+	textDeltaCount := 0
 
 	for chunk := range ch {
 		if chunk.Content != "" {
 			result.Content += chunk.Content
+			textDeltaCount++
 
 			if !textPartCreated {
 				chatCtx.Emit(entity.Event{
@@ -261,6 +266,13 @@ func (e *engineImpl) handleStreaming(
 					TextDelta: chunk.Content,
 				},
 			})
+
+			if textDeltaCount%deltaPersistInterval == 0 {
+				e.checkpointStreamingParts(chatCtx, messageID, stepIndex, result, accumulatedParts, reasoningPartCreated, textPartCreated)
+				if *persistedMsgUUID == "" {
+					*persistedMsgUUID = messageID
+				}
+			}
 		}
 
 		if chunk.ReasoningContent != "" {
@@ -372,6 +384,13 @@ func (e *engineImpl) handleStreaming(
 		})
 	}
 
+	// Checkpoint after all parts reach state=done (text/reasoning done,
+	// tool-call parts in pending state since results are not yet available).
+	e.checkpointDoneParts(chatCtx, messageID, stepIndex, result, accumulatedParts)
+	if *persistedMsgUUID == "" {
+		*persistedMsgUUID = messageID
+	}
+
 	if result.Usage != nil {
 		e.logger.Info("llm_response",
 			"session_id", chatCtx.SessionID(),
@@ -453,6 +472,15 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 					StepIndex: stepIndex,
 				},
 			})
+			if len(accumulatedParts) > 0 {
+				if err := e.persistMessageUpsert(chatCtx, messageID, accumulatedParts); err != nil {
+					e.logger.Warn("incremental_persist_step_create_failed",
+						"session_id", chatCtx.SessionID(),
+						"step_index", stepIndex,
+						"error", err,
+					)
+				}
+			}
 		}
 		isFirstIteration = false
 
@@ -497,7 +525,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Phase 3: Streaming
-		result, err := e.handleStreaming(chatCtx, agentDef, llmMessages, llmTools, messageID, stepIndex)
+		result, err := e.handleStreaming(chatCtx, agentDef, llmMessages, llmTools, messageID, stepIndex, &persistedMsgUUID, &accumulatedParts)
 		if err != nil {
 			return err
 		}
@@ -648,6 +676,87 @@ func (e *engineImpl) persistMessageUpsert(
 	}
 
 	return nil
+}
+
+func (e *engineImpl) checkpointStreamingParts(
+	chatCtx iface.ChatContextInterface,
+	messageID string,
+	stepIndex int,
+	result *StreamResult,
+	accumulatedParts *session.PersistedParts,
+	reasoningPartCreated, textPartCreated bool,
+) {
+	var parts session.PersistedParts
+	parts = append(parts, *accumulatedParts...)
+
+	if reasoningPartCreated {
+		parts = append(parts, session.PersistedPart{
+			Type:      "reasoning",
+			Text:      result.ReasoningContent,
+			State:     "streaming",
+			StepIndex: stepIndex,
+		})
+	}
+	if textPartCreated {
+		parts = append(parts, session.PersistedPart{
+			Type:      "text",
+			Text:      result.Content,
+			State:     "streaming",
+			StepIndex: stepIndex,
+		})
+	}
+
+	if err := e.persistMessageUpsert(chatCtx, messageID, parts); err != nil {
+		e.logger.Warn("incremental_persist_delta_failed",
+			"session_id", chatCtx.SessionID(),
+			"step_index", stepIndex,
+			"error", err,
+		)
+	}
+}
+
+func (e *engineImpl) checkpointDoneParts(
+	chatCtx iface.ChatContextInterface,
+	messageID string,
+	stepIndex int,
+	result *StreamResult,
+	accumulatedParts *session.PersistedParts,
+) {
+	currentParts := e.buildUIParts(result, stepIndex)
+	var parts session.PersistedParts
+	parts = append(parts, *accumulatedParts...)
+	parts = append(parts, currentParts...)
+
+	if err := e.persistMessageUpsert(chatCtx, messageID, parts); err != nil {
+		e.logger.Warn("incremental_persist_done_failed",
+			"session_id", chatCtx.SessionID(),
+			"step_index", stepIndex,
+			"error", err,
+		)
+	}
+}
+
+func (e *engineImpl) checkpointToolResult(
+	chatCtx iface.ChatContextInterface,
+	result *StreamResult,
+	persistedMsgUUID *string,
+	accumulatedParts *session.PersistedParts,
+) {
+	currentParts := e.buildUIParts(result, result.StepIndex)
+	var parts session.PersistedParts
+	parts = append(parts, *accumulatedParts...)
+	parts = append(parts, currentParts...)
+
+	if err := e.persistMessageUpsert(chatCtx, result.MessageID, parts); err != nil {
+		e.logger.Warn("incremental_persist_tool_result_failed",
+			"session_id", chatCtx.SessionID(),
+			"step_index", result.StepIndex,
+			"error", err,
+		)
+	}
+	if *persistedMsgUUID == "" {
+		*persistedMsgUUID = result.MessageID
+	}
 }
 
 func (e *engineImpl) buildUIParts(result *StreamResult, stepIndex int) session.PersistedParts {

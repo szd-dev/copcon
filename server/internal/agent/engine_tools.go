@@ -581,12 +581,16 @@ func (e *engineImpl) handleToolCalls(
 			if err := e.executeSync(chatCtx, toolMgr, tc, args, result.MessageID, stepIndex, toolCallPartIndices, toolResults); err != nil {
 				return false, fmt.Errorf("execute sync tool call: %w", err)
 			}
+			result.ToolResults = toolResults
+			e.checkpointToolResult(chatCtx, result, persistedMsgUUID, accumulatedParts)
 		}
 
 		if len(concurrentToolCalls) > 0 {
 			if err := e.executeConcurrent(chatCtx, toolMgr, concurrentToolCalls, result.MessageID, stepIndex, toolCallPartIndices, toolResults); err != nil {
 				return false, fmt.Errorf("execute concurrent tool calls: %w", err)
 			}
+			result.ToolResults = toolResults
+			e.checkpointToolResult(chatCtx, result, persistedMsgUUID, accumulatedParts)
 		}
 
 		for _, tc := range asyncToolCalls {
