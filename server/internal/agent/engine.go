@@ -632,8 +632,13 @@ func (e *engineImpl) persistMessage(
 		*accumulatedToolCalls = append(*accumulatedToolCalls, newCalls...)
 	}
 
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
+	if err != nil {
+		return fmt.Errorf("invalid session ID: %w", err)
+	}
 	msg := &session.Message{
 		ID:        uuid.MustParse(result.MessageID),
+		SessionID: sessionUUID,
 		Role:      "assistant",
 		Content:   result.Content,
 		Reasoning: result.ReasoningContent,

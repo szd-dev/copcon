@@ -92,6 +92,9 @@ func (e *engineImpl) executeSync(chatCtx iface.ChatContextInterface, toolMgr too
 	// Hook: BeforeToolExecute
 	e.hookRunner.On(hook.BeforeToolExecute, chatCtx, e.logger, hook.HookExtra{ToolName: &tc.Name, ToolArgs: args})
 
+	chatCtx.SetPartLocator(messageID, stepIndex, partIndices[tc.ID])
+	defer chatCtx.ClearPartLocator()
+
 	result, err := toolMgr.Execute(chatCtx, tc.Name, args)
 
 	// Hook: AfterToolExecute or OnToolError
