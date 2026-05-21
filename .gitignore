@@ -60,4 +60,5 @@ server/server
 .omo/evidence
 .omo/notepads
 .omp/
-config.yaml
+**/config.yaml
+!**/config.yaml.template
