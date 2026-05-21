@@ -61,5 +61,20 @@ func (m *MockChatContext) Subscribe(fromSeq int64) (*iface.Subscriber, bool) {
 	return nil, false
 }
 
+func (m *MockChatContext) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
+	return nil, context.Canceled
+}
+
+func (m *MockChatContext) ResolveInput(interruptID string, resp *iface.InputResponse) error {
+	return iface.ErrInterruptNotFound
+}
+
+func (m *MockChatContext) PendingInputs() []iface.InputRequest {
+	return nil
+}
+
+func (m *MockChatContext) SetPartLocator(messageID string, stepIndex, partIndex int) {}
+func (m *MockChatContext) ClearPartLocator()                                         {}
+
 // Ensure MockChatContext implements iface.ChatContextInterface
 var _ iface.ChatContextInterface = (*MockChatContext)(nil)

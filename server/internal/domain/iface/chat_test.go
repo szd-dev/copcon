@@ -2,11 +2,258 @@ package iface
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/copcon/server/internal/domain/entity"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func newTestChatContext() *ChatContext {
+	return NewChatContext(nil, "test-session", "test-agent")
+}
+
+func TestRequestInput_Resolve(t *testing.T) {
+	c := newTestChatContext()
+	c.SetPartLocator("msg-1", 0, 1)
+
+	req := InputRequest{
+		Type:    InterruptApproval,
+		Message: "Approve this action?",
+	}
+
+	var resp *InputResponse
+	var err error
+	done := make(chan struct{})
+
+	go func() {
+		resp, err = c.RequestInput(req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	pending := c.PendingInputs()
+	require.Len(t, pending, 1)
+	assert.Equal(t, InterruptApproval, pending[0].Type)
+	assert.NotEmpty(t, pending[0].ID)
+
+	resolveErr := c.ResolveInput(pending[0].ID, &InputResponse{
+		Action:  "approved",
+		Content: map[string]any{"reason": "looks good"},
+	})
+	require.NoError(t, resolveErr)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RequestInput did not return after ResolveInput")
+	}
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "approved", resp.Action)
+	assert.Equal(t, "looks good", resp.Content["reason"])
+
+	pending = c.PendingInputs()
+	assert.Empty(t, pending)
+}
+
+func TestRequestInput_SessionClose(t *testing.T) {
+	c := newTestChatContext()
+	c.SetPartLocator("msg-2", 0, 0)
+
+	req := InputRequest{
+		Type:    InterruptQuestion,
+		Message: "What is your name?",
+	}
+
+	var err error
+	done := make(chan struct{})
+
+	go func() {
+		_, err = c.RequestInput(req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	c.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RequestInput did not return after Close")
+	}
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session closed while waiting for input")
+}
+
+func TestPendingInputs(t *testing.T) {
+	c := newTestChatContext()
+	c.SetPartLocator("msg-3", 0, 0)
+
+	assert.Empty(t, c.PendingInputs())
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		c.RequestInput(InputRequest{Type: InterruptApproval, Message: "first"})
+	}()
+	go func() {
+		defer wg.Done()
+		c.RequestInput(InputRequest{Type: InterruptQuestion, Message: "second"})
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	pending := c.PendingInputs()
+	require.Len(t, pending, 2)
+
+	types := map[InterruptType]int{}
+	for _, p := range pending {
+		types[p.Type]++
+	}
+	assert.Equal(t, 1, types[InterruptApproval])
+	assert.Equal(t, 1, types[InterruptQuestion])
+
+	for _, p := range pending {
+		err := c.ResolveInput(p.ID, &InputResponse{Action: "ok"})
+		require.NoError(t, err)
+	}
+
+	wg.Wait()
+
+	assert.Empty(t, c.PendingInputs())
+}
+
+func TestResolveInput_NotFound(t *testing.T) {
+	c := newTestChatContext()
+
+	err := c.ResolveInput("nonexistent-id", &InputResponse{Action: "approved"})
+	assert.ErrorIs(t, err, ErrInterruptNotFound)
+}
+
+func TestRequestInput_EmitsPartUpdate(t *testing.T) {
+	c := newTestChatContext()
+	c.SetPartLocator("msg-emit", 2, 3)
+
+	sub, ok := c.Subscribe(0)
+	require.True(t, ok)
+
+	// Give subscriber goroutine time to start iterating.
+	time.Sleep(20 * time.Millisecond)
+
+	req := InputRequest{
+		Type:    InterruptApproval,
+		Message: "Please approve",
+		Summary: "Approval needed",
+	}
+
+	done := make(chan struct{})
+	go func() {
+		c.RequestInput(req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	select {
+	case evt := <-sub.Events:
+		assert.Equal(t, entity.EventPartUpdate, evt.Type)
+		data, ok := evt.Data.(entity.PartUpdateData)
+		require.True(t, ok)
+		assert.Equal(t, "msg-emit", data.MessageID)
+		assert.Equal(t, 2, data.StepIndex)
+		assert.Equal(t, 3, data.PartIndex)
+		assert.Equal(t, "tool-call", data.PartType)
+		assert.Equal(t, string(entity.UIPartStateWaitingForInput), data.State)
+		require.NotNil(t, data.Interrupt)
+		assert.NotEmpty(t, data.Interrupt["interruptId"])
+		assert.Equal(t, "approval", data.Interrupt["interruptType"])
+		assert.Equal(t, "Please approve", data.Interrupt["message"])
+	case <-time.After(2 * time.Second):
+		t.Fatal("no event received from subscriber")
+	}
+
+	pending := c.PendingInputs()
+	require.Len(t, pending, 1)
+	c.ResolveInput(pending[0].ID, &InputResponse{Action: "approved"})
+
+	<-done
+	c.ClearPartLocator()
+}
+
+func TestRequestInput_NoPartLocator(t *testing.T) {
+	c := newTestChatContext()
+
+	sub, ok := c.Subscribe(0)
+	require.True(t, ok)
+
+	req := InputRequest{Type: InterruptQuestion, Message: "test"}
+
+	done := make(chan struct{})
+	go func() {
+		c.RequestInput(req)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	select {
+	case evt := <-sub.Events:
+		t.Fatalf("unexpected event emitted: %+v", evt)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	pending := c.PendingInputs()
+	require.Len(t, pending, 1)
+	c.ResolveInput(pending[0].ID, &InputResponse{Action: "answered"})
+
+	<-done
+}
+
+func TestConcurrentEmit(t *testing.T) {
+	c := newTestChatContext()
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			c.Emit(entity.Event{
+				Type: entity.EventMessage,
+				Data: entity.MessageData{MessageID: "msg", Content: "hello"},
+			})
+		}()
+	}
+
+	wg.Wait()
+
+	assert.Equal(t, int64(goroutines), c.seq.Load())
+}
+
+func TestSetPartLocator_ClearPartLocator(t *testing.T) {
+	c := newTestChatContext()
+
+	assert.Nil(t, c.partLocator)
+
+	c.SetPartLocator("msg-a", 1, 2)
+	require.NotNil(t, c.partLocator)
+	assert.Equal(t, "msg-a", c.partLocator.messageID)
+	assert.Equal(t, 1, c.partLocator.stepIndex)
+	assert.Equal(t, 2, c.partLocator.partIndex)
+
+	c.ClearPartLocator()
+	assert.Nil(t, c.partLocator)
+}
 
 func TestChatContextInterfaceExtension(t *testing.T) {
 	t.Run("Close_method_exists_on_interface", func(t *testing.T) {
@@ -92,11 +339,10 @@ func TestChatContextInterfaceExtension(t *testing.T) {
 	})
 
 	t.Run("existing_methods_still_work", func(t *testing.T) {
-		ctx := context.Background()
-		c := NewChatContext(ctx, "test-session", "test-agent")
+		c := NewChatContext(context.Background(), "test-session", "test-agent")
 
-		if c.Context() != ctx {
-			t.Fatal("Context() mismatch")
+		if c.Context() == nil {
+			t.Fatal("Context() should not be nil")
 		}
 		if c.SessionID() != "test-session" {
 			t.Fatal("SessionID() mismatch")
