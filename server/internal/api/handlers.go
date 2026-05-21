@@ -269,6 +269,7 @@ func groupPartsByStep(parts session.PersistedParts) []entity.UIStep {
 			Args:       p.Args,
 			Output:     p.Output,
 			Error:      p.Error,
+			Interrupt:  p.Interrupt,
 			StepIndex:  p.StepIndex,
 		}
 		if _, exists := stepMap[p.StepIndex]; !exists {
@@ -419,11 +420,68 @@ func (h *Handler) Chat(c *gin.Context) {
 	}
 
 	// Unified SSE loop — used by both first-connect and reconnect paths
-	for event := range sub.Events {
-		data, _ := json.Marshal(event)
-		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-		flusher.Flush()
+	for {
+		select {
+		case event, ok := <-sub.Events:
+			if !ok {
+				return // ringbuf closed = agent ended
+			}
+			data, _ := json.Marshal(event)
+			_, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			if err != nil {
+				return // write failed = client disconnected
+			}
+			flusher.Flush()
+		case <-c.Request.Context().Done():
+			return // HTTP context canceled = client disconnected, just clean up subscriber
+		}
 	}
+}
+
+func (h *Handler) StopSession(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+	chatCtx, found := h.sessionAgentStore.Get(sessionID)
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no active agent for this session"})
+		return
+	}
+	chatCtx.Close()
+	c.Status(http.StatusNoContent)
+}
+
+type ResumeRequest struct {
+	InterruptID string         `json:"interrupt_id" binding:"required"`
+	Action      string         `json:"action" binding:"required"`
+	Content     map[string]any `json:"content,omitempty"`
+}
+
+func (h *Handler) ResumeSession(c *gin.Context) {
+	sessionID := c.Param("sessionId")
+
+	var req ResumeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	chatCtx, found := h.sessionAgentStore.Get(sessionID)
+	if !found {
+		c.JSON(http.StatusConflict, gin.H{"error": "no active agent for this session"})
+		return
+	}
+
+	resp := &iface.InputResponse{
+		Action:  req.Action,
+		Content: req.Content,
+	}
+
+	err := chatCtx.ResolveInput(req.InterruptID, resp)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "resolved"})
 }
 
 func (h *Handler) ListAgents(c *gin.Context) {
@@ -456,6 +514,8 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, sessionMgr session.SessionMa
 			sessions.DELETE("/:sessionId", handler.DeleteSession)
 			sessions.GET("/:sessionId/messages", handler.GetMessages)
 			sessions.POST("/:sessionId/chat", handler.Chat)
+			sessions.POST("/:sessionId/stop", handler.StopSession)
+			sessions.POST("/:sessionId/resume", handler.ResumeSession)
 			sessions.GET("/:sessionId/todos", handler.GetSessionTodos)
 			sessions.GET("/:sessionId/updates", handler.GetSessionUpdates)
 		}
