@@ -3,6 +3,7 @@ package hook
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,6 +26,17 @@ func (s *stubChatCtx) Close()                                    {}
 func (s *stubChatCtx) Closed() <-chan struct{}                   { ch := make(chan struct{}); close(ch); return ch }
 func (s *stubChatCtx) Depth() int                                { return 0 }
 func (s *stubChatCtx) Subscribe(int64) (*iface.Subscriber, bool) { return nil, false }
+func (s *stubChatCtx) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
+	return nil, fmt.Errorf("stub: RequestInput not implemented")
+}
+func (s *stubChatCtx) ResolveInput(interruptID string, resp *iface.InputResponse) error {
+	return iface.ErrInterruptNotFound
+}
+func (s *stubChatCtx) PendingInputs() []iface.InputRequest {
+	return nil
+}
+func (s *stubChatCtx) SetPartLocator(messageID string, stepIndex, partIndex int) {}
+func (s *stubChatCtx) ClearPartLocator()                                         {}
 
 // trackableHook is a test hook that records execution order for assertions.
 type trackableHook struct {

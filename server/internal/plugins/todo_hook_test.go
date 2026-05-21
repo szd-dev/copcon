@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,6 +79,17 @@ func (s *stubChatContext) Close()                                    {}
 func (s *stubChatContext) Closed() <-chan struct{}                   { ch := make(chan struct{}); close(ch); return ch }
 func (s *stubChatContext) Depth() int                                { return 0 }
 func (s *stubChatContext) Subscribe(int64) (*iface.Subscriber, bool) { return nil, false }
+func (s *stubChatContext) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
+	return nil, fmt.Errorf("stub: RequestInput not implemented")
+}
+func (s *stubChatContext) ResolveInput(interruptID string, resp *iface.InputResponse) error {
+	return iface.ErrInterruptNotFound
+}
+func (s *stubChatContext) PendingInputs() []iface.InputRequest {
+	return nil
+}
+func (s *stubChatContext) SetPartLocator(messageID string, stepIndex, partIndex int) {}
+func (s *stubChatContext) ClearPartLocator()                                         {}
 
 func TestTodoInjectionHook_Name(t *testing.T) {
 	h := NewTodoInjectionHook(&stubTodoManager{})

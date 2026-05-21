@@ -392,7 +392,7 @@ func (m *todoManager) validateNoCircularDeps(chatCtx iface.ChatContextInterface,
 // WithDependsOn sets dependencies for a todo
 func WithDependsOn(depIDs ...string) TodoOption {
 	return func(t *session.Todo) {
-		deps := make([]uuid.UUID, 0, len(depIDs))
+		deps := make(session.UUIDArray, 0, len(depIDs))
 		for _, id := range depIDs {
 			if uid, err := uuid.Parse(id); err == nil {
 				deps = append(deps, uid)
