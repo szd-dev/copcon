@@ -32,6 +32,8 @@ const (
 	UIPartStateComplete UIPartState = "complete"
 	// UIPartStateError 执行出错
 	UIPartStateError UIPartState = "error"
+	// UIPartStateWaitingForInput 等待用户输入（HITL）
+	UIPartStateWaitingForInput UIPartState = "waiting_for_input"
 )
 
 // UIMessage 定义UI层消息结构，使用parts数组支持富内容展示
@@ -53,15 +55,16 @@ type UIStep struct {
 
 // UIPart 定义UI消息中的内容部分，不同类型使用不同字段组合
 type UIPart struct {
-	Type       UIPartType  `json:"type"`
-	StepIndex  int         `json:"stepIndex,omitempty"`
-	Text       string      `json:"text,omitempty"`
-	State      UIPartState `json:"state,omitempty"`
-	ToolCallID string      `json:"toolCallId,omitempty"`
-	ToolName   string      `json:"toolName,omitempty"`
-	Args       string      `json:"args,omitempty"`
-	Output     string      `json:"output,omitempty"`
-	Error      string      `json:"error,omitempty"`
+	Type       UIPartType     `json:"type"`
+	StepIndex  int            `json:"stepIndex,omitempty"`
+	Text       string         `json:"text,omitempty"`
+	State      UIPartState    `json:"state,omitempty"`
+	ToolCallID string         `json:"toolCallId,omitempty"`
+	ToolName   string         `json:"toolName,omitempty"`
+	Args       string         `json:"args,omitempty"`
+	Output     string         `json:"output,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	Interrupt  map[string]any `json:"interrupt,omitempty"`
 }
 
 // UIMetadata 定义UI消息的元数据

@@ -105,14 +105,15 @@ type PartCreateData struct {
 
 // PartUpdateData Part更新事件数据
 type PartUpdateData struct {
-	MessageID string `json:"messageId"`
-	StepIndex int    `json:"stepIndex"`
-	PartIndex int    `json:"partIndex"`
-	PartType  string `json:"partType"`
-	TextDelta string `json:"textDelta,omitempty"`
-	State     string `json:"state,omitempty"`
-	Output    string `json:"output,omitempty"`
-	Error     string `json:"error,omitempty"`
+	MessageID string         `json:"messageId"`
+	StepIndex int            `json:"stepIndex"`
+	PartIndex int            `json:"partIndex"`
+	PartType  string         `json:"partType"`
+	TextDelta string         `json:"textDelta,omitempty"`
+	State     string         `json:"state,omitempty"`
+	Output    string         `json:"output,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Interrupt map[string]any `json:"interrupt,omitempty"`
 }
 
 // MessageDoneData 消息完成事件数据

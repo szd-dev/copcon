@@ -86,15 +86,16 @@ func (UIParts) GormDataType() string {
 // PersistedPart represents a single message part stored in the database.
 // JSON tags use camelCase matching entity.UIPart conventions.
 type PersistedPart struct {
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	State      string `json:"state,omitempty"`
-	ToolCallID string `json:"toolCallId,omitempty"`
-	ToolName   string `json:"toolName,omitempty"`
-	Args       string `json:"args,omitempty"`
-	Output     string `json:"output,omitempty"`
-	Error      string `json:"error,omitempty"`
-	StepIndex  int    `json:"stepIndex"`
+	Type       string         `json:"type"`
+	Text       string         `json:"text,omitempty"`
+	State      string         `json:"state,omitempty"`
+	ToolCallID string         `json:"toolCallId,omitempty"`
+	ToolName   string         `json:"toolName,omitempty"`
+	Args       string         `json:"args,omitempty"`
+	Output     string         `json:"output,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	Interrupt  map[string]any `json:"interrupt,omitempty"`
+	StepIndex  int            `json:"stepIndex"`
 }
 
 // PersistedParts is a slice of PersistedPart with GORM JSONB support.
@@ -155,6 +156,7 @@ func (p *PersistedParts) Scan(value interface{}) error {
 		pp.Args = strVal(m, "args")
 		pp.Output = strVal(m, "output")
 		pp.Error = strVal(m, "error")
+		pp.Interrupt = mapVal(m, "interrupt")
 		pp.StepIndex = intValFallback(m, "stepIndex", "step_index", 0)
 		result = append(result, pp)
 	}
@@ -217,6 +219,19 @@ func normalizePartType(t string) string {
 	default:
 		return t
 	}
+}
+
+// mapVal returns the map[string]any value for key, or nil if absent or wrong type.
+func mapVal(m map[string]any, key string) map[string]any {
+	v, ok := m[key]
+	if !ok {
+		return nil
+	}
+	result, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return result
 }
 
 type ToolCalls []ToolCall
