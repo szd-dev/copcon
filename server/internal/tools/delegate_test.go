@@ -130,6 +130,28 @@ func (m *mockContextManager) AddMessage(chatCtx chatcontextpkg.ChatContextInterf
 	return nil
 }
 
+func (m *mockContextManager) UpdateMessage(chatCtx chatcontextpkg.ChatContextInterface, msg *session.Message) error {
+	for i, existing := range m.messages {
+		if existing.ID == msg.ID {
+			m.messages[i] = *msg
+			return nil
+		}
+	}
+	m.messages = append(m.messages, *msg)
+	return nil
+}
+
+func (m *mockContextManager) UpsertMessage(chatCtx chatcontextpkg.ChatContextInterface, msg *session.Message) error {
+	for i, existing := range m.messages {
+		if existing.ID == msg.ID {
+			m.messages[i] = *msg
+			return nil
+		}
+	}
+	m.messages = append(m.messages, *msg)
+	return nil
+}
+
 func (m *mockContextManager) BuildContext(chatCtx chatcontextpkg.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
 }

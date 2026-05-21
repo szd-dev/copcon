@@ -411,6 +411,18 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 	// Generate messageID once for the entire agent loop
 	messageID := uuid.New().String()
 
+	// Track whether the assistant message row has been INSERTed yet.
+	// First persistMessage → INSERT; subsequent → UPDATE same row.
+	persistedMsgUUID := ""
+
+	// Accumulate Parts across all steps so the final UPDATE
+	// contains the complete picture for UIMessage rendering.
+	var accumulatedParts session.PersistedParts
+
+	// Accumulate ToolCalls across steps so UPDATE does not overwrite
+	// tool_calls from earlier steps with nil.
+	var accumulatedToolCalls session.ToolCalls
+
 	// Track iterations to emit step_create events on subsequent rounds
 	isFirstIteration := true
 	stepIndex := 0
@@ -498,7 +510,7 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		}
 
 		// Phase 4: Tool Call Handling
-		shouldContinue, err := e.handleToolCalls(chatCtx, agentDef.ToolManager, result)
+		shouldContinue, err := e.handleToolCalls(chatCtx, agentDef.ToolManager, result, &persistedMsgUUID, &accumulatedParts, &accumulatedToolCalls)
 		if err != nil {
 			return err
 		}
@@ -572,33 +584,68 @@ func convertToLLMTools(tools []openai.ChatCompletionToolUnionParam) []llm.ToolDe
 // If result has ToolCalls, they are included.
 // If isFinal is true, the message ID is set.
 // Parts JSONB is populated from the stream result for UIMessage format.
+//
+// persistedMsgUUID tracks whether the row has been INSERTed yet:
+// empty → first call (INSERT), non-empty → subsequent call (UPDATE).
+// accumulatedParts accumulates Parts across all steps.
 func (e *engineImpl) persistMessage(
 	chatCtx iface.ChatContextInterface,
 	result *StreamResult,
 	isFinal bool,
+	persistedMsgUUID *string,
+	accumulatedParts *session.PersistedParts,
+	accumulatedToolCalls *session.ToolCalls,
 ) error {
 	parts := e.buildUIParts(result, result.StepIndex)
+	*accumulatedParts = append(*accumulatedParts, parts...)
+
+	if len(result.ToolCalls) > 0 {
+		newCalls := e.convertToolCalls(result.ToolCalls)
+		*accumulatedToolCalls = append(*accumulatedToolCalls, newCalls...)
+	}
 
 	msg := &session.Message{
+		ID:        uuid.MustParse(result.MessageID),
 		Role:      "assistant",
 		Content:   result.Content,
 		Reasoning: result.ReasoningContent,
-		Parts:     parts,
+		Parts:     *accumulatedParts,
+		ToolCalls: *accumulatedToolCalls,
 	}
 
-	if isFinal {
-		msg.ID = uuid.MustParse(result.MessageID)
-	}
-
-	if len(result.ToolCalls) > 0 {
-		msg.ToolCalls = e.convertToolCalls(result.ToolCalls)
-	}
-
-	if err := e.contextMgr.AddMessage(chatCtx, msg); err != nil {
-		return fmt.Errorf("add assistant message: %w", err)
+	if *persistedMsgUUID == "" {
+		if err := e.contextMgr.AddMessage(chatCtx, msg); err != nil {
+			return fmt.Errorf("add assistant message: %w", err)
+		}
+		*persistedMsgUUID = result.MessageID
+	} else {
+		if err := e.contextMgr.UpdateMessage(chatCtx, msg); err != nil {
+			return fmt.Errorf("update assistant message: %w", err)
+		}
 	}
 
 	e.hookRunner.On(hook.OnMessagePersist, chatCtx, e.logger)
+
+	return nil
+}
+
+// persistMessageUpsert inserts or updates a message row by msgUUID.
+// First call for a given UUID → INSERT; subsequent calls → UPDATE.
+// Parts are replaced (not appended); callers must accumulate externally.
+func (e *engineImpl) persistMessageUpsert(
+	chatCtx iface.ChatContextInterface,
+	msgUUID string,
+	parts session.PersistedParts,
+) error {
+	msg := &session.Message{
+		ID:    uuid.MustParse(msgUUID),
+		Role:  "assistant",
+		Parts: parts,
+	}
+
+	if err := e.contextMgr.UpsertMessage(chatCtx, msg); err != nil {
+		return fmt.Errorf("upsert assistant message: %w", err)
+	}
 
 	return nil
 }

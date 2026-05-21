@@ -493,7 +493,7 @@ func TestContextHooks(t *testing.T) {
 			StepIndex: 0,
 			Content:   "Hello world",
 		}
-		err = engine.persistMessage(chatCtx, result, true)
+		err = engine.persistMessage(chatCtx, result, true, new(string), new(session.PersistedParts), new(session.ToolCalls))
 		require.NoError(t, err)
 
 		records := recorder.Records()
@@ -534,7 +534,7 @@ func TestContextHooks(t *testing.T) {
 			StepIndex: 0,
 			Content:   "Hello world",
 		}
-		err = engine.persistMessage(chatCtx, result, true)
+		err = engine.persistMessage(chatCtx, result, true, new(string), new(session.PersistedParts), new(session.ToolCalls))
 		require.NoError(t, err)
 		// No panic — success
 	})
@@ -721,6 +721,32 @@ func (m *recordingContextManager) GetHistory(chatCtx iface.ChatContextInterface,
 func (m *recordingContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.addMessages = append(m.addMessages, msg)
+	return nil
+}
+
+func (m *recordingContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, existing := range m.addMessages {
+		if existing.ID == msg.ID {
+			m.addMessages[i] = msg
+			return nil
+		}
+	}
+	m.addMessages = append(m.addMessages, msg)
+	return nil
+}
+
+func (m *recordingContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, existing := range m.addMessages {
+		if existing.ID == msg.ID {
+			m.addMessages[i] = msg
+			return nil
+		}
+	}
 	m.addMessages = append(m.addMessages, msg)
 	return nil
 }

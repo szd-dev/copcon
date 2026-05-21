@@ -751,6 +751,32 @@ func (m *mockOrderedContextManager) AddMessage(chatCtx iface.ChatContextInterfac
 	return nil
 }
 
+func (m *mockOrderedContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, existing := range m.messages {
+		if existing.ID == msg.ID {
+			m.messages[i] = msg
+			return nil
+		}
+	}
+	m.messages = append(m.messages, msg)
+	return nil
+}
+
+func (m *mockOrderedContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, existing := range m.messages {
+		if existing.ID == msg.ID {
+			m.messages[i] = msg
+			return nil
+		}
+	}
+	m.messages = append(m.messages, msg)
+	return nil
+}
+
 func (m *mockOrderedContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
 }

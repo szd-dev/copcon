@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/copcon/server/internal/context_builder"
 	"github.com/copcon/server/internal/domain/entity"
@@ -21,6 +22,8 @@ var (
 type ContextManager interface {
 	GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error)
 	AddMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
+	UpdateMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
+	UpsertMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
 	BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error)
 	DeleteBySession(chatCtx iface.ChatContextInterface) error
 }
@@ -70,6 +73,47 @@ func (m *contextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *ses
 	msg.SessionID = sessionUUID
 
 	return m.db.WithContext(chatCtx.Context()).Create(msg).Error
+}
+
+// UpdateMessage updates content, reasoning, parts, tool_calls by primary key.
+func (m *contextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	result := m.db.WithContext(chatCtx.Context()).
+		Model(&session.Message{}).
+		Where("id = ? AND session_id = ?", msg.ID, msg.SessionID).
+		Updates(map[string]any{
+			"content":    msg.Content,
+			"reasoning":  msg.Reasoning,
+			"parts":      msg.Parts,
+			"tool_calls": msg.ToolCalls,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("message not found: %s", msg.ID)
+	}
+	return nil
+}
+
+// UpsertMessage INSERTs or ON CONFLICT UPDATEs content, reasoning, parts, tool_calls.
+func (m *contextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
+	if err != nil {
+		return fmt.Errorf("invalid session ID: %w", err)
+	}
+
+	if msg.ID == uuid.Nil {
+		msg.ID = uuid.New()
+	}
+	msg.SessionID = sessionUUID
+
+	result := m.db.WithContext(chatCtx.Context()).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"content", "reasoning", "parts", "tool_calls"}),
+		}).
+		Create(msg)
+	return result.Error
 }
 
 func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {

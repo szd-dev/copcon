@@ -105,6 +105,14 @@ func (m *mockContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg 
 	return nil
 }
 
+func (m *mockContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	return nil
+}
+
+func (m *mockContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error {
+	return nil
+}
+
 func (m *mockContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
 }

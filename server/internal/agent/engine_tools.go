@@ -512,10 +512,15 @@ func (e *engineImpl) executeConcurrent(
 // Returns true if the loop should continue (tool calls were executed),
 // false if the loop should exit (no tool calls, final message persisted).
 // Emits part_create for each tool-call and EventMessageDone when no tool calls.
+// persistedMsgUUID tracks whether the assistant message row has been INSERTed yet.
+// accumulatedParts accumulates Parts across all steps for the final UPDATE.
 func (e *engineImpl) handleToolCalls(
 	chatCtx iface.ChatContextInterface,
 	toolMgr tool.ToolManager,
 	result *StreamResult,
+	persistedMsgUUID *string,
+	accumulatedParts *session.PersistedParts,
+	accumulatedToolCalls *session.ToolCalls,
 ) (bool, error) {
 	if len(result.ToolCalls) > 0 {
 		// Emit part_create for each tool-call part
@@ -594,14 +599,14 @@ func (e *engineImpl) handleToolCalls(
 
 		result.ToolResults = toolResults
 
-		if err := e.persistMessage(chatCtx, result, false); err != nil {
+		if err := e.persistMessage(chatCtx, result, false, persistedMsgUUID, accumulatedParts, accumulatedToolCalls); err != nil {
 			return false, err
 		}
 
 		return true, nil
 	}
 
-	if err := e.persistMessage(chatCtx, result, true); err != nil {
+	if err := e.persistMessage(chatCtx, result, true, persistedMsgUUID, accumulatedParts, accumulatedToolCalls); err != nil {
 		return false, err
 	}
 
