@@ -194,6 +194,11 @@ func TestDelegateToTool_SyncSuccess(t *testing.T) {
 	assert.Equal(t, "sub-agent", sessionMgr.created.DefaultAgentID)
 	assert.NotNil(t, sessionMgr.created.ParentSessionID)
 	assert.Equal(t, parentSessionID, *sessionMgr.created.ParentSessionID)
+
+	// Verify task message was injected into sub-session
+	assert.Len(t, contextMgr.messages, 1)
+	assert.Equal(t, "user", contextMgr.messages[0].Role)
+	assert.Equal(t, "Run a diagnostic", contextMgr.messages[0].Content)
 }
 
 func TestDelegateToTool_InvalidAgent(t *testing.T) {

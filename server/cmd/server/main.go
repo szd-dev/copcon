@@ -133,6 +133,14 @@ func main() {
 					}
 				}
 
+				if ac.ID == "code-assistant" {
+					if t, err := toolRegistry.Get("delegate_to"); err == nil {
+						if err := toolMgr.Register(t); err != nil {
+							return agent.AgentDefinition{}, fmt.Errorf("agent %s: failed to register delegate_to: %w", ac.ID, err)
+						}
+					}
+				}
+
 				opts := []option.RequestOption{
 					option.WithAPIKey(cfg.OpenAI.APIKey),
 				}
@@ -166,6 +174,13 @@ func main() {
 	logger.Info("Loaded agents", "count", len(agentRegistry.List()))
 
 	agentEngine := agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, asyncRegistry, agent.WithHookRunner(hookRunner))
+
+	// Register delegate_to tool (needs engine reference, done after engine creation)
+	delegateTool := tools.NewDelegateToTool(agentRegistry, sessionMgr, contextMgr, agentEngine)
+	if err := toolRegistry.Register(delegateTool); err != nil {
+		logger.Error("Failed to register delegate_to tool", "error", err)
+		os.Exit(1)
+	}
 
 	r := gin.Default()
 
