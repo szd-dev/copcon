@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/google/uuid"
-
 	"github.com/copcon/core/entity"
-	"github.com/copcon/core/storage"
 )
 
 type ChatContextInterface interface {
@@ -62,31 +59,3 @@ type InputResponse struct {
 }
 
 var ErrInterruptNotFound = errors.New("interrupt not found")
-
-// SessionCreateOption configures session creation.
-type SessionCreateOption func(*storage.Session)
-
-// WithParentSessionID sets the parent session for the new session.
-func WithParentSessionID(id uuid.UUID) SessionCreateOption {
-	return func(s *storage.Session) {
-		s.ParentSessionID = &id
-	}
-}
-
-// SessionManager provides session lifecycle operations for the agent engine.
-// It uses pure value types from the storage package (no GORM dependencies).
-type SessionManager interface {
-	GetSession(chatCtx ChatContextInterface) (*storage.Session, error)
-	CreateSession(chatCtx ChatContextInterface, title, defaultAgentID string, opts ...SessionCreateOption) (*storage.Session, error)
-	AddAsyncCompletionPending(chatCtx ChatContextInterface, event map[string]any) error
-}
-
-// ContextManager provides message and context operations for the agent engine.
-// It uses pure value types from the storage package (no GORM dependencies).
-type ContextManager interface {
-	AddMessage(chatCtx ChatContextInterface, msg *storage.Message) error
-	UpdateMessage(chatCtx ChatContextInterface, msg *storage.Message) error
-	UpsertMessage(chatCtx ChatContextInterface, msg *storage.Message) error
-	GetHistory(chatCtx ChatContextInterface, limit int) ([]*storage.Message, error)
-	BuildContext(chatCtx ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error)
-}

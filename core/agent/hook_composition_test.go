@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/core/chatcontext"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/llm"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/core/testutil"
 )
 
@@ -174,19 +174,18 @@ func TestHookComposition_Engine(t *testing.T) {
 	agentRegistry.Register("composition-test", agent)
 	agentRegistry.SetDefault("composition-test")
 
-	sessionMgr := newMockSessionManager()
+	sessionMgr := newMockSessionStore()
 	ctx := context.Background()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "composition-test")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "composition-test")
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "composition-test"})
 	require.NoError(t, err)
 
-	contextMgr := newMockContextManager()
+	contextMgr := newMockMessageStore()
 
 	// Create engine with global hooks
 	engine := NewTestEngine(
 		WithTestRegistry(agentRegistry),
-		WithTestSessionMgr(sessionMgr),
-		WithTestContextMgr(contextMgr),
+		WithTestSessionStore(sessionMgr),
+		WithTestMessageStore(contextMgr),
 		WithGlobalHooks(globalHook1, globalHook2),
 	)
 
@@ -230,15 +229,14 @@ func TestHookComposition_BackwardCompat(t *testing.T) {
 	agentRegistry.Register("no-hooks-agent", agent)
 	agentRegistry.SetDefault("no-hooks-agent")
 
-	sessionMgr := newMockSessionManager()
+	sessionMgr := newMockSessionStore()
 	ctx := context.Background()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "no-hooks-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "no-hooks-agent")
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "no-hooks-agent"})
 	require.NoError(t, err)
 
 	engine := NewTestEngine(
 		WithTestRegistry(agentRegistry),
-		WithTestSessionMgr(sessionMgr),
+		WithTestSessionStore(sessionMgr),
 	)
 
 	chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "no-hooks-agent")

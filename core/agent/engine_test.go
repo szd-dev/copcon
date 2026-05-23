@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/copcon/core/chatcontext"
+	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/llm"
@@ -18,97 +18,83 @@ import (
 	"github.com/copcon/core/tool"
 )
 
-type mockSessionManager struct {
+type mockSessionStore struct {
 	sessions map[string]*storage.Session
 }
 
-func newMockSessionManager() *mockSessionManager {
-	return &mockSessionManager{
+func newMockSessionStore() *mockSessionStore {
+	return &mockSessionStore{
 		sessions: make(map[string]*storage.Session),
 	}
 }
 
-func (m *mockSessionManager) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...iface.SessionCreateOption) (*storage.Session, error) {
-	s := &storage.Session{
-		ID:             uuid.New(),
-		Title:          title,
-		DefaultAgentID: defaultAgentID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-		Metadata:       make(map[string]any),
+func (m *mockSessionStore) Create(_ context.Context, s *storage.Session) (*storage.Session, error) {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
+	}
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]any)
 	}
 	m.sessions[s.ID.String()] = s
 	return s, nil
 }
 
-func (m *mockSessionManager) GetSession(chatCtx iface.ChatContextInterface) (*storage.Session, error) {
-	s, ok := m.sessions[chatCtx.SessionID()]
+func (m *mockSessionStore) Get(_ context.Context, id uuid.UUID) (*storage.Session, error) {
+	s, ok := m.sessions[id.String()]
 	if !ok {
 		return nil, ErrNoSession
 	}
 	return s, nil
 }
 
-func (m *mockSessionManager) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*storage.Session, int64, error) {
+func (m *mockSessionStore) List(_ context.Context, _, _ int) ([]*storage.Session, int64, error) {
 	return nil, 0, nil
 }
 
-func (m *mockSessionManager) DeleteSession(chatCtx iface.ChatContextInterface) error {
-	delete(m.sessions, chatCtx.SessionID())
+func (m *mockSessionStore) Delete(_ context.Context, id uuid.UUID) error {
+	delete(m.sessions, id.String())
 	return nil
 }
 
-func (m *mockSessionManager) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
+func (m *mockSessionStore) UpdateTitle(_ context.Context, _ uuid.UUID, _ string) error {
 	return nil
 }
 
-func (m *mockSessionManager) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
+func (m *mockSessionStore) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[string]any) error {
+	return nil
+}
+
+func (m *mockSessionStore) GetMessageCount(_ context.Context, _ uuid.UUID) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockSessionManager) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+func (m *mockSessionStore) AppendMetadata(_ context.Context, _ uuid.UUID, _ string, _ any) error {
 	return nil
 }
 
-func (m *mockSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
-	return nil
+type mockMessageStore struct{}
+
+func newMockMessageStore() *mockMessageStore {
+	return &mockMessageStore{}
 }
 
-type mockContextManager struct {
-	messages map[string][]entity.MessageForLLM
-}
-
-func newMockContextManager() *mockContextManager {
-	return &mockContextManager{
-		messages: make(map[string][]entity.MessageForLLM),
-	}
-}
-
-func (m *mockContextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]*storage.Message, error) {
+func (m *mockMessageStore) List(_ context.Context, _ uuid.UUID, _ int) ([]*storage.Message, error) {
 	return nil, nil
 }
 
-func (m *mockContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *mockMessageStore) Add(_ context.Context, _ *storage.Message) error {
 	return nil
 }
 
-func (m *mockContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *mockMessageStore) Update(_ context.Context, _ *storage.Message) error {
 	return nil
 }
 
-func (m *mockContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *mockMessageStore) Upsert(_ context.Context, _ *storage.Message) error {
 	return nil
 }
 
-func (m *mockContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
-	return nil, nil
-}
-
-func (m *mockContextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
-	return nil
-}
-
-func (m *mockContextManager) ClearMessages(chatCtx iface.ChatContextInterface) error {
+func (m *mockMessageStore) DeleteBySession(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
 
@@ -256,8 +242,8 @@ func (m *mockToolManagerForEngine) GetToolDefs() []llm.ToolDef {
 }
 
 func TestAgentEngineChatWithAgent(t *testing.T) {
-	sessionMgr := newMockSessionManager()
-	chat_context := newMockContextManager()
+	sessionMgr := newMockSessionStore()
+	chat_context := newMockMessageStore()
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -284,11 +270,10 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 	agentRegistry.SetDefault("agent-a")
 
 	ctx := context.Background()
-	chatCtxForCreate := chatcontext.NewChatContext(ctx, "", "agent-a")
-	session, err := sessionMgr.CreateSession(chatCtxForCreate, "Test Session", "agent-a")
+	session, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "agent-a"})
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, context_builder.New(), tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := chatcontext.NewChatContext(ctx, session.ID.String(), "agent-b")
@@ -302,8 +287,8 @@ func TestAgentEngineChatWithAgent(t *testing.T) {
 }
 
 func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
-	sessionMgr := newMockSessionManager()
-	chat_context := newMockContextManager()
+	sessionMgr := newMockSessionStore()
+	chat_context := newMockMessageStore()
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -320,11 +305,10 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 	agentRegistry.SetDefault("agent-a")
 
 	ctx := context.Background()
-	chatCtxForCreate := chatcontext.NewChatContext(ctx, "", "agent-a")
-	session, err := sessionMgr.CreateSession(chatCtxForCreate, "Test Session", "agent-a")
+	session, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "agent-a"})
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, context_builder.New(), tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := chatcontext.NewChatContext(ctx, session.ID.String(), "")
@@ -338,8 +322,8 @@ func TestAgentEngineChatWithDefaultAgent(t *testing.T) {
 }
 
 func TestAgentEngineSystemPrompt(t *testing.T) {
-	sessionMgr := newMockSessionManager()
-	chat_context := newMockContextManager()
+	sessionMgr := newMockSessionStore()
+	chat_context := newMockMessageStore()
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -357,11 +341,10 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 	agentRegistry.SetDefault("coding-agent")
 
 	ctx := context.Background()
-	chatCtxForCreate := chatcontext.NewChatContext(ctx, "", "coding-agent")
-	session, err := sessionMgr.CreateSession(chatCtxForCreate, "Test Session", "coding-agent")
+	session, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "coding-agent"})
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, context_builder.New(), tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	agentDef, err := agentRegistry.Get("coding-agent")
@@ -379,8 +362,8 @@ func TestAgentEngineSystemPrompt(t *testing.T) {
 }
 
 func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
-	sessionMgr := newMockSessionManager()
-	chat_context := newMockContextManager()
+	sessionMgr := newMockSessionStore()
+	chat_context := newMockMessageStore()
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -397,11 +380,10 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 	agentRegistry.SetDefault("agent-1")
 
 	ctx := context.Background()
-	chatCtxForCreate := chatcontext.NewChatContext(ctx, "", "agent-1")
-	session, err := sessionMgr.CreateSession(chatCtxForCreate, "Test Session", "agent-1")
+	session, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "agent-1"})
 	require.NoError(t, err)
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, context_builder.New(), tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 
 	chatCtxForChat := chatcontext.NewChatContext(ctx, session.ID.String(), "non-existent-agent")
@@ -421,8 +403,8 @@ func TestAgentEngineChatWithInvalidAgent(t *testing.T) {
 }
 
 func TestAgentEngineStateless(t *testing.T) {
-	sessionMgr := newMockSessionManager()
-	chat_context := newMockContextManager()
+	sessionMgr := newMockSessionStore()
+	chat_context := newMockMessageStore()
 
 	agentRegistry := newMockAgentRegistry()
 
@@ -438,13 +420,13 @@ func TestAgentEngineStateless(t *testing.T) {
 	agentRegistry.Register("agent-1", agent)
 	agentRegistry.SetDefault("agent-1")
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, chat_context, context_builder.New(), tool.NewAsyncToolRegistry())
 	require.NotNil(t, engine)
 	eng := engine.(*engineImpl)
 
 	assert.NotNil(t, eng.agentRegistry)
-	assert.NotNil(t, eng.sessionMgr)
-	assert.NotNil(t, eng.contextMgr)
+	assert.NotNil(t, eng.sessionStore)
+	assert.NotNil(t, eng.messageStore)
 }
 
 func TestMessageDataMessageID(t *testing.T) {
@@ -1089,21 +1071,22 @@ func TestConcurrencyConfigWithConcurrency(t *testing.T) {
 
 func TestConcurrencyConfigPanicOnZero(t *testing.T) {
 	assert.PanicsWithValue(t, "WithConcurrency: n must be > 0, got 0", func() {
-		NewAgentEngine(newMockAgentRegistry(), newMockSessionManager(), newMockContextManager(), tool.NewAsyncToolRegistry(), WithConcurrency(0))
+		NewAgentEngine(newMockAgentRegistry(), newMockSessionStore(), newMockMessageStore(), context_builder.New(), tool.NewAsyncToolRegistry(), WithConcurrency(0))
 	})
 }
 
 func TestConcurrencyConfigPanicOnNegative(t *testing.T) {
 	assert.PanicsWithValue(t, "WithConcurrency: n must be > 0, got -1", func() {
-		NewAgentEngine(newMockAgentRegistry(), newMockSessionManager(), newMockContextManager(), tool.NewAsyncToolRegistry(), WithConcurrency(-1))
+		NewAgentEngine(newMockAgentRegistry(), newMockSessionStore(), newMockMessageStore(), context_builder.New(), tool.NewAsyncToolRegistry(), WithConcurrency(-1))
 	})
 }
 
 func TestNewAgentEngineWithConcurrency(t *testing.T) {
 	engine := NewAgentEngine(
 		newMockAgentRegistry(),
-		newMockSessionManager(),
-		newMockContextManager(),
+		newMockSessionStore(),
+		newMockMessageStore(),
+		context_builder.New(),
 		tool.NewAsyncToolRegistry(),
 		WithConcurrency(3),
 	)
@@ -1160,13 +1143,13 @@ func TestStepLimit(t *testing.T) {
 	agentRegistry.Register("test-agent", agent)
 	agentRegistry.SetDefault("test-agent")
 
-	sessionMgr := newMockSessionManager()
-	session, err := sessionMgr.CreateSession(chatcontext.NewChatContext(ctx, "", "test-agent"), "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	session, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, session.ID.String(), "test-agent")
 
-	engine := NewAgentEngine(agentRegistry, sessionMgr, newMockContextManager(), tool.NewAsyncToolRegistry())
+	engine := NewAgentEngine(agentRegistry, sessionMgr, newMockMessageStore(), context_builder.New(), tool.NewAsyncToolRegistry())
 
 	// Collect events in background
 	var events []entity.Event
@@ -1218,22 +1201,22 @@ func TestDepthAllowed(t *testing.T) {
 
 	// Depth 0 — should work fine (as existing tests rely on this)
 	chatCtx0 := chatcontext.NewChatContext(ctx, "test-depth-0", "test-agent")
-	sessionMgr0 := newMockSessionManager()
-	_, err := sessionMgr0.CreateSession(chatcontext.NewChatContext(ctx, "", "test-agent"), "Test", "test-agent")
+	sessionMgr0 := newMockSessionStore()
+	_, err := sessionMgr0.Create(context.Background(), &storage.Session{Title: "Test", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
-	engine0 := NewTestEngine(WithTestSessionMgr(sessionMgr0))
+	engine0 := NewTestEngine(WithTestSessionStore(sessionMgr0))
 	err = engine0.Chat(chatCtx0, "Hello")
 	require.NoError(t, err)
 	chatCtx0.Close()
 
 	// Depth 2 — should also work fine
 	chatCtx2 := chatcontext.NewChatContext(ctx, "test-depth-2", "test-agent").WithDepth(2)
-	sessionMgr2 := newMockSessionManager()
-	_, err = sessionMgr2.CreateSession(chatcontext.NewChatContext(ctx, "", "test-agent"), "Test", "test-agent")
+	sessionMgr2 := newMockSessionStore()
+	_, err = sessionMgr2.Create(context.Background(), &storage.Session{Title: "Test", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
-	engine2 := NewTestEngine(WithTestSessionMgr(sessionMgr2))
+	engine2 := NewTestEngine(WithTestSessionStore(sessionMgr2))
 	err = engine2.Chat(chatCtx2, "Hello")
 	require.NoError(t, err)
 	chatCtx2.Close()

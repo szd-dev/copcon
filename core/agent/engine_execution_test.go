@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -702,9 +703,9 @@ func TestResultOrdering(t *testing.T) {
 	toolMgr.Register(toolC)
 
 	// Use a mock context manager that records message order
-	orderedMgr := &mockOrderedContextManager{}
+	orderedMgr := &mockOrderedMessageStore{}
 
-	engine := NewTestEngine(WithTestContextMgr(orderedMgr))
+	engine := NewTestEngine(WithTestMessageStore(orderedMgr))
 
 	ctx := context.Background()
 	sessionID := "test-ordering-session"
@@ -734,24 +735,23 @@ func TestResultOrdering(t *testing.T) {
 	closeMockChatContext(chatCtx)
 }
 
-// mockOrderedContextManager tracks the order of message additions
-type mockOrderedContextManager struct {
+type mockOrderedMessageStore struct {
 	messages []*storage.Message
 	mu       sync.Mutex
 }
 
-func (m *mockOrderedContextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]*storage.Message, error) {
+func (m *mockOrderedMessageStore) List(_ context.Context, _ uuid.UUID, _ int) ([]*storage.Message, error) {
 	return nil, nil
 }
 
-func (m *mockOrderedContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *mockOrderedMessageStore) Add(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messages = append(m.messages, msg)
 	return nil
 }
 
-func (m *mockOrderedContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *mockOrderedMessageStore) Update(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, existing := range m.messages {
@@ -764,7 +764,7 @@ func (m *mockOrderedContextManager) UpdateMessage(chatCtx iface.ChatContextInter
 	return nil
 }
 
-func (m *mockOrderedContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *mockOrderedMessageStore) Upsert(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, existing := range m.messages {
@@ -777,15 +777,7 @@ func (m *mockOrderedContextManager) UpsertMessage(chatCtx iface.ChatContextInter
 	return nil
 }
 
-func (m *mockOrderedContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
-	return nil, nil
-}
-
-func (m *mockOrderedContextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
-	return nil
-}
-
-func (m *mockOrderedContextManager) ClearMessages(chatCtx iface.ChatContextInterface) error {
+func (m *mockOrderedMessageStore) DeleteBySession(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
 

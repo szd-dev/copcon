@@ -6,8 +6,9 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
+	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/iface"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
 )
 
@@ -17,15 +18,15 @@ func WithTestRegistry(reg AgentRegistry) EngineOption {
 	}
 }
 
-func WithTestSessionMgr(mgr iface.SessionManager) EngineOption {
+func WithTestSessionStore(store storage.SessionStore) EngineOption {
 	return func(e *engineImpl) {
-		e.sessionMgr = mgr
+		e.sessionStore = store
 	}
 }
 
-func WithTestContextMgr(mgr iface.ContextManager) EngineOption {
+func WithTestMessageStore(store storage.MessageStore) EngineOption {
 	return func(e *engineImpl) {
-		e.contextMgr = mgr
+		e.messageStore = store
 	}
 }
 
@@ -37,13 +38,14 @@ func WithTestAsyncRegistry(reg *tool.AsyncToolRegistry) EngineOption {
 
 func NewTestEngine(opts ...EngineOption) *engineImpl {
 	e := &engineImpl{
-		agentRegistry: newMockAgentRegistry(),
-		sessionMgr:    newMockSessionManager(),
-		contextMgr:    newMockContextManager(),
-		hookRunner:    hook.NewEmptyRunner(),
-		concurrency:   5,
-		asyncRegistry: tool.NewAsyncToolRegistry(),
-		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		agentRegistry:  newMockAgentRegistry(),
+		sessionStore:   newMockSessionStore(),
+		messageStore:   newMockMessageStore(),
+		ctxBuilder:     context_builder.New(),
+		hookRunner:     hook.NewEmptyRunner(),
+		concurrency:    5,
+		asyncRegistry:  tool.NewAsyncToolRegistry(),
+		logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	for _, opt := range opts {
 		opt(e)

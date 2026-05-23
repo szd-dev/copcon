@@ -4,152 +4,144 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 
 	"github.com/copcon/core/agent"
-	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/core/chat"
 	"github.com/copcon/core/chatcontext"
-	"github.com/copcon/core/context_builder"
-	"github.com/copcon/server/internal/config"
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/iface"
-	"github.com/copcon/server/internal/session"
 	"github.com/copcon/core/storage"
-	"github.com/copcon/server/internal/tools/todo"
+	"github.com/copcon/server/internal/config"
 )
 
-type mockSessionManager struct {
-	sessions map[string]*session.Session
-	db       *gorm.DB
+type testStoreProvider struct {
+	sessionStore *mockSessionStore
+	messageStore *mockMessageStore
+	todoStore    *mockTodoStore
 }
 
-func newMockSessionManager() *mockSessionManager {
-	return &mockSessionManager{
-		sessions: make(map[string]*session.Session),
+func (p *testStoreProvider) Sessions() storage.SessionStore { return p.sessionStore }
+func (p *testStoreProvider) Messages() storage.MessageStore { return p.messageStore }
+func (p *testStoreProvider) Todos() storage.TodoStore       { return p.todoStore }
+
+type testHarness struct {
+	store         *testStoreProvider
+	engine        agent.AgentEngine
+	agentRegistry agent.AgentRegistry
+}
+
+func (h *testHarness) Store() storage.StoreProvider    { return h.store }
+func (h *testHarness) Engine() agent.AgentEngine        { return h.engine }
+func (h *testHarness) Registry() agent.AgentRegistry    { return h.agentRegistry }
+func (h *testHarness) SessionStore() chat.SessionStore { return chat.NewSessionStore() }
+
+type mockSessionStore struct {
+	sessions map[uuid.UUID]*storage.Session
+}
+
+func newMockSessionStore() *mockSessionStore {
+	return &mockSessionStore{
+		sessions: make(map[uuid.UUID]*storage.Session),
 	}
 }
 
-func (m *mockSessionManager) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
-	sess := &session.Session{
-		ID:             uuid.New(),
-		Title:          title,
-		DefaultAgentID: defaultAgentID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-		Metadata:       make(map[string]any),
+func (m *mockSessionStore) Create(_ context.Context, s *storage.Session) (*storage.Session, error) {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
 	}
-	m.sessions[sess.ID.String()] = sess
-	return sess, nil
+	m.sessions[s.ID] = s
+	return s, nil
 }
 
-func (m *mockSessionManager) GetSession(chatCtx iface.ChatContextInterface) (*session.Session, error) {
-	sess, ok := m.sessions[chatCtx.SessionID()]
+func (m *mockSessionStore) Get(_ context.Context, id uuid.UUID) (*storage.Session, error) {
+	sess, ok := m.sessions[id]
 	if !ok {
-		return nil, session.ErrSessionNotFound
+		return nil, fmt.Errorf("session not found")
 	}
 	return sess, nil
 }
 
-func (m *mockSessionManager) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
-	var list []*session.Session
+func (m *mockSessionStore) List(_ context.Context, limit, offset int) ([]*storage.Session, int64, error) {
+	var list []*storage.Session
 	for _, s := range m.sessions {
 		list = append(list, s)
 	}
 	return list, int64(len(list)), nil
 }
 
-func (m *mockSessionManager) DeleteSession(chatCtx iface.ChatContextInterface) error {
-	if _, ok := m.sessions[chatCtx.SessionID()]; !ok {
-		return session.ErrSessionNotFound
+func (m *mockSessionStore) Delete(_ context.Context, id uuid.UUID) error {
+	if _, ok := m.sessions[id]; !ok {
+		return fmt.Errorf("session not found")
 	}
-	delete(m.sessions, chatCtx.SessionID())
+	delete(m.sessions, id)
 	return nil
 }
 
-func (m *mockSessionManager) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
-	sess, ok := m.sessions[chatCtx.SessionID()]
+func (m *mockSessionStore) UpdateTitle(_ context.Context, id uuid.UUID, title string) error {
+	sess, ok := m.sessions[id]
 	if !ok {
-		return session.ErrSessionNotFound
+		return fmt.Errorf("session not found")
 	}
 	sess.Title = title
 	return nil
 }
 
-func (m *mockSessionManager) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
+func (m *mockSessionStore) UpdateMetadata(_ context.Context, id uuid.UUID, metadata map[string]any) error {
+	return nil
+}
+
+func (m *mockSessionStore) GetMessageCount(_ context.Context, sessionID uuid.UUID) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockSessionManager) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+func (m *mockSessionStore) AppendMetadata(_ context.Context, id uuid.UUID, key string, value any) error {
 	return nil
 }
 
-func (m *mockSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
+type mockTodoStore struct{}
+
+func (m *mockTodoStore) Create(_ context.Context, t *storage.Todo) (*storage.Todo, error) {
+	return t, nil
+}
+func (m *mockTodoStore) Get(_ context.Context, id uuid.UUID) (*storage.Todo, error) {
+	return nil, fmt.Errorf("todo not found")
+}
+func (m *mockTodoStore) List(_ context.Context, sessionID uuid.UUID) ([]*storage.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoStore) UpdateStatus(_ context.Context, id uuid.UUID, status storage.TodoStatus) (*storage.Todo, error) {
+	return nil, fmt.Errorf("todo not found")
+}
+func (m *mockTodoStore) DeleteBySession(_ context.Context, sessionID uuid.UUID) error {
 	return nil
 }
-
-type mockTodoManager struct{}
 
 type mockMessageStore struct{}
 
-func (m *mockMessageStore) List(ctx context.Context, sessionID uuid.UUID, limit int) ([]*storage.Message, error) {
+func (m *mockMessageStore) List(_ context.Context, sessionID uuid.UUID, limit int) ([]*storage.Message, error) {
 	return nil, nil
 }
-func (m *mockMessageStore) Add(ctx context.Context, message *storage.Message) error {
+func (m *mockMessageStore) Add(_ context.Context, message *storage.Message) error {
 	return nil
 }
-func (m *mockMessageStore) Update(ctx context.Context, message *storage.Message) error {
+func (m *mockMessageStore) Update(_ context.Context, message *storage.Message) error {
 	return nil
 }
-func (m *mockMessageStore) Upsert(ctx context.Context, message *storage.Message) error {
+func (m *mockMessageStore) Upsert(_ context.Context, message *storage.Message) error {
 	return nil
 }
-func (m *mockMessageStore) DeleteBySession(ctx context.Context, sessionID uuid.UUID) error {
+func (m *mockMessageStore) DeleteBySession(_ context.Context, sessionID uuid.UUID) error {
 	return nil
-}
-
-func (m *mockTodoManager) CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...todo.TodoOption) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) GetTodo(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) ListTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) Update(chatCtx iface.ChatContextInterface, id string, updates map[string]any) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) Delete(chatCtx iface.ChatContextInterface, id string) error {
-	return nil
-}
-func (m *mockTodoManager) Start(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) Complete(chatCtx iface.ChatContextInterface, id string, result string) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) Fail(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) Block(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) Unblock(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
-	return nil, nil
-}
-func (m *mockTodoManager) GetAvailableTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
-	return nil, nil
 }
 
 type mockAgentRegistry struct {
@@ -213,14 +205,15 @@ func setupTestHandler(t *testing.T) (*Handler, func()) {
 		},
 	}
 
-	sessionMgr := newMockSessionManager()
-	todoMgr := &mockTodoManager{}
+	sessionStore := newMockSessionStore()
+	todoStore := &mockTodoStore{}
+	messageStore := &mockMessageStore{}
 	agentRegistry := newMockAgentRegistry("default-agent")
 
 	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
 	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
 
-	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, &mockMessageStore{})
+	handler := NewHandler(cfg, &testHarness{store: &testStoreProvider{sessionStore, messageStore, todoStore}, agentRegistry: agentRegistry})
 
 	cleanup := func() {}
 
@@ -420,175 +413,13 @@ func TestListAgents(t *testing.T) {
 	assert.Equal(t, "gpt-4o", agent1["model"])
 }
 
-func setupTestDB(t *testing.T) *gorm.DB {
-	dsn := "host=localhost user=admin password=changeme dbname=agent_infra port=5432 sslmode=disable"
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		t.Skipf("PostgreSQL not available: %v", err)
-	}
-
-	err = db.AutoMigrate(&session.Session{}, &session.Message{})
-	require.NoError(t, err)
-
-	db.Exec("DELETE FROM messages WHERE content LIKE 'Test:%'")
-	db.Exec("DELETE FROM sessions WHERE title LIKE 'Test:%'")
-
-	return db
-}
-
-func createTestSessionForMessages(t *testing.T, db *gorm.DB) *session.Session {
-	sess := &session.Session{
-		ID:             uuid.New(),
-		Title:          "Test: " + uuid.New().String(),
-		DefaultAgentID: "default-agent",
-		Metadata:       make(map[string]any),
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-	err := db.Create(sess).Error
-	require.NoError(t, err)
-	return sess
-}
-
-func TestGetMessagesReasoning(t *testing.T) {
-	db := setupTestDB(t)
-	gin.SetMode(gin.TestMode)
-
-	sess := createTestSessionForMessages(t, db)
-
-	reasoningContent := "Let me think about this step by step..."
-	msg := &session.Message{
-		ID:        uuid.New(),
-		SessionID: sess.ID,
-		Role:      "assistant",
-		Content:   "Test: message with reasoning",
-		Reasoning: reasoningContent,
-		CreatedAt: time.Now(),
-	}
-	err := db.Create(msg).Error
-	require.NoError(t, err)
-
-	cfg := &config.Config{DefaultAgentID: "default-agent"}
-	sessionMgr := &dbSessionManager{db: db}
-	todoMgr := &mockTodoManager{}
-	agentRegistry := newMockAgentRegistry("default-agent")
-	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
-	_, messageStore := chat_context.NewContextManager(db, context_builder.New(), nil)
-
-	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, messageStore)
-
-	router := gin.New()
-	router.GET("/api/sessions/:sessionId/messages", handler.GetMessages)
-
-	req, _ := http.NewRequest("GET", "/api/sessions/"+sess.ID.String()+"/messages", nil)
-	w := httptest.NewRecorder()
-
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-
-	messages, ok := response["messages"].([]interface{})
-	require.True(t, ok, "response should contain messages array")
-	require.Len(t, messages, 1, "should have exactly one message")
-
-	message := messages[0].(map[string]interface{})
-
-	assert.Equal(t, msg.ID.String(), message["id"])
-	assert.Equal(t, sess.ID.String(), message["session_id"])
-	assert.Equal(t, "assistant", message["role"])
-	assert.Equal(t, "Test: message with reasoning", message["content"])
-
-	reasoning, hasReasoning := message["reasoning"]
-	require.True(t, hasReasoning, "response MUST include 'reasoning' field")
-	assert.Equal(t, reasoningContent, reasoning, "reasoning field should match stored value")
-}
-
-type dbSessionManager struct {
-	db *gorm.DB
-}
-
-func (m *dbSessionManager) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
-	sess := &session.Session{
-		ID:             uuid.New(),
-		Title:          title,
-		DefaultAgentID: defaultAgentID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-		Metadata:       make(map[string]any),
-	}
-	err := m.db.Create(sess).Error
-	return sess, err
-}
-
-func (m *dbSessionManager) GetSession(chatCtx iface.ChatContextInterface) (*session.Session, error) {
-	var sess session.Session
-	err := m.db.Where("id = ?", chatCtx.SessionID()).First(&sess).Error
-	if err != nil {
-		return nil, session.ErrSessionNotFound
-	}
-	return &sess, nil
-}
-
-func (m *dbSessionManager) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
-	var sessions []*session.Session
-	var total int64
-	m.db.Model(&session.Session{}).Count(&total)
-	m.db.Limit(limit).Offset(offset).Find(&sessions)
-	return sessions, total, nil
-}
-
-func (m *dbSessionManager) DeleteSession(chatCtx iface.ChatContextInterface) error {
-	return m.db.Delete(&session.Session{}, "id = ?", chatCtx.SessionID()).Error
-}
-
-func (m *dbSessionManager) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
-	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("title", title).Error
-}
-
-func (m *dbSessionManager) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
-	var count int64
-	err := m.db.Model(&session.Message{}).Where("session_id = ?", chatCtx.SessionID()).Count(&count).Error
-	return count, err
-}
-
-func (m *dbSessionManager) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
-	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("metadata", metadata).Error
-}
-
-func (m *dbSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
-	sess, err := m.GetSession(chatCtx)
-	if err != nil {
-		return err
-	}
-
-	if sess.Metadata == nil {
-		sess.Metadata = make(map[string]any)
-	}
-
-	var pending []map[string]any
-	if val, ok := sess.Metadata["async_completion_pending"].([]map[string]any); ok {
-		pending = val
-	} else {
-		pending = []map[string]any{}
-	}
-
-	pending = append(pending, event)
-	sess.Metadata["async_completion_pending"] = pending
-
-	return m.UpdateSessionMetadata(chatCtx, sess.Metadata)
-}
-
 func TestBackfillParts_UserMessage(t *testing.T) {
-	msg := session.Message{
+	msg := storage.Message{
 		ID:      uuid.New(),
 		Role:    "user",
 		Content: "Hello",
 	}
-	parts := session.BackfillParts(msg, nil)
+	parts := BackfillParts(msg, nil)
 	require.Len(t, parts, 1)
 	assert.Equal(t, "text", parts[0].Type)
 	assert.Equal(t, "Hello", parts[0].Text)
@@ -597,17 +428,17 @@ func TestBackfillParts_UserMessage(t *testing.T) {
 }
 
 func TestBackfillParts_AssistantWithToolCalls(t *testing.T) {
-	msg := session.Message{
+	msg := storage.Message{
 		ID:        uuid.New(),
 		Role:      "assistant",
 		Reasoning: "Thinking...",
 		Content:   "Let me check.",
-		ToolCalls: session.ToolCalls{
-			{ID: "call_1", Type: "function", Function: session.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
+		ToolCalls: []storage.ToolCall{
+			{ID: "call_1", Type: "function", Function: storage.FunctionCall{Name: "bash", Arguments: `{"cmd":"ls"}`}},
 		},
 	}
 	toolResults := map[string]string{"call_1": "file.txt"}
-	parts := session.BackfillParts(msg, toolResults)
+	parts := BackfillParts(msg, toolResults)
 	require.Len(t, parts, 3)
 
 	assert.Equal(t, "reasoning", parts[0].Type)
@@ -626,14 +457,14 @@ func TestBackfillParts_AssistantWithToolCalls(t *testing.T) {
 }
 
 func TestBackfillParts_AssistantToolCallOnly(t *testing.T) {
-	msg := session.Message{
+	msg := storage.Message{
 		ID:   uuid.New(),
 		Role: "assistant",
-		ToolCalls: session.ToolCalls{
-			{ID: "call_2", Type: "function", Function: session.FunctionCall{Name: "python", Arguments: `{"code":"1+1"}`}},
+		ToolCalls: []storage.ToolCall{
+			{ID: "call_2", Type: "function", Function: storage.FunctionCall{Name: "python", Arguments: `{"code":"1+1"}`}},
 		},
 	}
-	parts := session.BackfillParts(msg, nil)
+	parts := BackfillParts(msg, nil)
 	require.Len(t, parts, 1)
 	assert.Equal(t, "tool-call", parts[0].Type)
 	assert.Equal(t, "call_2", parts[0].ToolCallID)
@@ -641,11 +472,11 @@ func TestBackfillParts_AssistantToolCallOnly(t *testing.T) {
 }
 
 func TestGroupPartsByStep_SingleStep(t *testing.T) {
-	parts := session.PersistedParts{
+	parts := []storage.Part{
 		{Type: "text", Text: "Hello", StepIndex: 0},
 		{Type: "tool-call", ToolCallID: "c1", StepIndex: 0},
 	}
-	steps := session.GroupPartsByStep(parts)
+	steps := GroupPartsByStep(parts)
 	require.Len(t, steps, 1)
 	assert.Equal(t, entity.UIPartStateDone, steps[0].State)
 	require.Len(t, steps[0].Parts, 2)
@@ -654,12 +485,12 @@ func TestGroupPartsByStep_SingleStep(t *testing.T) {
 }
 
 func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
-	parts := session.PersistedParts{
+	parts := []storage.Part{
 		{Type: "text", Text: "Step 0", StepIndex: 0},
 		{Type: "text", Text: "Step 1", StepIndex: 1},
 		{Type: "tool-call", ToolCallID: "c1", StepIndex: 1},
 	}
-	steps := session.GroupPartsByStep(parts)
+	steps := GroupPartsByStep(parts)
 	require.Len(t, steps, 2)
 	require.Len(t, steps[0].Parts, 1)
 	assert.Equal(t, "Step 0", steps[0].Parts[0].Text)
@@ -667,11 +498,10 @@ func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
 }
 
 func TestGroupPartsByStep_Empty(t *testing.T) {
-	steps := session.GroupPartsByStep(nil)
+	steps := GroupPartsByStep(nil)
 	assert.Len(t, steps, 0)
 }
 
-// mockAgentEngine implements agent.AgentEngine for testing.
 type mockAgentEngine struct {
 	chatFn func(chatCtx iface.ChatContextInterface, userInput string) error
 }
@@ -683,7 +513,7 @@ func (m *mockAgentEngine) Chat(chatCtx iface.ChatContextInterface, userInput str
 	return nil
 }
 
-func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, *SessionAgentStore, func()) {
+func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, chat.SessionStore, func()) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{
@@ -694,18 +524,19 @@ func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, *
 		},
 	}
 
-	sessionMgr := newMockSessionManager()
-	todoMgr := &mockTodoManager{}
+	sessionStore := newMockSessionStore()
+	todoStore := &mockTodoStore{}
+	messageStore := &mockMessageStore{}
 	agentRegistry := newMockAgentRegistry("default-agent")
 
 	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
 	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
 
-	handler := NewHandler(cfg, sessionMgr, todoMgr, mockAgent, agentRegistry, &mockMessageStore{})
+	handler := NewHandler(cfg, &testHarness{store: &testStoreProvider{sessionStore, messageStore, todoStore}, engine: mockAgent, agentRegistry: agentRegistry})
 
 	cleanup := func() {}
 
-	return handler, handler.sessionAgentStore, cleanup
+	return handler, handler.chatStore, cleanup
 }
 
 func createSessionViaHandler(t *testing.T, router *gin.Engine) string {
@@ -921,7 +752,7 @@ func TestChat_FirstConnectEmptyContent(t *testing.T) {
 }
 
 func TestSessionAgentStore(t *testing.T) {
-	store := NewSessionAgentStore()
+	store := chat.NewSessionStore()
 
 	_, ok := store.Get("nonexistent")
 	assert.False(t, ok)
@@ -966,12 +797,10 @@ func TestChat_EventsLostOnReconnect(t *testing.T) {
 
 	sessionID := createSessionViaHandler(t, router)
 
-	// Put a closed ChatContext (no events, already closed)
 	chatCtx := chatcontext.NewChatContext(context.Background(), sessionID, "")
 	chatCtx.Close()
 	store.Put(sessionID, chatCtx)
 
-	// Subscribe from seq that's beyond what's available (seq=0 but currentSeq=0, fromSeq=5)
 	body := `{"reconnect":true,"last_event_seq":5}`
 	req, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/copcon/core/chatcontext"
 	"github.com/copcon/core/entity"
-	"github.com/copcon/core/iface"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/storage"
@@ -155,19 +155,12 @@ func TestContextHooks(t *testing.T) {
 		runner := hook.NewHookRunner()
 		runner.Register(recorder)
 
-		// Create session manager with a pre-populated session
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
-		// Create context manager that returns messages for BuildContext
-		contextMgr := &recordingContextManager{
-			messages: []entity.MessageForLLM{
-				{Role: "system", Content: "You are a test assistant."},
-			},
-		}
+		contextMgr := &recordingMessageStore{}
 
 		// Create agent registry with a mock OpenAI client pointing at our test server
 		agentRegistry := newMockAgentRegistry()
@@ -189,8 +182,8 @@ func TestContextHooks(t *testing.T) {
 		// Create engine with hook runner
 		engine := NewTestEngine(
 			WithTestRegistry(agentRegistry),
-			WithTestSessionMgr(sessionMgr),
-			WithTestContextMgr(contextMgr),
+			WithTestSessionStore(sessionMgr),
+			WithTestMessageStore(contextMgr),
 			WithHookRunner(runner),
 		)
 
@@ -343,18 +336,12 @@ func TestContextHooks(t *testing.T) {
 		runner := hook.NewHookRunner()
 		runner.Register(recorder)
 
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
-		// Context manager that records AddMessage calls (needed for tool call loop)
-		contextMgr := &recordingContextManager{
-			messages: []entity.MessageForLLM{
-				{Role: "system", Content: "You are a test assistant."},
-			},
-		}
+		contextMgr := &recordingMessageStore{}
 
 		agentRegistry := newMockAgentRegistry()
 		mockClient := openai.NewClient(
@@ -384,8 +371,8 @@ func TestContextHooks(t *testing.T) {
 
 		engine := NewTestEngine(
 			WithTestRegistry(agentRegistry),
-			WithTestSessionMgr(sessionMgr),
-			WithTestContextMgr(contextMgr),
+			WithTestSessionStore(sessionMgr),
+			WithTestMessageStore(contextMgr),
 			WithHookRunner(runner),
 		)
 
@@ -431,10 +418,9 @@ func TestContextHooks(t *testing.T) {
 		runner := hook.NewHookRunner()
 		runner.Register(recorder)
 
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
 		agentRegistry := newMockAgentRegistry()
@@ -449,7 +435,7 @@ func TestContextHooks(t *testing.T) {
 
 		engine := NewTestEngine(
 			WithTestRegistry(agentRegistry),
-			WithTestSessionMgr(sessionMgr),
+			WithTestSessionStore(sessionMgr),
 			WithHookRunner(runner),
 		)
 
@@ -469,21 +455,16 @@ func TestContextHooks(t *testing.T) {
 		runner := hook.NewHookRunner()
 		runner.Register(recorder)
 
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
-		contextMgr := &recordingContextManager{
-			messages: []entity.MessageForLLM{
-				{Role: "system", Content: "You are a test assistant."},
-			},
-		}
+		contextMgr := &recordingMessageStore{}
 
 		engine := NewTestEngine(
-			WithTestSessionMgr(sessionMgr),
-			WithTestContextMgr(contextMgr),
+			WithTestSessionStore(sessionMgr),
+			WithTestMessageStore(contextMgr),
 			WithHookRunner(runner),
 		)
 
@@ -505,10 +486,9 @@ func TestContextHooks(t *testing.T) {
 
 	t.Run("default empty runner does not panic", func(t *testing.T) {
 		// Engine without WithHookRunner — uses default NewEmptyRunner, should not panic
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
 		agentRegistry := newMockAgentRegistry()
@@ -523,7 +503,7 @@ func TestContextHooks(t *testing.T) {
 
 		engine := NewTestEngine(
 			WithTestRegistry(agentRegistry),
-			WithTestSessionMgr(sessionMgr),
+			WithTestSessionStore(sessionMgr),
 		)
 
 		chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -548,16 +528,12 @@ func TestContextHooks(t *testing.T) {
 		runner := hook.NewHookRunner()
 		runner.Register(messageModifierHook)
 
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
-		originalMessages := []entity.MessageForLLM{
-			{Role: "system", Content: "Original system prompt"},
-		}
-		contextMgr := &recordingContextManager{messages: originalMessages}
+		contextMgr := &recordingMessageStore{}
 
 		agentRegistry := newMockAgentRegistry()
 		mockClient := openai.NewClient(
@@ -577,8 +553,8 @@ func TestContextHooks(t *testing.T) {
 
 		engine := NewTestEngine(
 			WithTestRegistry(agentRegistry),
-			WithTestSessionMgr(sessionMgr),
-			WithTestContextMgr(contextMgr),
+			WithTestSessionStore(sessionMgr),
+			WithTestMessageStore(contextMgr),
 			WithHookRunner(runner),
 		)
 
@@ -608,17 +584,12 @@ func TestContextHooks(t *testing.T) {
 		runner := hook.NewHookRunner()
 		runner.Register(promptHook)
 
-		sessionMgr := newMockSessionManager()
+		sessionMgr := newMockSessionStore()
 		ctx := context.Background()
-		chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-		sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+		sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 		require.NoError(t, err)
 
-		contextMgr := &recordingContextManager{
-			messages: []entity.MessageForLLM{
-				{Role: "system", Content: "Original prompt"},
-			},
-		}
+		contextMgr := &recordingMessageStore{}
 
 		agentRegistry := newMockAgentRegistry()
 		mockClient := openai.NewClient(
@@ -638,8 +609,8 @@ func TestContextHooks(t *testing.T) {
 
 		engine := NewTestEngine(
 			WithTestRegistry(agentRegistry),
-			WithTestSessionMgr(sessionMgr),
-			WithTestContextMgr(contextMgr),
+			WithTestSessionStore(sessionMgr),
+			WithTestMessageStore(contextMgr),
 			WithHookRunner(runner),
 		)
 
@@ -707,39 +678,23 @@ func (h *promptModifierHook) Execute(ctx *hook.HookContext) error {
 	return nil
 }
 
-// recordingContextManager records context operations for testing.
-// It implements iface.ContextManager.
-type recordingContextManager struct {
-	messages    []entity.MessageForLLM
+type recordingMessageStore struct {
 	addMessages []*storage.Message
 	mu          sync.Mutex
 }
 
-func (m *recordingContextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]*storage.Message, error) {
+func (m *recordingMessageStore) List(_ context.Context, _ uuid.UUID, _ int) ([]*storage.Message, error) {
 	return nil, nil
 }
 
-func (m *recordingContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *recordingMessageStore) Add(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.addMessages = append(m.addMessages, msg)
 	return nil
 }
 
-func (m *recordingContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i, existing := range m.addMessages {
-		if existing.ID == msg.ID {
-			m.addMessages[i] = msg
-			return nil
-		}
-	}
-	m.addMessages = append(m.addMessages, msg)
-	return nil
-}
-
-func (m *recordingContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *recordingMessageStore) Update(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, existing := range m.addMessages {
@@ -752,14 +707,19 @@ func (m *recordingContextManager) UpsertMessage(chatCtx iface.ChatContextInterfa
 	return nil
 }
 
-func (m *recordingContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
-	return m.messages, nil
-}
-
-func (m *recordingContextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
+func (m *recordingMessageStore) Upsert(_ context.Context, msg *storage.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, existing := range m.addMessages {
+		if existing.ID == msg.ID {
+			m.addMessages[i] = msg
+			return nil
+		}
+	}
+	m.addMessages = append(m.addMessages, msg)
 	return nil
 }
 
-func (m *recordingContextManager) ClearMessages(chatCtx iface.ChatContextInterface) error {
+func (m *recordingMessageStore) DeleteBySession(_ context.Context, _ uuid.UUID) error {
 	return nil
 }

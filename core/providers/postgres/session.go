@@ -115,3 +115,41 @@ func (s *SessionStore) GetMessageCount(ctx context.Context, sessionID uuid.UUID)
 	}
 	return count, nil
 }
+
+func (s *SessionStore) AppendMetadata(ctx context.Context, id uuid.UUID, key string, value any) error {
+	var m Session
+	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+
+	if m.Metadata == nil {
+		m.Metadata = make(JSONB)
+	}
+
+	existing, ok := m.Metadata[key]
+	if !ok {
+		m.Metadata[key] = []any{value}
+	} else {
+		arr, ok := existing.([]any)
+		if !ok {
+			arr = []any{existing}
+		}
+		m.Metadata[key] = append(arr, value)
+	}
+
+	result := s.db.WithContext(ctx).
+		Model(&Session{}).
+		Where("id = ?", id).
+		Update("metadata", m.Metadata)
+
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrSessionNotFound
+	}
+	return nil
+}

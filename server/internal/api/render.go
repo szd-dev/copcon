@@ -1,13 +1,13 @@
-package session
+package api
 
 import (
 	"sort"
 
 	"github.com/copcon/core/entity"
+	"github.com/copcon/core/storage"
 )
 
-// GroupPartsByStep groups PersistedParts by StepIndex into UIStep objects.
-func GroupPartsByStep(parts PersistedParts) []entity.UIStep {
+func GroupPartsByStep(parts []storage.Part) []entity.UIStep {
 	stepMap := make(map[int][]entity.UIPart)
 	var stepIndices []int
 	for _, p := range parts {
@@ -20,7 +20,6 @@ func GroupPartsByStep(parts PersistedParts) []entity.UIStep {
 			Args:       p.Args,
 			Output:     p.Output,
 			Error:      p.Error,
-			Interrupt:  p.Interrupt,
 			StepIndex:  p.StepIndex,
 		}
 		if _, exists := stepMap[p.StepIndex]; !exists {
@@ -33,20 +32,18 @@ func GroupPartsByStep(parts PersistedParts) []entity.UIStep {
 	for _, idx := range stepIndices {
 		steps = append(steps, entity.UIStep{
 			Parts: stepMap[idx],
-			State: entity.UIPartStateDone, // all persisted data is done
+			State: entity.UIPartStateDone,
 		})
 	}
 	return steps
 }
 
-// BackfillParts creates PersistedParts from legacy Content/Reasoning/ToolCalls fields
-// when the Parts JSONB column is empty.
-func BackfillParts(msg Message, toolResults map[string]string) PersistedParts {
-	var parts PersistedParts
+func BackfillParts(msg storage.Message, toolResults map[string]string) []storage.Part {
+	var parts []storage.Part
 
 	if msg.Role == "user" {
 		if msg.Content != "" {
-			parts = append(parts, PersistedPart{
+			parts = append(parts, storage.Part{
 				Type:      "text",
 				Text:      msg.Content,
 				State:     "done",
@@ -58,7 +55,7 @@ func BackfillParts(msg Message, toolResults map[string]string) PersistedParts {
 
 	if msg.Role == "assistant" {
 		if msg.Reasoning != "" {
-			parts = append(parts, PersistedPart{
+			parts = append(parts, storage.Part{
 				Type:      "reasoning",
 				Text:      msg.Reasoning,
 				State:     "done",
@@ -66,7 +63,7 @@ func BackfillParts(msg Message, toolResults map[string]string) PersistedParts {
 			})
 		}
 		if msg.Content != "" || len(msg.ToolCalls) == 0 {
-			parts = append(parts, PersistedPart{
+			parts = append(parts, storage.Part{
 				Type:      "text",
 				Text:      msg.Content,
 				State:     "done",
@@ -74,7 +71,7 @@ func BackfillParts(msg Message, toolResults map[string]string) PersistedParts {
 			})
 		}
 		for _, tc := range msg.ToolCalls {
-			pp := PersistedPart{
+			pp := storage.Part{
 				Type:       "tool-call",
 				ToolCallID: tc.ID,
 				ToolName:   tc.Function.Name,

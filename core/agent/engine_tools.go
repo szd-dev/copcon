@@ -125,7 +125,12 @@ func (e *engineImpl) executeSync(chatCtx iface.ChatContextInterface, toolMgr too
 	} else {
 		resultJSON, _ = json.Marshal(result)
 	}
-	if err := e.contextMgr.AddMessage(chatCtx, &storage.Message{
+	sessionUUID, parseErr := uuid.Parse(chatCtx.SessionID())
+	if parseErr != nil {
+		return fmt.Errorf("invalid session ID: %w", parseErr)
+	}
+	if err := e.messageStore.Add(chatCtx.Context(), &storage.Message{
+		SessionID:  sessionUUID,
 		Role:       "tool",
 		Content:    string(resultJSON),
 		ToolCallID: tc.ID,
@@ -262,7 +267,9 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 			}
 
 			resultJSON, _ := json.Marshal(map[string]any{"error": err.Error()})
-			if addErr := e.contextMgr.AddMessage(chatCtx, &storage.Message{
+			sessionUUID, _ := uuid.Parse(sessionID)
+			if addErr := e.messageStore.Add(chatCtx.Context(), &storage.Message{
+				SessionID:  sessionUUID,
 				Role:       "tool",
 				Content:    string(resultJSON),
 				ToolCallID: tc.ID,
@@ -284,7 +291,7 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				"status":       "failed",
 				"error":        err.Error(),
 			}
-			if addErr := e.sessionMgr.AddAsyncCompletionPending(chatCtx, pendingEvent); addErr != nil {
+			if addErr := e.sessionStore.AppendMetadata(chatCtx.Context(), sessionUUID, "async_completion_pending", pendingEvent); addErr != nil {
 				e.logger.Error("record_async_completion_pending_error",
 					"session_id", sessionID,
 					"tool_name", tc.Name,
@@ -321,7 +328,9 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 			}
 
 			resultJSON, _ := json.Marshal(result)
-			if addErr := e.contextMgr.AddMessage(chatCtx, &storage.Message{
+			sessionUUID, _ := uuid.Parse(sessionID)
+			if addErr := e.messageStore.Add(chatCtx.Context(), &storage.Message{
+				SessionID:  sessionUUID,
 				Role:       "tool",
 				Content:    string(resultJSON),
 				ToolCallID: tc.ID,
@@ -342,7 +351,7 @@ func (e *engineImpl) executeAsync(chatCtx iface.ChatContextInterface, toolMgr to
 				"completed_at": time.Now().Format(time.RFC3339),
 				"status":       "completed",
 			}
-			if addErr := e.sessionMgr.AddAsyncCompletionPending(chatCtx, pendingEvent); addErr != nil {
+			if addErr := e.sessionStore.AppendMetadata(chatCtx.Context(), sessionUUID, "async_completion_pending", pendingEvent); addErr != nil {
 				e.logger.Error("record_async_completion_pending_error",
 					"session_id", sessionID,
 					"tool_name", tc.Name,
@@ -466,9 +475,15 @@ func (e *engineImpl) executeConcurrent(
 		return results[i].tc.ID < results[j].tc.ID
 	})
 
+	sessionUUID, parseErr := uuid.Parse(chatCtx.SessionID())
+	if parseErr != nil {
+		return fmt.Errorf("invalid session ID: %w", parseErr)
+	}
+
 	for _, r := range results {
 		resultJSON, _ := json.Marshal(r.result)
-		if err := e.contextMgr.AddMessage(chatCtx, &storage.Message{
+		if err := e.messageStore.Add(chatCtx.Context(), &storage.Message{
+			SessionID:  sessionUUID,
 			Role:       "tool",
 			Content:    string(resultJSON),
 			ToolCallID: r.tc.ID,

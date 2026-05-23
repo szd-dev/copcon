@@ -18,16 +18,25 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/copcon/core/agent"
-	"github.com/copcon/server/internal/api"
-	"github.com/copcon/server/internal/chat_context"
-	"github.com/copcon/server/internal/config"
-	"github.com/copcon/core/context_builder"
+	"github.com/copcon/core/chat"
+	pgstore "github.com/copcon/core/providers/postgres"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/core/entity"
-	"github.com/copcon/core/iface"
-	"github.com/copcon/server/internal/session"
+	"github.com/copcon/server/internal/api"
+	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/testutil"
 	"github.com/copcon/server/internal/tools/todo"
 )
+
+type integrationHarness struct {
+	store         storage.StoreProvider
+	agentRegistry agent.AgentRegistry
+}
+
+func (h *integrationHarness) Store() storage.StoreProvider    { return h.store }
+func (h *integrationHarness) Engine() agent.AgentEngine        { return nil }
+func (h *integrationHarness) Registry() agent.AgentRegistry    { return h.agentRegistry }
+func (h *integrationHarness) SessionStore() chat.SessionStore  { return chat.NewSessionStore() }
 
 func setupIntegrationTestDB(t *testing.T) *gorm.DB {
 	dsn := "host=localhost user=admin password=changeme dbname=agent_infra port=5432 sslmode=disable"
@@ -36,7 +45,7 @@ func setupIntegrationTestDB(t *testing.T) *gorm.DB {
 		t.Skipf("PostgreSQL not available: %v", err)
 	}
 
-	err = db.AutoMigrate(&session.Session{}, &session.Message{}, &session.Todo{})
+	err = db.AutoMigrate(&pgstore.Session{}, &pgstore.Message{}, &pgstore.Todo{})
 	require.NoError(t, err)
 
 	db.Exec("DELETE FROM todos WHERE content LIKE 'IntegrationTest:%'")
@@ -46,8 +55,8 @@ func setupIntegrationTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func createIntegrationTestSession(t *testing.T, db *gorm.DB) *session.Session {
-	sess := &session.Session{
+func createIntegrationTestSession(t *testing.T, db *gorm.DB) *pgstore.Session {
+	sess := &pgstore.Session{
 		ID:             uuid.New(),
 		Title:          "IntegrationTest: " + uuid.New().String(),
 		DefaultAgentID: "test-agent",
@@ -69,7 +78,7 @@ func TestIntegrationAllIssues(t *testing.T) {
 
 	t.Run("GetMessages returns reasoning field", func(t *testing.T) {
 		reasoningContent := "IntegrationTest: Let me think step by step..."
-		msg := &session.Message{
+		msg := &pgstore.Message{
 			ID:        uuid.New(),
 			SessionID: sess.ID,
 			Role:      "assistant",
@@ -81,12 +90,10 @@ func TestIntegrationAllIssues(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := &config.Config{DefaultAgentID: "test-agent"}
-		sessionMgr := &dbSessionManagerForIntegration{db: db}
-		todoMgr, _ := todo.NewTodoManager(db)
+		pg := pgstore.NewStore(db)
 		agentRegistry := &mockAgentRegistryForIntegration{defaultAgent: "test-agent"}
-		_, messageStore := chat_context.NewContextManager(db, context_builder.New(), nil)
 
-		handler := api.NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, messageStore)
+		handler := api.NewHandler(cfg, &integrationHarness{store: pg, agentRegistry: agentRegistry})
 
 		router := gin.New()
 		router.GET("/api/sessions/:sessionId/messages", handler.GetMessages)
@@ -163,7 +170,7 @@ func TestIntegrationAllIssues(t *testing.T) {
 			todos, err := todoMgr.ListTodos(chatCtx)
 			require.NoError(t, err)
 
-			var matchingTodos []*session.Todo
+			var matchingTodos []*pgstore.Todo
 			for _, t := range todos {
 				if t.Content == todoContent {
 					matchingTodos = append(matchingTodos, t)
@@ -178,11 +185,11 @@ func TestIntegrationAllIssues(t *testing.T) {
 			createdTodo, err := todoMgr.CreateTodo(chatCtx2, autoStartContent)
 			require.NoError(t, err)
 
-			assert.Equal(t, session.TodoStatusInProgress, createdTodo.Status,
+			assert.Equal(t, pgstore.TodoStatusInProgress, createdTodo.Status,
 				"todo should be automatically started after creation")
 		})
 
-		t.Run("todo state injected into LLM context", func(t *testing.T) {
+		t.Run("todo state can be listed for injection", func(t *testing.T) {
 			chatCtx3 := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
 			_, err := todoMgr.CreateTodo(chatCtx3, "IntegrationTest: context injection task 1")
 			require.NoError(t, err)
@@ -190,36 +197,27 @@ func TestIntegrationAllIssues(t *testing.T) {
 			_, err = todoMgr.CreateTodo(chatCtx3, "IntegrationTest: context injection task 2")
 			require.NoError(t, err)
 
-			contextMgr, _ := chat_context.NewContextManager(db, context_builder.New(), nil)
-
-			systemPrompt := "You are a helpful assistant."
-			_, err = contextMgr.BuildContext(chatCtx3, "", 256000, systemPrompt)
-			require.NoError(t, err)
-
 			todos, err := todoMgr.ListTodos(chatCtx3)
 			require.NoError(t, err)
+			require.GreaterOrEqual(t, len(todos), 2, "should have created todos")
 
-			if len(todos) > 0 {
-				todoState := formatTodoStateForTest(todos)
-				injectedSystemPrompt := systemPrompt + "\n\n" + todoState
+			todoState := formatTodoStateForTest(todos)
+			assert.Contains(t, todoState, "Current todo list",
+				"todo state should include header")
 
-				assert.Contains(t, injectedSystemPrompt, "Current todo list",
-					"todo state should be in system prompt")
-
-				hasStatus := false
-				for _, t := range todos {
-					if strings.Contains(injectedSystemPrompt, t.Content) {
-						hasStatus = true
-						break
-					}
+			hasStatus := false
+			for _, t := range todos {
+				if strings.Contains(todoState, t.Content) {
+					hasStatus = true
+					break
 				}
-				assert.True(t, hasStatus, "todo content should appear in injected system prompt")
 			}
+			assert.True(t, hasStatus, "todo content should appear in formatted state")
 		})
 	})
 }
 
-func formatTodoStateForTest(todos []*session.Todo) string {
+func formatTodoStateForTest(todos []*pgstore.Todo) string {
 	var pending, inProgress, completed, failed, blocked []string
 
 	for _, t := range todos {
@@ -228,15 +226,15 @@ func formatTodoStateForTest(todos []*session.Todo) string {
 			content = t.ActiveForm
 		}
 		switch t.Status {
-		case session.TodoStatusPending:
+		case pgstore.TodoStatusPending:
 			pending = append(pending, content)
-		case session.TodoStatusInProgress:
+		case pgstore.TodoStatusInProgress:
 			inProgress = append(inProgress, content)
-		case session.TodoStatusCompleted:
+		case pgstore.TodoStatusCompleted:
 			completed = append(completed, content)
-		case session.TodoStatusFailed:
+		case pgstore.TodoStatusFailed:
 			failed = append(failed, content)
-		case session.TodoStatusBlocked:
+		case pgstore.TodoStatusBlocked:
 			blocked = append(blocked, content)
 		}
 	}
@@ -259,81 +257,6 @@ func formatTodoStateForTest(todos []*session.Todo) string {
 	}
 
 	return "Current todo list: [" + strings.Join(parts, ", ") + "]"
-}
-
-type dbSessionManagerForIntegration struct {
-	db *gorm.DB
-}
-
-func (m *dbSessionManagerForIntegration) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
-	sess := &session.Session{
-		ID:             uuid.New(),
-		Title:          title,
-		DefaultAgentID: defaultAgentID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-		Metadata:       make(map[string]any),
-	}
-	err := m.db.Create(sess).Error
-	return sess, err
-}
-
-func (m *dbSessionManagerForIntegration) GetSession(chatCtx iface.ChatContextInterface) (*session.Session, error) {
-	var sess session.Session
-	err := m.db.Where("id = ?", chatCtx.SessionID()).First(&sess).Error
-	if err != nil {
-		return nil, session.ErrSessionNotFound
-	}
-	return &sess, nil
-}
-
-func (m *dbSessionManagerForIntegration) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
-	var sessions []*session.Session
-	var total int64
-	m.db.Model(&session.Session{}).Count(&total)
-	m.db.Limit(limit).Offset(offset).Find(&sessions)
-	return sessions, total, nil
-}
-
-func (m *dbSessionManagerForIntegration) DeleteSession(chatCtx iface.ChatContextInterface) error {
-	return m.db.Delete(&session.Session{}, "id = ?", chatCtx.SessionID()).Error
-}
-
-func (m *dbSessionManagerForIntegration) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
-	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("title", title).Error
-}
-
-func (m *dbSessionManagerForIntegration) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
-	var count int64
-	err := m.db.Model(&session.Message{}).Where("session_id = ?", chatCtx.SessionID()).Count(&count).Error
-	return count, err
-}
-
-func (m *dbSessionManagerForIntegration) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
-	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("metadata", metadata).Error
-}
-
-func (m *dbSessionManagerForIntegration) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
-	sess, err := m.GetSession(chatCtx)
-	if err != nil {
-		return err
-	}
-
-	if sess.Metadata == nil {
-		sess.Metadata = make(map[string]any)
-	}
-
-	var pending []map[string]any
-	if val, ok := sess.Metadata["async_completion_pending"].([]map[string]any); ok {
-		pending = val
-	} else {
-		pending = []map[string]any{}
-	}
-
-	pending = append(pending, event)
-	sess.Metadata["async_completion_pending"] = pending
-
-	return m.UpdateSessionMetadata(chatCtx, sess.Metadata)
 }
 
 type mockAgentRegistryForIntegration struct {
@@ -363,9 +286,6 @@ func (r *mockAgentRegistryForIntegration) ListDelegatable() []agent.AgentInfo {
 	return nil
 }
 
-// setupIntegrationRouter creates a gin.Engine with all API routes wired to
-// DB-backed managers. It uses the same setupIntegrationTestDB pattern so the
-// tests are skipped when PostgreSQL is not available.
 func setupIntegrationRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	t.Helper()
 
@@ -373,20 +293,17 @@ func setupIntegrationRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{DefaultAgentID: "test-agent"}
-	sessionMgr := &dbSessionManagerForIntegration{db: db}
-	todoMgr, _ := todo.NewTodoManager(db)
+	pg := pgstore.NewStore(db)
 	agentRegistry := &mockAgentRegistryForIntegration{defaultAgent: "test-agent"}
 
-	handler := api.NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, nil)
+	handler := api.NewHandler(cfg, &integrationHarness{store: pg, agentRegistry: agentRegistry})
 
 	router := gin.New()
 
-	// Health endpoint (mirrors main.go registration)
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// API routes (mirrors SetupRoutes)
 	apiGroup := router.Group("/api")
 	{
 		sessions := apiGroup.Group("/sessions")
@@ -449,7 +366,6 @@ func TestIntegrationCreateSession(t *testing.T) {
 func TestIntegrationListSessions(t *testing.T) {
 	router, _ := setupIntegrationRouter(t)
 
-	// Create a session first so the list is not empty
 	createBody := map[string]string{
 		"title":            "IntegrationTest: List Session",
 		"default_agent_id": "test-agent",
@@ -461,7 +377,6 @@ func TestIntegrationListSessions(t *testing.T) {
 	router.ServeHTTP(createW, createReq)
 	require.Equal(t, http.StatusCreated, createW.Code)
 
-	// Now list sessions
 	req, _ := http.NewRequest("GET", "/api/sessions", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -484,9 +399,8 @@ func TestIntegrationListSessions(t *testing.T) {
 func TestIntegrationGetMessages(t *testing.T) {
 	router, db := setupIntegrationRouter(t)
 
-	// Create a session with a message directly in the DB
 	sess := createIntegrationTestSession(t, db)
-	msg := &session.Message{
+	msg := &pgstore.Message{
 		ID:        uuid.New(),
 		SessionID: sess.ID,
 		Role:      "user",
@@ -496,7 +410,6 @@ func TestIntegrationGetMessages(t *testing.T) {
 	err := db.Create(msg).Error
 	require.NoError(t, err)
 
-	// Fetch messages via the API
 	req, _ := http.NewRequest("GET", "/api/sessions/"+sess.ID.String()+"/messages", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -515,7 +428,6 @@ func TestIntegrationGetMessages(t *testing.T) {
 func TestIntegrationDeleteSession(t *testing.T) {
 	router, _ := setupIntegrationRouter(t)
 
-	// Create a session via the API
 	createBody := map[string]string{
 		"title":            "IntegrationTest: Delete Session",
 		"default_agent_id": "test-agent",
@@ -532,14 +444,12 @@ func TestIntegrationDeleteSession(t *testing.T) {
 	require.NoError(t, err)
 	sessionID := createResp["id"].(string)
 
-	// Delete the session
 	deleteReq, _ := http.NewRequest("DELETE", "/api/sessions/"+sessionID, nil)
 	deleteW := httptest.NewRecorder()
 	router.ServeHTTP(deleteW, deleteReq)
 
 	assert.Equal(t, http.StatusNoContent, deleteW.Code)
 
-	// Verify session is gone — trying to delete again should return 404
 	deleteReq2, _ := http.NewRequest("DELETE", "/api/sessions/"+sessionID, nil)
 	deleteW2 := httptest.NewRecorder()
 	router.ServeHTTP(deleteW2, deleteReq2)
@@ -549,7 +459,6 @@ func TestIntegrationDeleteSession(t *testing.T) {
 func TestIntegrationChatHeaders(t *testing.T) {
 	router, _ := setupIntegrationRouter(t)
 
-	// Create a session first
 	createBody := map[string]string{
 		"title":            "IntegrationTest: Chat Headers",
 		"default_agent_id": "test-agent",
@@ -566,9 +475,6 @@ func TestIntegrationChatHeaders(t *testing.T) {
 	require.NoError(t, err)
 	sessionID := createResp["id"].(string)
 
-	// Send a chat request — the agent engine is nil so it will fail,
-	// but we can still verify the response headers before the goroutine panics.
-	// Use a request context that we cancel to avoid blocking on SSE.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -579,7 +485,6 @@ func TestIntegrationChatHeaders(t *testing.T) {
 	chatW := httptest.NewRecorder()
 	router.ServeHTTP(chatW, chatReq)
 
-	// The handler sets Content-Type to text/event-stream before the agent runs
 	assert.Equal(t, "text/event-stream", chatW.Header().Get("Content-Type"),
 		"chat endpoint should return text/event-stream content type")
 	assert.Equal(t, "no-cache", chatW.Header().Get("Cache-Control"),

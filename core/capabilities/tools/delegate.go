@@ -18,21 +18,21 @@ import (
 
 type DelegateToTool struct {
 	agentRegistry agent.AgentRegistry
-	sessionMgr    iface.SessionManager
-	contextMgr    iface.ContextManager
+	sessionStore  storage.SessionStore
+	messageStore  storage.MessageStore
 	engine        agent.AgentEngine
 }
 
 func NewDelegateToTool(
 	agentRegistry agent.AgentRegistry,
-	sessionMgr iface.SessionManager,
-	contextMgr iface.ContextManager,
+	sessionStore storage.SessionStore,
+	messageStore storage.MessageStore,
 	engine agent.AgentEngine,
 ) *DelegateToTool {
 	return &DelegateToTool{
 		agentRegistry: agentRegistry,
-		sessionMgr:    sessionMgr,
-		contextMgr:    contextMgr,
+		sessionStore:  sessionStore,
+		messageStore:  messageStore,
 		engine:        engine,
 	}
 }
@@ -105,11 +105,13 @@ func (t *DelegateToTool) Execute(chatCtx iface.ChatContextInterface, args map[st
 		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("invalid parent session ID: %v", err)}, nil
 	}
 
-	subSession, err := t.sessionMgr.CreateSession(
-		chatCtx,
-		fmt.Sprintf("Sub-agent: %s", agentID),
-		agentID,
-		iface.WithParentSessionID(parentSessionID),
+	subSession, err := t.sessionStore.Create(
+		chatCtx.Context(),
+		&storage.Session{
+			Title:          fmt.Sprintf("Sub-agent: %s", agentID),
+			DefaultAgentID: agentID,
+			ParentSessionID: &parentSessionID,
+		},
 	)
 	if err != nil {
 		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("failed to create sub-session: %v", err)}, nil
@@ -118,9 +120,10 @@ func (t *DelegateToTool) Execute(chatCtx iface.ChatContextInterface, args map[st
 	subChatCtx := chatcontext.NewChatContext(chatCtx.Context(), subSession.ID.String(), agentID)
 	subChatCtx.WithDepth(chatCtx.Depth() + 1)
 
-	if err := t.contextMgr.AddMessage(subChatCtx, &storage.Message{
-		Role:    "user",
-		Content: task,
+	if err := t.messageStore.Add(chatCtx.Context(), &storage.Message{
+		SessionID: subSession.ID,
+		Role:      "user",
+		Content:   task,
 	}); err != nil {
 		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("failed to add task message: %v", err)}, nil
 	}
@@ -129,7 +132,7 @@ func (t *DelegateToTool) Execute(chatCtx iface.ChatContextInterface, args map[st
 
 	<-subChatCtx.Closed()
 
-	summary := collectSummary(t.contextMgr, subChatCtx)
+	summary := collectSummary(t.messageStore, subChatCtx)
 
 	return &tool.ToolResult{
 		Success: true,
@@ -151,8 +154,12 @@ func buildSummary(chatCtx iface.ChatContextInterface) string {
 	return string(data)
 }
 
-func collectSummary(contextMgr iface.ContextManager, chatCtx iface.ChatContextInterface) string {
-	messages, err := contextMgr.GetHistory(chatCtx, 20)
+func collectSummary(messageStore storage.MessageStore, chatCtx iface.ChatContextInterface) string {
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
+	if err != nil {
+		return "Task completed"
+	}
+	messages, err := messageStore.List(chatCtx.Context(), sessionUUID, 20)
 	if err != nil || len(messages) == 0 {
 		return "Task completed"
 	}
@@ -170,14 +177,14 @@ var _ tool.Tool = (*DelegateToTool)(nil)
 var _ tool.DelegationTool = (*DelegateToTool)(nil)
 
 type ReadSubSessionTool struct {
-	sessionMgr iface.SessionManager
-	contextMgr iface.ContextManager
+	sessionStore  storage.SessionStore
+	messageStore  storage.MessageStore
 }
 
-func NewReadSubSessionTool(sessionMgr iface.SessionManager, contextMgr iface.ContextManager) *ReadSubSessionTool {
+func NewReadSubSessionTool(sessionStore storage.SessionStore, messageStore storage.MessageStore) *ReadSubSessionTool {
 	return &ReadSubSessionTool{
-		sessionMgr: sessionMgr,
-		contextMgr: contextMgr,
+		sessionStore: sessionStore,
+		messageStore: messageStore,
 	}
 }
 
@@ -208,8 +215,11 @@ func (t *ReadSubSessionTool) Execute(chatCtx iface.ChatContextInterface, args ma
 		return &tool.ToolResult{Success: false, Error: "sub_session_id is required"}, nil
 	}
 
-	subChatCtx := chatcontext.NewChatContext(chatCtx.Context(), subSessionID, "")
-	subSession, err := t.sessionMgr.GetSession(subChatCtx)
+	subSessionUUID, err := uuid.Parse(subSessionID)
+	if err != nil {
+		return &tool.ToolResult{Success: false, Error: "invalid sub-session ID"}, nil
+	}
+	subSession, err := t.sessionStore.Get(chatCtx.Context(), subSessionUUID)
 	if err != nil {
 		return &tool.ToolResult{Success: false, Error: "sub-session not found"}, nil
 	}
@@ -218,7 +228,7 @@ func (t *ReadSubSessionTool) Execute(chatCtx iface.ChatContextInterface, args ma
 		return &tool.ToolResult{Success: false, Error: "sub-session not found"}, nil
 	}
 
-	messages, err := t.contextMgr.GetHistory(subChatCtx, 0)
+	messages, err := t.messageStore.List(chatCtx.Context(), subSessionUUID, 0)
 	if err != nil {
 		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("failed to get messages: %v", err)}, nil
 	}
@@ -336,5 +346,5 @@ func (c *delegateCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Too
 	if !ok {
 		return nil, fmt.Errorf("tools.delegate: Engine dependency not available or wrong type")
 	}
-	return NewDelegateToTool(deps.AgentRegistry, nil, nil, engine), nil
+	return NewDelegateToTool(deps.AgentRegistry, deps.SessionStore, deps.MessageStore, engine), nil
 }

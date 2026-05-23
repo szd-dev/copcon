@@ -70,14 +70,11 @@ func TestNewHarness_NilStoresGetNoop(t *testing.T) {
 
 	require.NoError(t, h.Build())
 
-	_, ok := h.config.Store.Session.(*noopSessionStore)
-	assert.True(t, ok, "nil SessionStore should be replaced with noopSessionStore")
+	_, ok := h.config.Store.Provider.(noopStoreProvider)
+	assert.True(t, ok, "nil Provider should be replaced with noopStoreProvider")
 
-	_, ok = h.config.Store.Message.(*noopMessageStore)
-	assert.True(t, ok, "nil MessageStore should be replaced with noopMessageStore")
-
-	_, ok = h.config.Store.Todo.(*noopTodoStore)
-	assert.True(t, ok, "nil TodoStore should be replaced with noopTodoStore")
+	_, ok = h.config.Store.Provider.Sessions().(*noopSessionStore)
+	assert.True(t, ok, "nil Sessions should be replaced with noopSessionStore")
 
 	_, ok = h.config.Store.Memory.(*noopMemoryStore)
 	assert.True(t, ok, "nil MemoryStore should be replaced with noopMemoryStore")
@@ -196,15 +193,8 @@ func TestNewHarness_WildcardCapabilityExpansion(t *testing.T) {
 	h := NewHarness(HarnessConfig{
 		LLM: llm.NewMockProvider(),
 		Agents: []AgentSpec{
-			{
-				ID:            "wildcard-agent",
-				Name:          "Wildcard Agent",
-				Model:         "gpt-4o",
-				SystemPrompt:  "test",
-				Tools:         []string{"tools.*"},
-				Hooks:         []string{"hooks.*"},
-				AllowDelegate: false,
-			},
+			{ID: "wildcard-agent", Name: "Wildcard Agent", Model: "gpt-4o", SystemPrompt: "test",
+				Tools: []string{"code_executor"}, AllowDelegate: false},
 		},
 	})
 

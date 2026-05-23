@@ -13,7 +13,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/copcon/server/internal/session"
+	pgstore "github.com/copcon/core/providers/postgres"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/testutil"
 )
 
@@ -24,7 +25,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		t.Skipf("PostgreSQL not available: %v", err)
 	}
 
-	err = db.AutoMigrate(&session.Session{}, &session.Todo{})
+	err = db.AutoMigrate(&pgstore.Session{}, &pgstore.Todo{})
 	require.NoError(t, err)
 
 	db.Exec("DELETE FROM todos WHERE content LIKE 'Test:%'")
@@ -33,8 +34,8 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func createTestSession(t *testing.T, db *gorm.DB) *session.Session {
-	sess := &session.Session{
+func createTestSession(t *testing.T, db *gorm.DB) *pgstore.Session {
+	sess := &pgstore.Session{
 		ID:        uuid.New(),
 		Title:     "Test: " + uuid.New().String(),
 		Metadata:  make(map[string]any),
@@ -57,7 +58,7 @@ func TestTodoManager_Create(t *testing.T) {
 		todo, err := manager.CreateTodo(chatCtx, "Test: basic todo")
 		require.NoError(t, err)
 		assert.NotEqual(t, uuid.Nil, todo.ID)
-		assert.Equal(t, session.TodoStatusPending, todo.Status)
+		assert.Equal(t, pgstore.TodoStatusPending, todo.Status)
 		assert.Equal(t, 0, todo.RetryCount)
 	})
 
@@ -95,7 +96,7 @@ func TestTodoManager_Start(t *testing.T) {
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		started, err := manager.Start(chatCtxForStart, todo.ID.String())
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusInProgress, started.Status)
+		assert.Equal(t, pgstore.TodoStatusInProgress, started.Status)
 	})
 
 	t.Run("start blocked todo with satisfied dependencies", func(t *testing.T) {
@@ -117,7 +118,7 @@ func TestTodoManager_Start(t *testing.T) {
 		chatCtxForStart2 := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		started, err := manager.Start(chatCtxForStart2, todo2.ID.String())
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusInProgress, started.Status)
+		assert.Equal(t, pgstore.TodoStatusInProgress, started.Status)
 	})
 
 	t.Run("start pending todo with unsatisfied dependencies", func(t *testing.T) {
@@ -187,7 +188,7 @@ func TestTodoManager_Complete(t *testing.T) {
 		chatCtxForComplete := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		completed, err := manager.Complete(chatCtxForComplete, todo.ID.String(), "success result")
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusCompleted, completed.Status)
+		assert.Equal(t, pgstore.TodoStatusCompleted, completed.Status)
 		assert.Equal(t, "success result", completed.Result)
 		assert.NotNil(t, completed.CompletedAt)
 	})
@@ -237,7 +238,7 @@ func TestTodoManager_Fail(t *testing.T) {
 		chatCtxForFail := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		failed, err := manager.Fail(chatCtxForFail, todo.ID.String(), "error occurred")
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusFailed, failed.Status)
+		assert.Equal(t, pgstore.TodoStatusFailed, failed.Status)
 		assert.Equal(t, 1, failed.RetryCount)
 		assert.Equal(t, "error occurred", failed.Validation)
 	})
@@ -261,7 +262,7 @@ func TestTodoManager_Fail(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			chatCtxForUpdate := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 			_, err = manager.Update(chatCtxForUpdate, todo.ID.String(), map[string]any{
-				"status": session.TodoStatusInProgress,
+				"status": pgstore.TodoStatusInProgress,
 			})
 			require.NoError(t, err)
 
@@ -272,7 +273,7 @@ func TestTodoManager_Fail(t *testing.T) {
 
 		chatCtxForUpdate := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		_, err = manager.Update(chatCtxForUpdate, todo.ID.String(), map[string]any{
-			"status": session.TodoStatusInProgress,
+			"status": pgstore.TodoStatusInProgress,
 		})
 		require.NoError(t, err)
 
@@ -297,7 +298,7 @@ func TestTodoManager_Block(t *testing.T) {
 		chatCtxForBlock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		blocked, err := manager.Block(chatCtxForBlock, todo.ID.String(), "blocked reason")
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusBlocked, blocked.Status)
+		assert.Equal(t, pgstore.TodoStatusBlocked, blocked.Status)
 		assert.Equal(t, "blocked reason", blocked.Validation)
 	})
 
@@ -313,7 +314,7 @@ func TestTodoManager_Block(t *testing.T) {
 		chatCtxForBlock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		blocked, err := manager.Block(chatCtxForBlock, todo.ID.String(), "blocked")
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusBlocked, blocked.Status)
+		assert.Equal(t, pgstore.TodoStatusBlocked, blocked.Status)
 	})
 
 	t.Run("block already blocked fails", func(t *testing.T) {
@@ -388,7 +389,7 @@ func TestTodoManager_Unblock(t *testing.T) {
 		chatCtxForUnblock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		unblocked, err := manager.Unblock(chatCtxForUnblock, todo.ID.String())
 		require.NoError(t, err)
-		assert.Equal(t, session.TodoStatusPending, unblocked.Status)
+		assert.Equal(t, pgstore.TodoStatusPending, unblocked.Status)
 	})
 
 	t.Run("unblock non-blocked todo fails", func(t *testing.T) {
@@ -494,7 +495,7 @@ func TestTodoManager_GetAvailableTodos(t *testing.T) {
 		available, err := manager.GetAvailableTodos(chatCtxForGet)
 		require.NoError(t, err)
 
-		var testAvailable []*session.Todo
+		var testAvailable []*pgstore.Todo
 		for _, todo := range available {
 			if todo.ID == todo1.ID || todo.ID == todo2.ID {
 				testAvailable = append(testAvailable, todo)
@@ -585,5 +586,45 @@ func TestTodoManager_CRUD(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Equal(t, "updated content", updated.Content)
+	})
+}
+
+func TestTodoManager_StorageInterface(t *testing.T) {
+	db := setupTestDB(t)
+	_, todoStore := NewTodoManager(db)
+	ctx := context.Background()
+	sess := createTestSession(t, db)
+
+	t.Run("storage Create", func(t *testing.T) {
+		todo, err := todoStore.Create(ctx, &storage.Todo{
+			SessionID:   sess.ID,
+			Content:     "Test: storage create",
+			Status:      storage.TodoStatusPending,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		})
+		require.NoError(t, err)
+		assert.NotEqual(t, uuid.Nil, todo.ID)
+	})
+
+	t.Run("storage List", func(t *testing.T) {
+		todos, err := todoStore.List(ctx, sess.ID)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(todos), 1)
+	})
+
+	t.Run("storage UpdateStatus", func(t *testing.T) {
+		todos, err := todoStore.List(ctx, sess.ID)
+		require.NoError(t, err)
+		if len(todos) > 0 {
+			updated, err := todoStore.UpdateStatus(ctx, todos[0].ID, storage.TodoStatusInProgress)
+			require.NoError(t, err)
+			assert.Equal(t, storage.TodoStatusInProgress, updated.Status)
+		}
+	})
+
+	t.Run("storage DeleteBySession", func(t *testing.T) {
+		err := todoStore.DeleteBySession(ctx, sess.ID)
+		require.NoError(t, err)
 	})
 }

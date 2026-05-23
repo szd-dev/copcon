@@ -8,9 +8,9 @@ import (
 
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/capabilities"
-	"github.com/copcon/core/entity"
+	"github.com/copcon/core/chat"
+	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/iface"
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
@@ -37,6 +37,9 @@ func (noopSessionStore) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[str
 }
 func (noopSessionStore) GetMessageCount(_ context.Context, _ uuid.UUID) (int64, error) {
 	return 0, nil
+}
+func (noopSessionStore) AppendMetadata(_ context.Context, _ uuid.UUID, _ string, _ any) error {
+	return nil
 }
 
 type noopMessageStore struct{}
@@ -84,72 +87,38 @@ func (noopMemoryStore) GetBySession(_ context.Context, _ string, _ int) ([]*stor
 }
 func (noopMemoryStore) DeleteBySession(_ context.Context, _ string) error { return nil }
 
-type noopSessionManager struct{}
-
-var _ iface.SessionManager = (*noopSessionManager)(nil)
-
-func (noopSessionManager) GetSession(_ iface.ChatContextInterface) (*storage.Session, error) {
-	return nil, fmt.Errorf("session not found")
-}
-func (noopSessionManager) CreateSession(_ iface.ChatContextInterface, _, _ string, _ ...iface.SessionCreateOption) (*storage.Session, error) {
-	return nil, fmt.Errorf("not implemented")
-}
-func (noopSessionManager) AddAsyncCompletionPending(_ iface.ChatContextInterface, _ map[string]any) error {
-	return nil
-}
-
-type noopContextManager struct{}
-
-var _ iface.ContextManager = (*noopContextManager)(nil)
-
-func (noopContextManager) AddMessage(_ iface.ChatContextInterface, _ *storage.Message) error {
-	return nil
-}
-func (noopContextManager) UpdateMessage(_ iface.ChatContextInterface, _ *storage.Message) error {
-	return nil
-}
-func (noopContextManager) UpsertMessage(_ iface.ChatContextInterface, _ *storage.Message) error {
-	return nil
-}
-func (noopContextManager) GetHistory(_ iface.ChatContextInterface, _ int) ([]*storage.Message, error) {
-	return nil, nil
-}
-func (noopContextManager) BuildContext(_ iface.ChatContextInterface, _ string, _ int, _ string) ([]entity.MessageForLLM, error) {
-	return nil, nil
-}
-
 // AgentQuickConfig is a simplified configuration for single-agent use cases.
 type AgentQuickConfig struct {
 	Name         string
 	Model        string
 	SystemPrompt string
-	Tools        []string // capability names, supports wildcards like "tools.*"
-	Hooks        []string // capability names
+	Tools        []string
+	Hooks        []string
 	LLM          llm.LLMProvider
 	SessionStore storage.SessionStore
 	MessageStore storage.MessageStore
 }
+
+type quickStoreProvider struct {
+	sessionStore storage.SessionStore
+	messageStore storage.MessageStore
+}
+
+func (p quickStoreProvider) Sessions() storage.SessionStore { return p.sessionStore }
+func (p quickStoreProvider) Messages() storage.MessageStore { return p.messageStore }
+func (p quickStoreProvider) Todos() storage.TodoStore       { return &noopTodoStore{} }
 
 // NewAgent creates a single-agent Harness from an AgentQuickConfig,
 // calls Build(), and returns the Engine and Registry.
 func NewAgent(cfg AgentQuickConfig) (agent.AgentEngine, agent.AgentRegistry, error) {
 	harnessCfg := HarnessConfig{
 		Store: StoreConfig{
-			Session: cfg.SessionStore,
-			Message: cfg.MessageStore,
+			Provider: quickStoreProvider{cfg.SessionStore, cfg.MessageStore},
 		},
 		LLM:    cfg.LLM,
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Agents: []AgentSpec{
-			{
-				ID:            "default",
-				Name:          cfg.Name,
-				Model:         cfg.Model,
-				SystemPrompt:  cfg.SystemPrompt,
-				Tools:         cfg.Tools,
-				Hooks:         cfg.Hooks,
-				AllowDelegate: false,
-			},
+			{ID: "default", Name: cfg.Name, Model: cfg.Model, SystemPrompt: cfg.SystemPrompt, Tools: cfg.Tools, AllowDelegate: false},
 		},
 	}
 
@@ -161,23 +130,30 @@ func NewAgent(cfg AgentQuickConfig) (agent.AgentEngine, agent.AgentRegistry, err
 	return h.Engine(), h.Registry(), nil
 }
 
+var builtInHooks = []string{"hooks.todo_injection", "hooks.memory", "hooks.logging", "hooks.tracing"}
+
+var builtInTools = []string{"tools.hitl", "tools.todo", "tools.async"}
+
+var toolNameToCap = map[string]string{
+	"code_executor":  "tools.code_executor",
+	"shell_executor": "tools.shell_executor",
+	"file_ops":       "tools.file_ops",
+	"todolist":       "tools.todo",
+}
+
 type StoreConfig struct {
-	Session storage.SessionStore
-	Message storage.MessageStore
-	Todo    storage.TodoStore
-	Memory  storage.MemoryStore
+	Provider storage.StoreProvider
+	Memory   storage.MemoryStore
 }
 
 // AgentSpec declares a static agent to be auto-converted to an AgentFactory during Build().
 type AgentSpec struct {
-	ID             string
-	Name           string
-	Model          string
-	SystemPrompt   string
-	Tools          []string // capability names, supports wildcards
-	Hooks          []string // capability names, supports wildcards
-	AllowDelegate  bool
-	ToolsDependsOn []string // extra capability dependencies
+	ID            string
+	Name          string
+	Model         string
+	SystemPrompt  string
+	Tools         []string
+	AllowDelegate bool
 }
 
 // AgentFactorySpec declares a dynamic agent factory to be registered directly.
@@ -195,9 +171,7 @@ type HarnessConfig struct {
 	Logger         *slog.Logger
 	Agents         []AgentSpec
 	AgentFactories []AgentFactorySpec
-	SessionManager iface.SessionManager // if set, overrides noop
-	ContextManager iface.ContextManager // if set, overrides noop
-	AsyncTracker   tool.AsyncToolTracker // if set, overrides auto-created
+	AsyncTracker   tool.AsyncToolTracker
 }
 
 type Harness struct {
@@ -205,6 +179,7 @@ type Harness struct {
 	engine       agent.AgentEngine
 	registry     agent.AgentRegistry
 	asyncTracker tool.AsyncToolTracker
+	sessionStore chat.SessionStore
 	built        bool
 }
 
@@ -212,9 +187,11 @@ func NewHarness(cfg HarnessConfig) *Harness {
 	return &Harness{config: cfg}
 }
 
-func (h *Harness) Engine() agent.AgentEngine       { return h.engine }
-func (h *Harness) Registry() agent.AgentRegistry    { return h.registry }
-func (h *Harness) AsyncTracker() tool.AsyncToolTracker { return h.asyncTracker }
+func (h *Harness) Engine() agent.AgentEngine             { return h.engine }
+func (h *Harness) Registry() agent.AgentRegistry         { return h.registry }
+func (h *Harness) AsyncTracker() tool.AsyncToolTracker   { return h.asyncTracker }
+func (h *Harness) Store() storage.StoreProvider          { return h.config.Store.Provider }
+func (h *Harness) SessionStore() chat.SessionStore       { return h.sessionStore }
 
 // Build executes the full construction sequence:
 //  1. Initialize store pointers (nil → no-op)
@@ -231,6 +208,8 @@ func (h *Harness) Build() error {
 	if h.built {
 		return fmt.Errorf("harness already built")
 	}
+
+	h.sessionStore = chat.NewSessionStore()
 
 	logger := h.config.Logger
 	if logger == nil {
@@ -249,9 +228,9 @@ func (h *Harness) Build() error {
 	hookRunner := hook.NewHookRunner()
 
 	capDeps := capabilities.CapabilityDeps{
-		SessionStore: h.config.Store.Session,
-		MessageStore: h.config.Store.Message,
-		TodoStore:    h.config.Store.Todo,
+		SessionStore: h.config.Store.Provider.Sessions(),
+		MessageStore: h.config.Store.Provider.Messages(),
+		TodoStore:    h.config.Store.Provider.Todos(),
 		MemoryStore:  h.config.Store.Memory,
 		Logger:       logger,
 	}
@@ -313,16 +292,7 @@ func (h *Harness) Build() error {
 		logger.Info("harness: registered agent factory", "id", spec.ID, "name", spec.Name, "model", spec.Model)
 	}
 
-	var sessionMgr iface.SessionManager = &noopSessionManager{}
-	var contextMgr iface.ContextManager = &noopContextManager{}
 	var asyncTracker tool.AsyncToolTracker = tool.NewAsyncToolRegistry()
-
-	if h.config.SessionManager != nil {
-		sessionMgr = h.config.SessionManager
-	}
-	if h.config.ContextManager != nil {
-		contextMgr = h.config.ContextManager
-	}
 	if h.config.AsyncTracker != nil {
 		asyncTracker = h.config.AsyncTracker
 	}
@@ -335,7 +305,9 @@ func (h *Harness) Build() error {
 		engineOpts = append(engineOpts, agent.WithLLMProvider(h.config.LLM))
 	}
 
-	h.engine = agent.NewAgentEngine(agentRegistry, sessionMgr, contextMgr, asyncTracker, engineOpts...)
+	ctxBuilder := context_builder.New()
+
+	h.engine = agent.NewAgentEngine(agentRegistry, h.config.Store.Provider.Sessions(), h.config.Store.Provider.Messages(), ctxBuilder, asyncTracker, engineOpts...)
 
 	h.asyncTracker = asyncTracker
 
@@ -379,19 +351,19 @@ func registerCrossAgentTool(capName string, capDeps capabilities.CapabilityDeps,
 }
 
 func (h *Harness) initStores() {
-	if h.config.Store.Session == nil {
-		h.config.Store.Session = &noopSessionStore{}
-	}
-	if h.config.Store.Message == nil {
-		h.config.Store.Message = &noopMessageStore{}
-	}
-	if h.config.Store.Todo == nil {
-		h.config.Store.Todo = &noopTodoStore{}
+	if h.config.Store.Provider == nil {
+		h.config.Store.Provider = &noopStoreProvider{}
 	}
 	if h.config.Store.Memory == nil {
 		h.config.Store.Memory = &noopMemoryStore{}
 	}
 }
+
+type noopStoreProvider struct{}
+
+func (noopStoreProvider) Sessions() storage.SessionStore { return &noopSessionStore{} }
+func (noopStoreProvider) Messages() storage.MessageStore { return &noopMessageStore{} }
+func (noopStoreProvider) Todos() storage.TodoStore       { return &noopTodoStore{} }
 
 func (h *Harness) collectCapabilityNames() []string {
 	seen := make(map[string]bool)
@@ -405,14 +377,16 @@ func (h *Harness) collectCapabilityNames() []string {
 	}
 
 	for _, spec := range h.config.Agents {
-		for _, t := range spec.Tools {
+		for _, t := range builtInTools {
 			add(t)
 		}
-		for _, hk := range spec.Hooks {
+		for _, hk := range builtInHooks {
 			add(hk)
 		}
-		for _, dep := range spec.ToolsDependsOn {
-			add(dep)
+		for _, t := range spec.Tools {
+			if capName, ok := toolNameToCap[t]; ok {
+				add(capName)
+			}
 		}
 	}
 
@@ -428,7 +402,16 @@ func (h *Harness) makeAgentFactory(
 ) agent.AgentFactory {
 	return func(_ context.Context, params agent.CreateParams) (agent.AgentDefinition, error) {
 		toolMgr := tool.NewToolManager()
-		expandedTools := capabilities.ExpandWildcards(spec.Tools)
+
+		capNames := make([]string, 0, len(builtInTools)+len(spec.Tools))
+		capNames = append(capNames, builtInTools...)
+		for _, t := range spec.Tools {
+			if capName, ok := toolNameToCap[t]; ok {
+				capNames = append(capNames, capName)
+			}
+		}
+
+		expandedTools := capabilities.ExpandWildcards(capNames)
 		registeredNames := make(map[string]bool)
 
 		for _, capName := range expandedTools {

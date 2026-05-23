@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/semaphore"
 
+	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/iface"
@@ -83,8 +84,9 @@ func WithLLMProvider(p llm.LLMProvider) EngineOption {
 type engineImpl struct {
 	logger         *slog.Logger
 	agentRegistry  AgentRegistry
-	sessionMgr     iface.SessionManager
-	contextMgr     iface.ContextManager
+	sessionStore   storage.SessionStore
+	messageStore   storage.MessageStore
+	ctxBuilder     context_builder.ContextBuilder
 	llmProvider    llm.LLMProvider
 	concurrency    int
 	concurrencySem *semaphore.Weighted
@@ -97,15 +99,17 @@ var _ AgentEngine = (*engineImpl)(nil)
 
 func NewAgentEngine(
 	agentRegistry AgentRegistry,
-	sessionMgr iface.SessionManager,
-	contextMgr iface.ContextManager,
+	sessionStore storage.SessionStore,
+	messageStore storage.MessageStore,
+	ctxBuilder context_builder.ContextBuilder,
 	asyncRegistry tool.AsyncToolTracker,
 	opts ...EngineOption,
 ) AgentEngine {
 	e := &engineImpl{
 		agentRegistry: agentRegistry,
-		sessionMgr:    sessionMgr,
-		contextMgr:    contextMgr,
+		sessionStore:  sessionStore,
+		messageStore:  messageStore,
+		ctxBuilder:    ctxBuilder,
 		asyncRegistry: asyncRegistry,
 		hookRunner:    hook.NewEmptyRunner(),
 		concurrency:   5,
@@ -132,7 +136,11 @@ func (e *engineImpl) Chat(chatCtx iface.ChatContextInterface, userInput string) 
 }
 
 func (e *engineImpl) prepareAgentLoop(chatCtx iface.ChatContextInterface, userInput string) (*AgentDefinition, error) {
-	sess, err := e.sessionMgr.GetSession(chatCtx)
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
+	if err != nil {
+		return nil, fmt.Errorf("invalid session ID: %w", err)
+	}
+	sess, err := e.sessionStore.Get(chatCtx.Context(), sessionUUID)
 	if err != nil {
 		return nil, fmt.Errorf("get session: %w", err)
 	}
@@ -157,9 +165,10 @@ func (e *engineImpl) prepareAgentLoop(chatCtx iface.ChatContextInterface, userIn
 	}
 
 	if userInput != "" {
-		if err := e.contextMgr.AddMessage(chatCtx, &storage.Message{
-			Role:    "user",
-			Content: userInput,
+		if err := e.messageStore.Add(chatCtx.Context(), &storage.Message{
+			SessionID: sessionUUID,
+			Role:      "user",
+			Content:   userInput,
 		}); err != nil {
 			return nil, fmt.Errorf("add user message: %w", err)
 		}
@@ -441,7 +450,8 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 			e.hookRunner.On(hook.BeforeContextBuild, chatCtx, e.logger, hook.HookExtra{SystemPrompt: &systemPrompt})
 		}
 
-		messages, err := e.contextMgr.BuildContext(chatCtx, "", 256000, systemPrompt)
+		sessionUUID, _ := uuid.Parse(chatCtx.SessionID())
+		messages, err := BuildContext(chatCtx.Context(), e.messageStore, e.ctxBuilder, sessionUUID, "", 256000, systemPrompt)
 		if err != nil {
 			return fmt.Errorf("build context: %w", err)
 		}
@@ -555,12 +565,12 @@ func (e *engineImpl) persistMessage(
 	}
 
 	if *persistedMsgUUID == "" {
-		if err := e.contextMgr.AddMessage(chatCtx, msg); err != nil {
+		if err := e.messageStore.Add(chatCtx.Context(), msg); err != nil {
 			return fmt.Errorf("add assistant message: %w", err)
 		}
 		*persistedMsgUUID = result.MessageID
 	} else {
-		if err := e.contextMgr.UpdateMessage(chatCtx, msg); err != nil {
+		if err := e.messageStore.Update(chatCtx.Context(), msg); err != nil {
 			return fmt.Errorf("update assistant message: %w", err)
 		}
 	}
@@ -575,13 +585,18 @@ func (e *engineImpl) persistMessageUpsert(
 	msgUUID string,
 	parts []storage.Part,
 ) error {
+	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
+	if err != nil {
+		return fmt.Errorf("invalid session ID: %w", err)
+	}
 	msg := &storage.Message{
-		ID:    uuid.MustParse(msgUUID),
-		Role:  "assistant",
-		Parts: parts,
+		ID:        uuid.MustParse(msgUUID),
+		SessionID: sessionUUID,
+		Role:      "assistant",
+		Parts:     parts,
 	}
 
-	if err := e.contextMgr.UpsertMessage(chatCtx, msg); err != nil {
+	if err := e.messageStore.Upsert(chatCtx.Context(), msg); err != nil {
 		return fmt.Errorf("upsert assistant message: %w", err)
 	}
 

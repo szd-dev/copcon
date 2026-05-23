@@ -28,4 +28,5 @@ type SessionStore interface {
 	UpdateTitle(ctx context.Context, id uuid.UUID, title string) error
 	UpdateMetadata(ctx context.Context, id uuid.UUID, metadata map[string]any) error
 	GetMessageCount(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	AppendMetadata(ctx context.Context, id uuid.UUID, key string, value any) error
 }

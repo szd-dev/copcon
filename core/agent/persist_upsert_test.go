@@ -11,12 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/copcon/core/chatcontext"
-	"github.com/copcon/core/entity"
-	"github.com/copcon/core/iface"
 	"github.com/copcon/core/storage"
 )
 
-type upsertTrackingContextManager struct {
+type upsertTrackingMessageStore struct {
 	mu          sync.Mutex
 	messages    map[uuid.UUID]*storage.Message
 	insertCount int
@@ -25,17 +23,17 @@ type upsertTrackingContextManager struct {
 	insertOrder []uuid.UUID
 }
 
-func newUpsertTrackingContextManager() *upsertTrackingContextManager {
-	return &upsertTrackingContextManager{
+func newUpsertTrackingMessageStore() *upsertTrackingMessageStore {
+	return &upsertTrackingMessageStore{
 		messages: make(map[uuid.UUID]*storage.Message),
 	}
 }
 
-func (m *upsertTrackingContextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]*storage.Message, error) {
+func (m *upsertTrackingMessageStore) List(_ context.Context, _ uuid.UUID, _ int) ([]*storage.Message, error) {
 	return nil, nil
 }
 
-func (m *upsertTrackingContextManager) AddMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *upsertTrackingMessageStore) Add(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messages[msg.ID] = msg
@@ -44,7 +42,7 @@ func (m *upsertTrackingContextManager) AddMessage(chatCtx iface.ChatContextInter
 	return nil
 }
 
-func (m *upsertTrackingContextManager) UpdateMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *upsertTrackingMessageStore) Update(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messages[msg.ID] = msg
@@ -52,7 +50,7 @@ func (m *upsertTrackingContextManager) UpdateMessage(chatCtx iface.ChatContextIn
 	return nil
 }
 
-func (m *upsertTrackingContextManager) UpsertMessage(chatCtx iface.ChatContextInterface, msg *storage.Message) error {
+func (m *upsertTrackingMessageStore) Upsert(_ context.Context, msg *storage.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.messages[msg.ID]; exists {
@@ -65,38 +63,29 @@ func (m *upsertTrackingContextManager) UpsertMessage(chatCtx iface.ChatContextIn
 	return nil
 }
 
-func (m *upsertTrackingContextManager) BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
-	return nil, nil
-}
-
-func (m *upsertTrackingContextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
+func (m *upsertTrackingMessageStore) DeleteBySession(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
 
-func (m *upsertTrackingContextManager) ClearMessages(chatCtx iface.ChatContextInterface) error {
-	return nil
-}
-
-func (m *upsertTrackingContextManager) MessageCount() int {
+func (m *upsertTrackingMessageStore) MessageCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.messages)
 }
 
-func (m *upsertTrackingContextManager) GetMessage(id uuid.UUID) *storage.Message {
+func (m *upsertTrackingMessageStore) GetMessage(id uuid.UUID) *storage.Message {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.messages[id]
 }
 
 func TestPersistMessage_InsertThenUpdate(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -140,13 +129,12 @@ func TestPersistMessage_InsertThenUpdate(t *testing.T) {
 }
 
 func TestPersistMessage_SingleRowAfterMultiplePersists(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -182,13 +170,12 @@ func TestPersistMessage_SingleRowAfterMultiplePersists(t *testing.T) {
 }
 
 func TestPersistMessage_AccumulatedParts(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -271,13 +258,12 @@ func TestPersistMessage_AccumulatedParts(t *testing.T) {
 }
 
 func TestPersistMessageUpsert_InsertThenUpdate(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -316,13 +302,12 @@ func TestPersistMessageUpsert_InsertThenUpdate(t *testing.T) {
 }
 
 func TestPersistMessageUpsert_SingleRowAfterFivePersists(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -355,13 +340,12 @@ func TestPersistMessageUpsert_SingleRowAfterFivePersists(t *testing.T) {
 }
 
 func TestPersistMessage_FirstCallSetsUUID(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -395,13 +379,12 @@ func TestPersistMessage_FirstCallSetsUUID(t *testing.T) {
 }
 
 func TestPersistMessage_ToolCallDataPreservedDuringUpdate(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -455,13 +438,12 @@ func TestPersistMessage_ToolCallDataPreservedDuringUpdate(t *testing.T) {
 }
 
 func TestCheckpointStreamingParts_PersistAtDelta10(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -490,13 +472,12 @@ func TestCheckpointStreamingParts_PersistAtDelta10(t *testing.T) {
 }
 
 func TestCheckpointStreamingParts_WithPreviousAccumulatedParts(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -530,13 +511,12 @@ func TestCheckpointStreamingParts_WithPreviousAccumulatedParts(t *testing.T) {
 }
 
 func TestCheckpointDoneParts_TextAndReasoning(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -568,13 +548,12 @@ func TestCheckpointDoneParts_TextAndReasoning(t *testing.T) {
 }
 
 func TestCheckpointDoneParts_WithToolCallsPending(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -609,13 +588,12 @@ func TestCheckpointDoneParts_WithToolCallsPending(t *testing.T) {
 }
 
 func TestCheckpointToolResult_AfterSyncToolComplete(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -657,13 +635,12 @@ func TestCheckpointToolResult_AfterSyncToolComplete(t *testing.T) {
 }
 
 func TestCheckpointToolResult_AfterSyncToolError(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -702,13 +679,12 @@ func TestCheckpointToolResult_AfterSyncToolError(t *testing.T) {
 }
 
 func TestIncrementalPersist_MultipleSyncTools(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -781,13 +757,12 @@ func TestIncrementalPersist_MultipleSyncTools(t *testing.T) {
 }
 
 func TestIncrementalPersist_FullFlow15Deltas(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -849,13 +824,12 @@ func TestIncrementalPersist_FullFlow15Deltas(t *testing.T) {
 }
 
 func TestIncrementalPersist_DeltaCheckpointPreservesPreviousSteps(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
@@ -886,13 +860,12 @@ func TestIncrementalPersist_DeltaCheckpointPreservesPreviousSteps(t *testing.T) 
 }
 
 func TestIncrementalPersist_StepCreateCheckpoint(t *testing.T) {
-	ctxMgr := newUpsertTrackingContextManager()
-	engine := NewTestEngine(WithTestContextMgr(ctxMgr))
+	ctxMgr := newUpsertTrackingMessageStore()
+	engine := NewTestEngine(WithTestMessageStore(ctxMgr))
 
 	ctx := context.Background()
-	sessionMgr := newMockSessionManager()
-	chatCtxCreate := chatcontext.NewChatContext(ctx, "", "test-agent")
-	sess, err := sessionMgr.CreateSession(chatCtxCreate, "Test Session", "test-agent")
+	sessionMgr := newMockSessionStore()
+	sess, err := sessionMgr.Create(context.Background(), &storage.Session{Title: "Test Session", DefaultAgentID: "test-agent"})
 	require.NoError(t, err)
 
 	chatCtx := chatcontext.NewChatContext(ctx, sess.ID.String(), "test-agent")
