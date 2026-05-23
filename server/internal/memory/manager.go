@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/iface"
 )
 
 var (

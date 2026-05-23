@@ -4,20 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/storage"
+	"github.com/copcon/core/tool"
 	"github.com/copcon/server/internal/tools/todo"
 )
 
-// TodoTool provides MCP tool functionality for managing todos
+// TodoTool manages todos via storage.TodoStore. Business-logic operations
+// (state machine, auto-start) use the underlying TodoManager through todoMgr().
 type TodoTool struct {
-	todoMgr todo.TodoManager
+	todoStore storage.TodoStore
 }
 
-// NewTodoTool creates a new TodoTool instance
-func NewTodoTool(todoMgr todo.TodoManager) *TodoTool {
-	return &TodoTool{todoMgr: todoMgr}
+func NewTodoTool(todoStore storage.TodoStore) *TodoTool {
+	return &TodoTool{todoStore: todoStore}
+}
+
+// todoMgr returns the TodoManager view for business-logic operations.
+// Transitional: will be replaced when CapabilityDeps provides richer interfaces.
+func (t *TodoTool) todoMgr() todo.TodoManager {
+	return t.todoStore.(todo.TodoManager)
 }
 
 // Name returns the tool name
@@ -143,10 +150,10 @@ func (t *TodoTool) handleCreate(chatCtx iface.ChatContextInterface, args map[str
 		}
 	}
 
-	todoItem, err := t.todoMgr.Create(chatCtx, content, opts...)
-	if err != nil {
-		return errorResult(fmt.Sprintf("failed to create todo: %v", err))
-	}
+	todoItem, err := t.todoMgr().CreateTodo(chatCtx, content, opts...)
+		if err != nil {
+			return errorResult(fmt.Sprintf("failed to create todo during replan: %v", err))
+		}
 
 	return successResult(map[string]any{
 		"id":      todoItem.ID.String(),
@@ -163,7 +170,7 @@ func (t *TodoTool) handleStart(chatCtx iface.ChatContextInterface, args map[stri
 		return errorResult("todo_id is required for start action")
 	}
 
-	todoItem, err := t.todoMgr.Start(chatCtx, todoID)
+	todoItem, err := t.todoMgr().Start(chatCtx, todoID)
 	if err != nil {
 		return errorResult(fmt.Sprintf("failed to start todo: %v", err))
 	}
@@ -188,7 +195,7 @@ func (t *TodoTool) handleComplete(chatCtx iface.ChatContextInterface, args map[s
 		return errorResult("result is required for complete action")
 	}
 
-	todoItem, err := t.todoMgr.Complete(chatCtx, todoID, result)
+	todoItem, err := t.todoMgr().Complete(chatCtx, todoID, result)
 	if err != nil {
 		return errorResult(fmt.Sprintf("failed to complete todo: %v", err))
 	}
@@ -214,7 +221,7 @@ func (t *TodoTool) handleFail(chatCtx iface.ChatContextInterface, args map[strin
 		reason, _ = args["validation"].(string)
 	}
 
-	todoItem, err := t.todoMgr.Fail(chatCtx, todoID, reason)
+	todoItem, err := t.todoMgr().Fail(chatCtx, todoID, reason)
 	if err != nil {
 		return errorResult(fmt.Sprintf("failed to mark todo as failed: %v", err))
 	}
@@ -230,7 +237,7 @@ func (t *TodoTool) handleFail(chatCtx iface.ChatContextInterface, args map[strin
 
 // handleList lists all todos for a session
 func (t *TodoTool) handleList(chatCtx iface.ChatContextInterface) (*tool.ToolResult, error) {
-	todos, err := t.todoMgr.List(chatCtx)
+	todos, err := t.todoMgr().ListTodos(chatCtx)
 	if err != nil {
 		return errorResult(fmt.Sprintf("failed to list todos: %v", err))
 	}
@@ -254,14 +261,14 @@ func (t *TodoTool) handleReplan(chatCtx iface.ChatContextInterface, args map[str
 	}
 
 	// Get existing todos to delete them
-	existingTodos, err := t.todoMgr.List(chatCtx)
+	existingTodos, err := t.todoMgr().ListTodos(chatCtx)
 	if err != nil {
 		return errorResult(fmt.Sprintf("failed to list existing todos: %v", err))
 	}
 
 	// Delete all existing todos
 	for _, existing := range existingTodos {
-		if err := t.todoMgr.Delete(chatCtx, existing.ID.String()); err != nil {
+		if err := t.todoMgr().Delete(chatCtx, existing.ID.String()); err != nil {
 			return errorResult(fmt.Sprintf("failed to delete existing todo: %v", err))
 		}
 	}
@@ -297,7 +304,7 @@ func (t *TodoTool) handleReplan(chatCtx iface.ChatContextInterface, args map[str
 			}
 		}
 
-		todoItem, err := t.todoMgr.Create(chatCtx, content, opts...)
+	todoItem, err := t.todoMgr().CreateTodo(chatCtx, content, opts...)
 		if err != nil {
 			return errorResult(fmt.Sprintf("failed to create todo during replan: %v", err))
 		}

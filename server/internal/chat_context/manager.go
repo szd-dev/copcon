@@ -1,6 +1,7 @@
 package chat_context
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,11 +10,15 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/copcon/server/internal/context_builder"
-	"github.com/copcon/server/internal/domain/entity"
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/context_builder"
+	"github.com/copcon/core/entity"
+	"github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/core/storage"
 )
+
+// Compile-time check: contextManager satisfies storage.MessageStore.
+var _ storage.MessageStore = (*contextManager)(nil)
 
 var (
 	ErrContextTooLong = errors.New("context exceeds maximum token limit")
@@ -25,7 +30,7 @@ type ContextManager interface {
 	UpdateMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
 	UpsertMessage(chatCtx iface.ChatContextInterface, msg *session.Message) error
 	BuildContext(chatCtx iface.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error)
-	DeleteBySession(chatCtx iface.ChatContextInterface) error
+	ClearMessages(chatCtx iface.ChatContextInterface) error
 }
 
 type contextManager struct {
@@ -34,8 +39,9 @@ type contextManager struct {
 	logger     *slog.Logger
 }
 
-func NewContextManager(db *gorm.DB, ctxBuilder context_builder.ContextBuilder, logger *slog.Logger) ContextManager {
-	return &contextManager{db: db, ctxBuilder: ctxBuilder, logger: logger}
+func NewContextManager(db *gorm.DB, ctxBuilder context_builder.ContextBuilder, logger *slog.Logger) (ContextManager, storage.MessageStore) {
+	cm := &contextManager{db: db, ctxBuilder: ctxBuilder, logger: logger}
+	return cm, cm
 }
 
 func (m *contextManager) GetHistory(chatCtx iface.ChatContextInterface, limit int) ([]session.Message, error) {
@@ -147,7 +153,7 @@ func (m *contextManager) BuildContext(chatCtx iface.ChatContextInterface, userIn
 			Content:    msg.Content,
 			Reasoning:  msg.Reasoning,
 			ToolCallID: msg.ToolCallID,
-			ToolCalls:  context_builder.ConvertSessionToolCalls(msg.ToolCalls),
+			ToolCalls:  context_builder.ConvertLegacyToolCalls(sessionToolCallsToLegacy(msg.ToolCalls)),
 		})
 	}
 
@@ -195,7 +201,7 @@ func convertDBMessagesToUI(history []session.Message, toolResultByCallID map[str
 				Steps: steps,
 			})
 		} else {
-			uiMsg := context_builder.SynthesizeUIMessage(msg, toolResultByCallID)
+			uiMsg := context_builder.SynthesizeUIMessage(sessionMsgToLegacy(msg), toolResultByCallID)
 			if uiMsg != nil {
 				uiMessages = append(uiMessages, *uiMsg)
 			} else {
@@ -235,7 +241,7 @@ func convertDBPartsToUIPart(parts session.PersistedParts, messageID string, tool
 	return uiParts
 }
 
-func (m *contextManager) DeleteBySession(chatCtx iface.ChatContextInterface) error {
+func (m *contextManager) ClearMessages(chatCtx iface.ChatContextInterface) error {
 	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
 	if err != nil {
 		return fmt.Errorf("invalid session ID: %w", err)
@@ -243,6 +249,79 @@ func (m *contextManager) DeleteBySession(chatCtx iface.ChatContextInterface) err
 
 	return m.db.WithContext(chatCtx.Context()).
 		Where("session_id = ?", sessionUUID).
+		Delete(&session.Message{}).Error
+}
+
+// storage.MessageStore interface methods
+
+func (m *contextManager) List(ctx context.Context, sessionID uuid.UUID, limit int) ([]*storage.Message, error) {
+	var messages []session.Message
+
+	query := m.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("created_at ASC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	if err := query.Find(&messages).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]*storage.Message, len(messages))
+	for i := range messages {
+		result[i] = session.MessageToStorage(&messages[i])
+	}
+	return result, nil
+}
+
+func (m *contextManager) Add(ctx context.Context, message *storage.Message) error {
+	model := session.MessageFromStorage(message)
+	if model.ID == uuid.Nil {
+		model.ID = uuid.New()
+	}
+	return m.db.WithContext(ctx).Create(model).Error
+}
+
+func (m *contextManager) Update(ctx context.Context, message *storage.Message) error {
+	model := session.MessageFromStorage(message)
+	result := m.db.WithContext(ctx).
+		Model(&session.Message{}).
+		Where("id = ? AND session_id = ?", model.ID, model.SessionID).
+		Updates(map[string]any{
+			"content":    model.Content,
+			"reasoning":  model.Reasoning,
+			"parts":      model.Parts,
+			"tool_calls": model.ToolCalls,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("message not found: %s", model.ID)
+	}
+	return nil
+}
+
+func (m *contextManager) Upsert(ctx context.Context, message *storage.Message) error {
+	model := session.MessageFromStorage(message)
+	if model.ID == uuid.Nil {
+		model.ID = uuid.New()
+	}
+
+	result := m.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"content", "reasoning", "parts", "tool_calls"}),
+		}).
+		Create(model)
+	return result.Error
+}
+
+func (m *contextManager) DeleteBySession(ctx context.Context, sessionID uuid.UUID) error {
+	return m.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
 		Delete(&session.Message{}).Error
 }
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/copcon/server/internal/domain/iface"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/iface"
+	"github.com/copcon/core/tool"
 )
 
 // GetToolStatusTool queries the status of async tool executions

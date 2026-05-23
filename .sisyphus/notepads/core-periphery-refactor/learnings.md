@@ -55,3 +55,35 @@
 - `go build ./...` — exit 0
 - `go vet ./internal/agent/... ./internal/api/...` — clean
 - `go test ./internal/agent/... -run "TestAgentEngineStateless|TestResultOrdering|TestSyncExecution"` — all 3 pass
+---
+
+# Task 16: Migrate entity/ + iface/ + chatcontext/ to core/ — Learnings
+
+## Completed: 2026-05-23
+
+### What was done
+- Copied 6 .go files from `server/internal/domain/entity/` to `core/entity/` (event.go, ui_message.go, message_for_llm.go, model_message.go, convert.go, convert_test.go)
+- Copied `server/internal/domain/iface/chat.go` to `core/iface/chat.go`
+- Copied `server/internal/chatcontext/chat_context.go` and `chat_context_test.go` to `core/chatcontext/`
+- Updated import paths in all 3 core/ packages:
+  - `github.com/copcon/server/internal/domain/entity` → `github.com/copcon/core/entity`
+  - `github.com/copcon/server/internal/domain/iface` → `github.com/copcon/core/iface`
+- Updated import paths in all 29+ server/ files referencing the moved packages
+- Added `github.com/copcon/core v0.0.0` to server's go.mod require block
+- Added `replace github.com/copcon/core => ../core` directive to server's go.mod
+- Deleted original files from server/ and removed empty directories
+
+### Key learnings
+- `sed -i` with `find -exec` works for bulk import path replacement but can miss some files — always verify with grep afterward
+- Some files had import paths that didn't get replaced by sed (likely due to ordering or line-end issues) — manual `edit` tool was needed for 2 files
+- `GOPROXY=off go mod tidy` and `GOPROXY=off go build` work for offline verification when network is unavailable
+- Core module's go.mod already had the right dependencies (ringbuf, uuid, testify, openai-go) from Task 15 skeleton
+- Entity package is self-contained (no server-internal imports), making it the cleanest migration
+- Iface imports only entity (plus stdlib), also clean
+- Chatcontext imports entity, iface, ringbuf, uuid — all already in core's go.mod
+
+### Verification results
+- `core && go build ./entity/... ./iface/... ./chatcontext/...` — SUCCESS
+- `server && go build ./...` — SUCCESS  
+- `core && go test ./entity/... ./chatcontext/...` — all PASS
+- LSP diagnostics: 0 errors, 0 warnings (only pre-existing hints)

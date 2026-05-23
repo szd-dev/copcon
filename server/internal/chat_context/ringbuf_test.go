@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/copcon/server/internal/domain/entity"
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/chatcontext"
+	"github.com/copcon/core/entity"
 )
 
 func TestRingbufChatContext(t *testing.T) {
 	t.Run("Emit_and_Events_fan_out", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		events := c.Events()
 
@@ -34,7 +34,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Close_then_Events_channel_closes", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		events := c.Events()
 		c.Close()
@@ -46,7 +46,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Close_signals_Closed_channel", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		c.Close()
 
@@ -58,7 +58,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Closed_not_signaled_before_Close", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		select {
 		case <-c.Closed():
@@ -68,7 +68,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Events_drains_remaining_after_Close", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		events := c.Events()
 
@@ -86,7 +86,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Subscribe_replays_from_position", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		for range 10 {
 			c.Emit(entity.Event{Type: entity.EventType("pre")})
@@ -109,7 +109,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Subscribe_evicted_seq_returns_false", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		for range 2000 {
 			c.Emit(entity.Event{Type: entity.EventType("fill")})
@@ -122,7 +122,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Depth_propagates", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 		c.WithDepth(42)
 		if c.Depth() != 42 {
 			t.Fatalf("expected Depth()=42, got %d", c.Depth())
@@ -130,7 +130,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Multiple_Events_calls_create_independent_streams", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		ch1 := c.Events()
 		ch2 := c.Events()
@@ -168,7 +168,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Subscribe_negative_seq_fails", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 		sub, ok := c.Subscribe(-1)
 		if sub != nil || ok {
 			t.Fatal("Subscribe(-1) should fail")
@@ -176,7 +176,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("subscribe_receives_future_events", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		c.Emit(entity.Event{Type: entity.EventMessage})
 		c.Emit(entity.Event{Type: entity.EventMessage})
@@ -200,7 +200,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("ringbuf_subscriber_gets_io_EOF", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 		c.Close()
 
 		events := c.Events()
@@ -210,7 +210,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("concurrent_Emit_and_Events_no_deadlock", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		events := c.Events()
 
@@ -236,7 +236,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("Subscribe_immediately_after_create_gets_future_events", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		ch := make(chan struct{})
 		go func() {
@@ -262,7 +262,7 @@ func TestRingbufChatContext(t *testing.T) {
 	})
 
 	t.Run("ringbuf_defaults", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s", "a")
+		c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 		if c.SessionID() != "s" {
 			t.Fatal("sessionID mismatch")
@@ -277,7 +277,7 @@ func TestRingbufChatContext(t *testing.T) {
 }
 
 func TestRingbufSSEHandlerPattern(t *testing.T) {
-	c := iface.NewChatContext(context.Background(), "s", "a")
+	c := chatcontext.NewChatContext(context.Background(), "s", "a")
 
 	go func() {
 		defer c.Close()

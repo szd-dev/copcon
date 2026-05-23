@@ -96,3 +96,44 @@ The mock provides these key methods:
 - Multiple tool calls with separate indices
 - Mixed content/reasoning/tool calls in single stream
 - Empty chunks handling (heartbeats)
+
+## Task 11: Decouple agent/registry from config.Config
+
+### Changes Made
+1. **registry.go**: Changed `NewAgentRegistry(cfg *config.Config, toolRegistry tool.ToolRegistry) (AgentRegistry, error)` → `NewAgentRegistry(defaultAgentID string) AgentRegistry`
+   - Removed `config` import entirely
+   - Removed `openai` and `option` imports (only used by deprecated config-based loop)
+   - Removed `fmt` and `log/slog` imports (only used by deprecated loop)
+   - Removed the entire config-based agent factory creation loop (lines 90-157)
+   - Function no longer returns error (nothing can fail in the simplified constructor)
+2. **main.go**: Changed `agentRegistry, err := agent.NewAgentRegistry(cfg, toolRegistry)` → `agentRegistry := agent.NewAgentRegistry(cfg.DefaultAgentID)`
+   - Removed error handling block for NewAgentRegistry
+3. **registry_test.go**: Rewrote tests to use RegisterFactory pattern instead of config-based creation
+   - Removed `config` import and all config struct construction
+   - Removed TestAgentRegistryValidateTools (validated tools during config-based creation, no longer applicable)
+   - All other tests adapted to use RegisterFactory
+4. **hook_composition_test.go**: Removed unused `iface` import (pre-existing issue blocking test compilation)
+
+### Verification
+- `grep -E '"github.com/copcon/server/internal/config"|config\.' internal/agent/registry.go` → no matches (PASS)
+- `NewAgentRegistry` signature: `func NewAgentRegistry(defaultAgentID string) AgentRegistry` (PASS)
+- `go build ./...` → succeeds (PASS)
+- All registry tests pass (PASS)
+
+## F2 Code Quality Review (2026-05-23)
+
+### Build Failure: core/harness.go:320-327
+- Variables declared as concrete types (`*noopSessionManager`, `*noopContextManager`, `*tool.AsyncToolRegistry`) but assigned interface values from `h.config`
+- Fix: declare as interface types: `var sessionMgr iface.SessionManager = &noopSessionManager{}`
+- This is a pattern issue — when you have a "default noop + optional override", the variable must be the interface type
+
+### Vet Failure: core/agent/engine_test.go:31
+- `mockSessionManager.CreateSession` uses `opts ...interface{}` but interface requires `opts ...iface.SessionCreateOption`
+- Mock signatures must match interface signatures exactly, including variadic parameter types
+
+### Code Quality: core/capabilities/registry.go
+- Clean file overall: proper topological sort, wildcard expansion, compile-time interface checks
+- `Engine interface{}` on line 61 is intentional to avoid circular imports (commented)
+- Unchecked type assertions are safe since data comes from controlled `Register()` calls
+
+### No TODO/FIXME found in changed files

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"strconv"
+
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -89,6 +91,10 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+func (d DatabaseConfig) DSN() string {
+	return "host=" + d.Host + " port=" + strconv.Itoa(d.Port) + " user=" + d.User + " password=" + d.Password + " dbname=" + d.DBName + " sslmode=disable"
 }
 
 func (c *Config) GetAgent(id string) (AgentConfig, error) {

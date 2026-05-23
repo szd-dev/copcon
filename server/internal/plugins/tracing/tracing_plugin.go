@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/copcon/server/internal/hook"
+	"github.com/copcon/core/hook"
 )
 
 // Tracer is a factory for creating Spans. Implementations of this interface

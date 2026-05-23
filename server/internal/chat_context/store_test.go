@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/chatcontext"
 )
 
 func TestSessionAgentStore(t *testing.T) {
 	t.Run("Put_and_Get", func(t *testing.T) {
 		s := NewSessionAgentStore()
-		c := iface.NewChatContext(context.Background(), "s1", "a1")
+		c := chatcontext.NewChatContext(context.Background(), "s1", "a1")
 		err := s.Put("s1", c)
 		require.NoError(t, err)
 
@@ -32,8 +32,8 @@ func TestSessionAgentStore(t *testing.T) {
 
 	t.Run("Put_duplicate_returns_error", func(t *testing.T) {
 		s := NewSessionAgentStore()
-		c1 := iface.NewChatContext(context.Background(), "s1", "a1")
-		c2 := iface.NewChatContext(context.Background(), "s1", "a2")
+		c1 := chatcontext.NewChatContext(context.Background(), "s1", "a1")
+		c2 := chatcontext.NewChatContext(context.Background(), "s1", "a2")
 
 		err := s.Put("s1", c1)
 		require.NoError(t, err)
@@ -45,7 +45,7 @@ func TestSessionAgentStore(t *testing.T) {
 
 	t.Run("Remove_deletes_from_store", func(t *testing.T) {
 		s := NewSessionAgentStore()
-		c := iface.NewChatContext(context.Background(), "s1", "a1")
+		c := chatcontext.NewChatContext(context.Background(), "s1", "a1")
 
 		err := s.Put("s1", c)
 		require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestSessionAgentStore(t *testing.T) {
 
 	t.Run("Close_auto_removes_from_store", func(t *testing.T) {
 		s := NewSessionAgentStore()
-		c := iface.NewChatContext(context.Background(), "s1", "a1")
+		c := chatcontext.NewChatContext(context.Background(), "s1", "a1")
 		c.SetStore(s)
 
 		err := s.Put("s1", c)
@@ -77,7 +77,7 @@ func TestSessionAgentStore(t *testing.T) {
 	})
 
 	t.Run("Close_without_store_does_not_panic", func(t *testing.T) {
-		c := iface.NewChatContext(context.Background(), "s1", "a1")
+		c := chatcontext.NewChatContext(context.Background(), "s1", "a1")
 		c.Close()
 	})
 
@@ -85,13 +85,12 @@ func TestSessionAgentStore(t *testing.T) {
 		s := NewSessionAgentStore()
 		var wg sync.WaitGroup
 
-		// 10 goroutines: Put + Get
 		for i := range 10 {
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
 				sessionID := "s-" + string(rune('0'+n))
-				c := iface.NewChatContext(context.Background(), sessionID, "a")
+				c := chatcontext.NewChatContext(context.Background(), sessionID, "a")
 				err := s.Put(sessionID, c)
 				if err == nil {
 					got, ok := s.Get(sessionID)

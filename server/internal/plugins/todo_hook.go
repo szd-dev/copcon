@@ -3,23 +3,25 @@ package plugins
 import (
 	"log/slog"
 
-	"github.com/copcon/server/internal/hook"
-	"github.com/copcon/server/internal/tools/todo"
+	"github.com/google/uuid"
+
+	"github.com/copcon/core/hook"
+	"github.com/copcon/core/storage"
 )
 
 // TodoInjectionHook appends the current todo list state to the system prompt
 // on the OnSystemPrompt hook point. This ensures the agent is aware of its
 // task list whenever the context is built.
 type TodoInjectionHook struct {
-	todoMgr todo.TodoManager
-	logger  *slog.Logger
+	todoStore storage.TodoStore
+	logger    *slog.Logger
 }
 
 // NewTodoInjectionHook creates a new TodoInjectionHook.
-func NewTodoInjectionHook(todoMgr todo.TodoManager) *TodoInjectionHook {
+func NewTodoInjectionHook(todoStore storage.TodoStore) *TodoInjectionHook {
 	return &TodoInjectionHook{
-		todoMgr: todoMgr,
-		logger:  slog.Default(),
+		todoStore: todoStore,
+		logger:    slog.Default(),
 	}
 }
 
@@ -47,7 +49,16 @@ func (h *TodoInjectionHook) Execute(ctx *hook.HookContext) error {
 		return nil
 	}
 
-	todos, err := h.todoMgr.List(ctx.ChatCtx)
+	sessionUUID, err := uuid.Parse(ctx.SessionID)
+	if err != nil {
+		h.logger.Warn("failed to parse session id for todo injection",
+			"session_id", ctx.SessionID,
+			"error", err,
+		)
+		return nil
+	}
+
+	todos, err := h.todoStore.List(ctx.ChatCtx.Context(), sessionUUID)
 	if err != nil {
 		h.logger.Warn("failed to fetch todos",
 			"session_id", ctx.SessionID,

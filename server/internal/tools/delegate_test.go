@@ -7,14 +7,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/gorm"
 
-	"github.com/copcon/server/internal/agent"
-	"github.com/copcon/server/internal/domain/entity"
-	chatcontextpkg "github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/agent"
+	"github.com/copcon/core/entity"
+	chatcontextpkg "github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/tool"
 )
 
 // --- Mock Agent Registry ---
@@ -65,7 +64,7 @@ func newMockSessionManager() *mockSessionManager {
 	return &mockSessionManager{}
 }
 
-func (m *mockSessionManager) Create(chatCtx chatcontextpkg.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
+func (m *mockSessionManager) CreateSession(chatCtx chatcontextpkg.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	s := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -79,23 +78,23 @@ func (m *mockSessionManager) Create(chatCtx chatcontextpkg.ChatContextInterface,
 	return s, nil
 }
 
-func (m *mockSessionManager) Get(chatCtx chatcontextpkg.ChatContextInterface) (*session.Session, error) {
+func (m *mockSessionManager) GetSession(chatCtx chatcontextpkg.ChatContextInterface) (*session.Session, error) {
 	return nil, session.ErrSessionNotFound
 }
 
-func (m *mockSessionManager) List(chatCtx chatcontextpkg.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
+func (m *mockSessionManager) ListSessions(chatCtx chatcontextpkg.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	return nil, 0, nil
 }
 
-func (m *mockSessionManager) Delete(chatCtx chatcontextpkg.ChatContextInterface) error {
+func (m *mockSessionManager) DeleteSession(chatCtx chatcontextpkg.ChatContextInterface) error {
 	return nil
 }
 
-func (m *mockSessionManager) UpdateTitle(chatCtx chatcontextpkg.ChatContextInterface, title string) error {
+func (m *mockSessionManager) UpdateSessionTitle(chatCtx chatcontextpkg.ChatContextInterface, title string) error {
 	return nil
 }
 
-func (m *mockSessionManager) UpdateMetadata(chatCtx chatcontextpkg.ChatContextInterface, metadata map[string]any) error {
+func (m *mockSessionManager) UpdateSessionMetadata(chatCtx chatcontextpkg.ChatContextInterface, metadata map[string]any) error {
 	return nil
 }
 
@@ -103,12 +102,8 @@ func (m *mockSessionManager) AddAsyncCompletionPending(chatCtx chatcontextpkg.Ch
 	return nil
 }
 
-func (m *mockSessionManager) GetMessageCount(chatCtx chatcontextpkg.ChatContextInterface) (int64, error) {
+func (m *mockSessionManager) GetSessionMessageCount(chatCtx chatcontextpkg.ChatContextInterface) (int64, error) {
 	return 0, nil
-}
-
-func (m *mockSessionManager) GetDB() *gorm.DB {
-	return nil
 }
 
 // --- Mock Context Manager ---
@@ -154,6 +149,10 @@ func (m *mockContextManager) UpsertMessage(chatCtx chatcontextpkg.ChatContextInt
 
 func (m *mockContextManager) BuildContext(chatCtx chatcontextpkg.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
+}
+
+func (m *mockContextManager) ClearMessages(chatCtx chatcontextpkg.ChatContextInterface) error {
+	return nil
 }
 
 func (m *mockContextManager) DeleteBySession(chatCtx chatcontextpkg.ChatContextInterface) error {
@@ -320,11 +319,11 @@ func newRSSessionMgr() *rsSessionMgr {
 	return &rsSessionMgr{sessions: make(map[string]*session.Session)}
 }
 
-func (m *rsSessionMgr) Create(chatCtx chatcontextpkg.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
+func (m *rsSessionMgr) CreateSession(chatCtx chatcontextpkg.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	return nil, nil
 }
 
-func (m *rsSessionMgr) Get(chatCtx chatcontextpkg.ChatContextInterface) (*session.Session, error) {
+func (m *rsSessionMgr) GetSession(chatCtx chatcontextpkg.ChatContextInterface) (*session.Session, error) {
 	s, ok := m.sessions[chatCtx.SessionID()]
 	if !ok {
 		return nil, session.ErrSessionNotFound
@@ -332,19 +331,19 @@ func (m *rsSessionMgr) Get(chatCtx chatcontextpkg.ChatContextInterface) (*sessio
 	return s, nil
 }
 
-func (m *rsSessionMgr) List(chatCtx chatcontextpkg.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
+func (m *rsSessionMgr) ListSessions(chatCtx chatcontextpkg.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	return nil, 0, nil
 }
 
-func (m *rsSessionMgr) Delete(chatCtx chatcontextpkg.ChatContextInterface) error {
+func (m *rsSessionMgr) DeleteSession(chatCtx chatcontextpkg.ChatContextInterface) error {
 	return nil
 }
 
-func (m *rsSessionMgr) UpdateTitle(chatCtx chatcontextpkg.ChatContextInterface, title string) error {
+func (m *rsSessionMgr) UpdateSessionTitle(chatCtx chatcontextpkg.ChatContextInterface, title string) error {
 	return nil
 }
 
-func (m *rsSessionMgr) UpdateMetadata(chatCtx chatcontextpkg.ChatContextInterface, metadata map[string]any) error {
+func (m *rsSessionMgr) UpdateSessionMetadata(chatCtx chatcontextpkg.ChatContextInterface, metadata map[string]any) error {
 	return nil
 }
 
@@ -352,12 +351,8 @@ func (m *rsSessionMgr) AddAsyncCompletionPending(chatCtx chatcontextpkg.ChatCont
 	return nil
 }
 
-func (m *rsSessionMgr) GetMessageCount(chatCtx chatcontextpkg.ChatContextInterface) (int64, error) {
+func (m *rsSessionMgr) GetSessionMessageCount(chatCtx chatcontextpkg.ChatContextInterface) (int64, error) {
 	return 0, nil
-}
-
-func (m *rsSessionMgr) GetDB() *gorm.DB {
-	return nil
 }
 
 type rsContextMgr struct {
@@ -391,6 +386,10 @@ func (m *rsContextMgr) UpsertMessage(chatCtx chatcontextpkg.ChatContextInterface
 
 func (m *rsContextMgr) BuildContext(chatCtx chatcontextpkg.ChatContextInterface, userInput string, maxTokens int, systemPrompt string) ([]entity.MessageForLLM, error) {
 	return nil, nil
+}
+
+func (m *rsContextMgr) ClearMessages(chatCtx chatcontextpkg.ChatContextInterface) error {
+	return nil
 }
 
 func (m *rsContextMgr) DeleteBySession(chatCtx chatcontextpkg.ChatContextInterface) error {

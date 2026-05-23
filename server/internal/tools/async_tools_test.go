@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/copcon/server/internal/testutil"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/tool"
 )
 
 // parseResponse extracts and unmarshals the response from successResult

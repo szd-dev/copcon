@@ -17,11 +17,15 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/copcon/server/internal/agent"
+	"github.com/copcon/core/agent"
+	"github.com/copcon/server/internal/chat_context"
+	"github.com/copcon/core/chatcontext"
+	"github.com/copcon/core/context_builder"
 	"github.com/copcon/server/internal/config"
-	"github.com/copcon/server/internal/domain/entity"
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/entity"
+	"github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/tools/todo"
 )
 
@@ -36,7 +40,7 @@ func newMockSessionManager() *mockSessionManager {
 	}
 }
 
-func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
+func (m *mockSessionManager) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -49,7 +53,7 @@ func (m *mockSessionManager) Create(chatCtx iface.ChatContextInterface, title, d
 	return sess, nil
 }
 
-func (m *mockSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.Session, error) {
+func (m *mockSessionManager) GetSession(chatCtx iface.ChatContextInterface) (*session.Session, error) {
 	sess, ok := m.sessions[chatCtx.SessionID()]
 	if !ok {
 		return nil, session.ErrSessionNotFound
@@ -57,7 +61,7 @@ func (m *mockSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.S
 	return sess, nil
 }
 
-func (m *mockSessionManager) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
+func (m *mockSessionManager) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	var list []*session.Session
 	for _, s := range m.sessions {
 		list = append(list, s)
@@ -65,7 +69,7 @@ func (m *mockSessionManager) List(chatCtx iface.ChatContextInterface, limit, off
 	return list, int64(len(list)), nil
 }
 
-func (m *mockSessionManager) Delete(chatCtx iface.ChatContextInterface) error {
+func (m *mockSessionManager) DeleteSession(chatCtx iface.ChatContextInterface) error {
 	if _, ok := m.sessions[chatCtx.SessionID()]; !ok {
 		return session.ErrSessionNotFound
 	}
@@ -73,7 +77,7 @@ func (m *mockSessionManager) Delete(chatCtx iface.ChatContextInterface) error {
 	return nil
 }
 
-func (m *mockSessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
+func (m *mockSessionManager) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
 	sess, ok := m.sessions[chatCtx.SessionID()]
 	if !ok {
 		return session.ErrSessionNotFound
@@ -82,15 +86,11 @@ func (m *mockSessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, tit
 	return nil
 }
 
-func (m *mockSessionManager) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
+func (m *mockSessionManager) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockSessionManager) GetDB() *gorm.DB {
-	return m.db
-}
-
-func (m *mockSessionManager) UpdateMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+func (m *mockSessionManager) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
 	return nil
 }
 
@@ -100,13 +100,31 @@ func (m *mockSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContext
 
 type mockTodoManager struct{}
 
-func (m *mockTodoManager) Create(chatCtx iface.ChatContextInterface, content string, opts ...todo.TodoOption) (*session.Todo, error) {
+type mockMessageStore struct{}
+
+func (m *mockMessageStore) List(ctx context.Context, sessionID uuid.UUID, limit int) ([]*storage.Message, error) {
 	return nil, nil
 }
-func (m *mockTodoManager) Get(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+func (m *mockMessageStore) Add(ctx context.Context, message *storage.Message) error {
+	return nil
+}
+func (m *mockMessageStore) Update(ctx context.Context, message *storage.Message) error {
+	return nil
+}
+func (m *mockMessageStore) Upsert(ctx context.Context, message *storage.Message) error {
+	return nil
+}
+func (m *mockMessageStore) DeleteBySession(ctx context.Context, sessionID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockTodoManager) CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...todo.TodoOption) (*session.Todo, error) {
 	return nil, nil
 }
-func (m *mockTodoManager) List(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
+func (m *mockTodoManager) GetTodo(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+	return nil, nil
+}
+func (m *mockTodoManager) ListTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
 	return nil, nil
 }
 func (m *mockTodoManager) Update(chatCtx iface.ChatContextInterface, id string, updates map[string]any) (*session.Todo, error) {
@@ -132,9 +150,6 @@ func (m *mockTodoManager) Unblock(chatCtx iface.ChatContextInterface, id string)
 }
 func (m *mockTodoManager) GetAvailableTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
 	return nil, nil
-}
-func (m *mockTodoManager) GetDB() *gorm.DB {
-	return nil
 }
 
 type mockAgentRegistry struct {
@@ -205,7 +220,7 @@ func setupTestHandler(t *testing.T) (*Handler, func()) {
 	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
 	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
 
-	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry)
+	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, &mockMessageStore{})
 
 	cleanup := func() {}
 
@@ -458,8 +473,9 @@ func TestGetMessagesReasoning(t *testing.T) {
 	todoMgr := &mockTodoManager{}
 	agentRegistry := newMockAgentRegistry("default-agent")
 	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
+	_, messageStore := chat_context.NewContextManager(db, context_builder.New(), nil)
 
-	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry)
+	handler := NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, messageStore)
 
 	router := gin.New()
 	router.GET("/api/sessions/:sessionId/messages", handler.GetMessages)
@@ -495,7 +511,7 @@ type dbSessionManager struct {
 	db *gorm.DB
 }
 
-func (m *dbSessionManager) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
+func (m *dbSessionManager) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -508,7 +524,7 @@ func (m *dbSessionManager) Create(chatCtx iface.ChatContextInterface, title, def
 	return sess, err
 }
 
-func (m *dbSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.Session, error) {
+func (m *dbSessionManager) GetSession(chatCtx iface.ChatContextInterface) (*session.Session, error) {
 	var sess session.Session
 	err := m.db.Where("id = ?", chatCtx.SessionID()).First(&sess).Error
 	if err != nil {
@@ -517,7 +533,7 @@ func (m *dbSessionManager) Get(chatCtx iface.ChatContextInterface) (*session.Ses
 	return &sess, nil
 }
 
-func (m *dbSessionManager) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
+func (m *dbSessionManager) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	var sessions []*session.Session
 	var total int64
 	m.db.Model(&session.Session{}).Count(&total)
@@ -525,30 +541,26 @@ func (m *dbSessionManager) List(chatCtx iface.ChatContextInterface, limit, offse
 	return sessions, total, nil
 }
 
-func (m *dbSessionManager) Delete(chatCtx iface.ChatContextInterface) error {
+func (m *dbSessionManager) DeleteSession(chatCtx iface.ChatContextInterface) error {
 	return m.db.Delete(&session.Session{}, "id = ?", chatCtx.SessionID()).Error
 }
 
-func (m *dbSessionManager) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
+func (m *dbSessionManager) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
 	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("title", title).Error
 }
 
-func (m *dbSessionManager) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
+func (m *dbSessionManager) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
 	var count int64
 	err := m.db.Model(&session.Message{}).Where("session_id = ?", chatCtx.SessionID()).Count(&count).Error
 	return count, err
 }
 
-func (m *dbSessionManager) GetDB() *gorm.DB {
-	return m.db
-}
-
-func (m *dbSessionManager) UpdateMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+func (m *dbSessionManager) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
 	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("metadata", metadata).Error
 }
 
 func (m *dbSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
-	sess, err := m.Get(chatCtx)
+	sess, err := m.GetSession(chatCtx)
 	if err != nil {
 		return err
 	}
@@ -567,7 +579,7 @@ func (m *dbSessionManager) AddAsyncCompletionPending(chatCtx iface.ChatContextIn
 	pending = append(pending, event)
 	sess.Metadata["async_completion_pending"] = pending
 
-	return m.UpdateMetadata(chatCtx, sess.Metadata)
+	return m.UpdateSessionMetadata(chatCtx, sess.Metadata)
 }
 
 func TestBackfillParts_UserMessage(t *testing.T) {
@@ -576,7 +588,7 @@ func TestBackfillParts_UserMessage(t *testing.T) {
 		Role:    "user",
 		Content: "Hello",
 	}
-	parts := backfillParts(msg, nil)
+	parts := session.BackfillParts(msg, nil)
 	require.Len(t, parts, 1)
 	assert.Equal(t, "text", parts[0].Type)
 	assert.Equal(t, "Hello", parts[0].Text)
@@ -595,7 +607,7 @@ func TestBackfillParts_AssistantWithToolCalls(t *testing.T) {
 		},
 	}
 	toolResults := map[string]string{"call_1": "file.txt"}
-	parts := backfillParts(msg, toolResults)
+	parts := session.BackfillParts(msg, toolResults)
 	require.Len(t, parts, 3)
 
 	assert.Equal(t, "reasoning", parts[0].Type)
@@ -621,7 +633,7 @@ func TestBackfillParts_AssistantToolCallOnly(t *testing.T) {
 			{ID: "call_2", Type: "function", Function: session.FunctionCall{Name: "python", Arguments: `{"code":"1+1"}`}},
 		},
 	}
-	parts := backfillParts(msg, nil)
+	parts := session.BackfillParts(msg, nil)
 	require.Len(t, parts, 1)
 	assert.Equal(t, "tool-call", parts[0].Type)
 	assert.Equal(t, "call_2", parts[0].ToolCallID)
@@ -633,7 +645,7 @@ func TestGroupPartsByStep_SingleStep(t *testing.T) {
 		{Type: "text", Text: "Hello", StepIndex: 0},
 		{Type: "tool-call", ToolCallID: "c1", StepIndex: 0},
 	}
-	steps := groupPartsByStep(parts)
+	steps := session.GroupPartsByStep(parts)
 	require.Len(t, steps, 1)
 	assert.Equal(t, entity.UIPartStateDone, steps[0].State)
 	require.Len(t, steps[0].Parts, 2)
@@ -647,7 +659,7 @@ func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
 		{Type: "text", Text: "Step 1", StepIndex: 1},
 		{Type: "tool-call", ToolCallID: "c1", StepIndex: 1},
 	}
-	steps := groupPartsByStep(parts)
+	steps := session.GroupPartsByStep(parts)
 	require.Len(t, steps, 2)
 	require.Len(t, steps[0].Parts, 1)
 	assert.Equal(t, "Step 0", steps[0].Parts[0].Text)
@@ -655,7 +667,7 @@ func TestGroupPartsByStep_MultipleSteps(t *testing.T) {
 }
 
 func TestGroupPartsByStep_Empty(t *testing.T) {
-	steps := groupPartsByStep(nil)
+	steps := session.GroupPartsByStep(nil)
 	assert.Len(t, steps, 0)
 }
 
@@ -689,7 +701,7 @@ func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, *
 	agentRegistry.agents["default-agent"] = agent.AgentDefinition{ID: "default-agent", Name: "Default", Model: "gpt-4o"}
 	agentRegistry.agents["code-assistant"] = agent.AgentDefinition{ID: "code-assistant", Name: "Code Assistant", Model: "gpt-4o"}
 
-	handler := NewHandler(cfg, sessionMgr, todoMgr, mockAgent, agentRegistry)
+	handler := NewHandler(cfg, sessionMgr, todoMgr, mockAgent, agentRegistry, &mockMessageStore{})
 
 	cleanup := func() {}
 
@@ -768,7 +780,7 @@ func TestChat_Reconnect(t *testing.T) {
 
 	sessionID := createSessionViaHandler(t, router)
 
-	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx := chatcontext.NewChatContext(context.Background(), sessionID, "")
 	chatCtx.Emit(entity.Event{Type: entity.EventMessage, Data: entity.MessageData{MessageID: "m1", Content: "existing"}})
 	chatCtx.Emit(entity.Event{Type: entity.EventDone, Data: entity.DoneData{MessageID: "m1"}})
 	store.Put(sessionID, chatCtx)
@@ -817,7 +829,7 @@ func TestChat_ContentWithActiveAgentConflict(t *testing.T) {
 
 	sessionID := createSessionViaHandler(t, router)
 
-	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx := chatcontext.NewChatContext(context.Background(), sessionID, "")
 	store.Put(sessionID, chatCtx)
 
 	body := `{"content":"hello"}`
@@ -844,7 +856,7 @@ func TestChat_ReconnectWithLastEventSeq(t *testing.T) {
 
 	sessionID := createSessionViaHandler(t, router)
 
-	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx := chatcontext.NewChatContext(context.Background(), sessionID, "")
 	chatCtx.Emit(entity.Event{Type: "first", Data: "data0"})
 	chatCtx.Emit(entity.Event{Type: "second", Data: "data1"})
 	chatCtx.Emit(entity.Event{Type: "third", Data: "data2"})
@@ -914,7 +926,7 @@ func TestSessionAgentStore(t *testing.T) {
 	_, ok := store.Get("nonexistent")
 	assert.False(t, ok)
 
-	chatCtx := iface.NewChatContext(context.Background(), "sess-1", "agent-1")
+	chatCtx := chatcontext.NewChatContext(context.Background(), "sess-1", "agent-1")
 	store.Put("sess-1", chatCtx)
 
 	got, ok := store.Get("sess-1")
@@ -926,9 +938,9 @@ func TestSessionAgentStore(t *testing.T) {
 	_, ok = store.Get("sess-1")
 	assert.False(t, ok)
 
-	store.Put("a", iface.NewChatContext(context.Background(), "a", ""))
-	store.Put("b", iface.NewChatContext(context.Background(), "b", ""))
-	store.Put("c", iface.NewChatContext(context.Background(), "c", ""))
+	store.Put("a", chatcontext.NewChatContext(context.Background(), "a", ""))
+	store.Put("b", chatcontext.NewChatContext(context.Background(), "b", ""))
+	store.Put("c", chatcontext.NewChatContext(context.Background(), "c", ""))
 
 	got, ok = store.Get("b")
 	assert.True(t, ok)
@@ -955,7 +967,7 @@ func TestChat_EventsLostOnReconnect(t *testing.T) {
 	sessionID := createSessionViaHandler(t, router)
 
 	// Put a closed ChatContext (no events, already closed)
-	chatCtx := iface.NewChatContext(context.Background(), sessionID, "")
+	chatCtx := chatcontext.NewChatContext(context.Background(), sessionID, "")
 	chatCtx.Close()
 	store.Put(sessionID, chatCtx)
 

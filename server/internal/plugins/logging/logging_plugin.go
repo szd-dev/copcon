@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/copcon/server/internal/hook"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/hook"
+	"github.com/copcon/core/tool"
 )
 
 // LoggingPlugin implements hook.Hook to provide structured logging at

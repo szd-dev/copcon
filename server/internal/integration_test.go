@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -16,13 +17,13 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/copcon/server/internal/agent"
+	"github.com/copcon/core/agent"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/chat_context"
 	"github.com/copcon/server/internal/config"
-	"github.com/copcon/server/internal/context_builder"
-	"github.com/copcon/server/internal/domain/entity"
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/context_builder"
+	"github.com/copcon/core/entity"
+	"github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
 	"github.com/copcon/server/internal/testutil"
 	"github.com/copcon/server/internal/tools/todo"
@@ -81,10 +82,11 @@ func TestIntegrationAllIssues(t *testing.T) {
 
 		cfg := &config.Config{DefaultAgentID: "test-agent"}
 		sessionMgr := &dbSessionManagerForIntegration{db: db}
-		todoMgr := todo.NewTodoManager(db)
+		todoMgr, _ := todo.NewTodoManager(db)
 		agentRegistry := &mockAgentRegistryForIntegration{defaultAgent: "test-agent"}
+		_, messageStore := chat_context.NewContextManager(db, context_builder.New(), nil)
 
-		handler := api.NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry)
+		handler := api.NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, messageStore)
 
 		router := gin.New()
 		router.GET("/api/sessions/:sessionId/messages", handler.GetMessages)
@@ -144,21 +146,21 @@ func TestIntegrationAllIssues(t *testing.T) {
 	})
 
 	t.Run("Todo state injection and duplicate prevention", func(t *testing.T) {
-		todoMgr := todo.NewTodoManager(db)
+		todoMgr, _ := todo.NewTodoManager(db)
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
 
 		t.Run("duplicate todos not created", func(t *testing.T) {
 			todoContent := "IntegrationTest: duplicate check task"
-			todo1, err := todoMgr.Create(chatCtx, todoContent)
+			todo1, err := todoMgr.CreateTodo(chatCtx, todoContent)
 			require.NoError(t, err)
 			require.NotNil(t, todo1)
 
-			todo2, err := todoMgr.Create(chatCtx, todoContent)
+			todo2, err := todoMgr.CreateTodo(chatCtx, todoContent)
 			require.NoError(t, err)
 
 			assert.Equal(t, todo1.ID, todo2.ID, "duplicate creation should return existing todo")
 
-			todos, err := todoMgr.List(chatCtx)
+			todos, err := todoMgr.ListTodos(chatCtx)
 			require.NoError(t, err)
 
 			var matchingTodos []*session.Todo
@@ -173,7 +175,7 @@ func TestIntegrationAllIssues(t *testing.T) {
 		t.Run("todo auto-started after creation", func(t *testing.T) {
 			chatCtx2 := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
 			autoStartContent := "IntegrationTest: auto-start task"
-			createdTodo, err := todoMgr.Create(chatCtx2, autoStartContent)
+			createdTodo, err := todoMgr.CreateTodo(chatCtx2, autoStartContent)
 			require.NoError(t, err)
 
 			assert.Equal(t, session.TodoStatusInProgress, createdTodo.Status,
@@ -182,19 +184,19 @@ func TestIntegrationAllIssues(t *testing.T) {
 
 		t.Run("todo state injected into LLM context", func(t *testing.T) {
 			chatCtx3 := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
-			_, err := todoMgr.Create(chatCtx3, "IntegrationTest: context injection task 1")
+			_, err := todoMgr.CreateTodo(chatCtx3, "IntegrationTest: context injection task 1")
 			require.NoError(t, err)
 
-			_, err = todoMgr.Create(chatCtx3, "IntegrationTest: context injection task 2")
+			_, err = todoMgr.CreateTodo(chatCtx3, "IntegrationTest: context injection task 2")
 			require.NoError(t, err)
 
-			contextMgr := chat_context.NewContextManager(db, context_builder.New(), nil)
+			contextMgr, _ := chat_context.NewContextManager(db, context_builder.New(), nil)
 
 			systemPrompt := "You are a helpful assistant."
 			_, err = contextMgr.BuildContext(chatCtx3, "", 256000, systemPrompt)
 			require.NoError(t, err)
 
-			todos, err := todoMgr.List(chatCtx3)
+			todos, err := todoMgr.ListTodos(chatCtx3)
 			require.NoError(t, err)
 
 			if len(todos) > 0 {
@@ -263,7 +265,7 @@ type dbSessionManagerForIntegration struct {
 	db *gorm.DB
 }
 
-func (m *dbSessionManagerForIntegration) Create(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
+func (m *dbSessionManagerForIntegration) CreateSession(chatCtx iface.ChatContextInterface, title, defaultAgentID string, opts ...session.CreateOption) (*session.Session, error) {
 	sess := &session.Session{
 		ID:             uuid.New(),
 		Title:          title,
@@ -276,7 +278,7 @@ func (m *dbSessionManagerForIntegration) Create(chatCtx iface.ChatContextInterfa
 	return sess, err
 }
 
-func (m *dbSessionManagerForIntegration) Get(chatCtx iface.ChatContextInterface) (*session.Session, error) {
+func (m *dbSessionManagerForIntegration) GetSession(chatCtx iface.ChatContextInterface) (*session.Session, error) {
 	var sess session.Session
 	err := m.db.Where("id = ?", chatCtx.SessionID()).First(&sess).Error
 	if err != nil {
@@ -285,7 +287,7 @@ func (m *dbSessionManagerForIntegration) Get(chatCtx iface.ChatContextInterface)
 	return &sess, nil
 }
 
-func (m *dbSessionManagerForIntegration) List(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
+func (m *dbSessionManagerForIntegration) ListSessions(chatCtx iface.ChatContextInterface, limit, offset int) ([]*session.Session, int64, error) {
 	var sessions []*session.Session
 	var total int64
 	m.db.Model(&session.Session{}).Count(&total)
@@ -293,30 +295,26 @@ func (m *dbSessionManagerForIntegration) List(chatCtx iface.ChatContextInterface
 	return sessions, total, nil
 }
 
-func (m *dbSessionManagerForIntegration) Delete(chatCtx iface.ChatContextInterface) error {
+func (m *dbSessionManagerForIntegration) DeleteSession(chatCtx iface.ChatContextInterface) error {
 	return m.db.Delete(&session.Session{}, "id = ?", chatCtx.SessionID()).Error
 }
 
-func (m *dbSessionManagerForIntegration) UpdateTitle(chatCtx iface.ChatContextInterface, title string) error {
+func (m *dbSessionManagerForIntegration) UpdateSessionTitle(chatCtx iface.ChatContextInterface, title string) error {
 	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("title", title).Error
 }
 
-func (m *dbSessionManagerForIntegration) GetMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
+func (m *dbSessionManagerForIntegration) GetSessionMessageCount(chatCtx iface.ChatContextInterface) (int64, error) {
 	var count int64
 	err := m.db.Model(&session.Message{}).Where("session_id = ?", chatCtx.SessionID()).Count(&count).Error
 	return count, err
 }
 
-func (m *dbSessionManagerForIntegration) GetDB() *gorm.DB {
-	return m.db
-}
-
-func (m *dbSessionManagerForIntegration) UpdateMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
+func (m *dbSessionManagerForIntegration) UpdateSessionMetadata(chatCtx iface.ChatContextInterface, metadata map[string]any) error {
 	return m.db.Model(&session.Session{}).Where("id = ?", chatCtx.SessionID()).Update("metadata", metadata).Error
 }
 
 func (m *dbSessionManagerForIntegration) AddAsyncCompletionPending(chatCtx iface.ChatContextInterface, event map[string]any) error {
-	sess, err := m.Get(chatCtx)
+	sess, err := m.GetSession(chatCtx)
 	if err != nil {
 		return err
 	}
@@ -335,7 +333,7 @@ func (m *dbSessionManagerForIntegration) AddAsyncCompletionPending(chatCtx iface
 	pending = append(pending, event)
 	sess.Metadata["async_completion_pending"] = pending
 
-	return m.UpdateMetadata(chatCtx, sess.Metadata)
+	return m.UpdateSessionMetadata(chatCtx, sess.Metadata)
 }
 
 type mockAgentRegistryForIntegration struct {
@@ -363,4 +361,227 @@ func (r *mockAgentRegistryForIntegration) GetFactory(id string) (agent.AgentFact
 
 func (r *mockAgentRegistryForIntegration) ListDelegatable() []agent.AgentInfo {
 	return nil
+}
+
+// setupIntegrationRouter creates a gin.Engine with all API routes wired to
+// DB-backed managers. It uses the same setupIntegrationTestDB pattern so the
+// tests are skipped when PostgreSQL is not available.
+func setupIntegrationRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
+	t.Helper()
+
+	db := setupIntegrationTestDB(t)
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{DefaultAgentID: "test-agent"}
+	sessionMgr := &dbSessionManagerForIntegration{db: db}
+	todoMgr, _ := todo.NewTodoManager(db)
+	agentRegistry := &mockAgentRegistryForIntegration{defaultAgent: "test-agent"}
+
+	handler := api.NewHandler(cfg, sessionMgr, todoMgr, nil, agentRegistry, nil)
+
+	router := gin.New()
+
+	// Health endpoint (mirrors main.go registration)
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// API routes (mirrors SetupRoutes)
+	apiGroup := router.Group("/api")
+	{
+		sessions := apiGroup.Group("/sessions")
+		{
+			sessions.POST("", handler.CreateSession)
+			sessions.GET("", handler.ListSessions)
+			sessions.GET("/:sessionId", handler.GetSession)
+			sessions.DELETE("/:sessionId", handler.DeleteSession)
+			sessions.GET("/:sessionId/messages", handler.GetMessages)
+			sessions.POST("/:sessionId/chat", handler.Chat)
+		}
+	}
+
+	return router, db
+}
+
+func TestIntegrationHealth(t *testing.T) {
+	router, _ := setupIntegrationRouter(t)
+
+	req, _ := http.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "ok", response["status"])
+}
+
+func TestIntegrationCreateSession(t *testing.T) {
+	router, _ := setupIntegrationRouter(t)
+
+	reqBody := map[string]string{
+		"title":            "IntegrationTest: Create Session",
+		"default_agent_id": "test-agent",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "IntegrationTest: Create Session", response["title"])
+	assert.Equal(t, "test-agent", response["default_agent_id"])
+	assert.NotEmpty(t, response["id"])
+	assert.NotNil(t, response["created_at"])
+	assert.NotNil(t, response["updated_at"])
+}
+
+func TestIntegrationListSessions(t *testing.T) {
+	router, _ := setupIntegrationRouter(t)
+
+	// Create a session first so the list is not empty
+	createBody := map[string]string{
+		"title":            "IntegrationTest: List Session",
+		"default_agent_id": "test-agent",
+	}
+	jsonBody, _ := json.Marshal(createBody)
+	createReq, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	require.Equal(t, http.StatusCreated, createW.Code)
+
+	// Now list sessions
+	req, _ := http.NewRequest("GET", "/api/sessions", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	sessions, ok := response["sessions"].([]interface{})
+	require.True(t, ok, "response should contain sessions array")
+	assert.NotEmpty(t, sessions, "sessions list should not be empty")
+
+	total, ok := response["total"].(float64)
+	require.True(t, ok, "response should contain total count")
+	assert.GreaterOrEqual(t, total, float64(1))
+}
+
+func TestIntegrationGetMessages(t *testing.T) {
+	router, db := setupIntegrationRouter(t)
+
+	// Create a session with a message directly in the DB
+	sess := createIntegrationTestSession(t, db)
+	msg := &session.Message{
+		ID:        uuid.New(),
+		SessionID: sess.ID,
+		Role:      "user",
+		Content:   "IntegrationTest: hello from integration test",
+		CreatedAt: time.Now(),
+	}
+	err := db.Create(msg).Error
+	require.NoError(t, err)
+
+	// Fetch messages via the API
+	req, _ := http.NewRequest("GET", "/api/sessions/"+sess.ID.String()+"/messages", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	messages, ok := response["messages"].([]interface{})
+	require.True(t, ok, "response should contain messages array")
+	assert.NotEmpty(t, messages, "messages list should not be empty")
+}
+
+func TestIntegrationDeleteSession(t *testing.T) {
+	router, _ := setupIntegrationRouter(t)
+
+	// Create a session via the API
+	createBody := map[string]string{
+		"title":            "IntegrationTest: Delete Session",
+		"default_agent_id": "test-agent",
+	}
+	jsonBody, _ := json.Marshal(createBody)
+	createReq, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	require.Equal(t, http.StatusCreated, createW.Code)
+
+	var createResp map[string]interface{}
+	err := json.Unmarshal(createW.Body.Bytes(), &createResp)
+	require.NoError(t, err)
+	sessionID := createResp["id"].(string)
+
+	// Delete the session
+	deleteReq, _ := http.NewRequest("DELETE", "/api/sessions/"+sessionID, nil)
+	deleteW := httptest.NewRecorder()
+	router.ServeHTTP(deleteW, deleteReq)
+
+	assert.Equal(t, http.StatusNoContent, deleteW.Code)
+
+	// Verify session is gone — trying to delete again should return 404
+	deleteReq2, _ := http.NewRequest("DELETE", "/api/sessions/"+sessionID, nil)
+	deleteW2 := httptest.NewRecorder()
+	router.ServeHTTP(deleteW2, deleteReq2)
+	assert.Equal(t, http.StatusNotFound, deleteW2.Code)
+}
+
+func TestIntegrationChatHeaders(t *testing.T) {
+	router, _ := setupIntegrationRouter(t)
+
+	// Create a session first
+	createBody := map[string]string{
+		"title":            "IntegrationTest: Chat Headers",
+		"default_agent_id": "test-agent",
+	}
+	jsonBody, _ := json.Marshal(createBody)
+	createReq, _ := http.NewRequest("POST", "/api/sessions", bytes.NewBuffer(jsonBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	router.ServeHTTP(createW, createReq)
+	require.Equal(t, http.StatusCreated, createW.Code)
+
+	var createResp map[string]interface{}
+	err := json.Unmarshal(createW.Body.Bytes(), &createResp)
+	require.NoError(t, err)
+	sessionID := createResp["id"].(string)
+
+	// Send a chat request — the agent engine is nil so it will fail,
+	// but we can still verify the response headers before the goroutine panics.
+	// Use a request context that we cancel to avoid blocking on SSE.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	chatBody := `{"content":"hello","agent_id":"test-agent"}`
+	chatReq, _ := http.NewRequest("POST", "/api/sessions/"+sessionID+"/chat", bytes.NewBufferString(chatBody))
+	chatReq.Header.Set("Content-Type", "application/json")
+	chatReq = chatReq.WithContext(ctx)
+	chatW := httptest.NewRecorder()
+	router.ServeHTTP(chatW, chatReq)
+
+	// The handler sets Content-Type to text/event-stream before the agent runs
+	assert.Equal(t, "text/event-stream", chatW.Header().Get("Content-Type"),
+		"chat endpoint should return text/event-stream content type")
+	assert.Equal(t, "no-cache", chatW.Header().Get("Cache-Control"),
+		"chat endpoint should set Cache-Control: no-cache")
 }

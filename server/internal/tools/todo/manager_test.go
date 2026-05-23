@@ -48,13 +48,13 @@ func createTestSession(t *testing.T, db *gorm.DB) *session.Session {
 
 func TestTodoManager_Create(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("create basic todo", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: basic todo")
+		todo, err := manager.CreateTodo(chatCtx, "Test: basic todo")
 		require.NoError(t, err)
 		assert.NotEqual(t, uuid.Nil, todo.ID)
 		assert.Equal(t, session.TodoStatusPending, todo.Status)
@@ -63,10 +63,10 @@ func TestTodoManager_Create(t *testing.T) {
 
 	t.Run("create todo with dependencies", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo1, err := manager.Create(chatCtx, "Test: first todo")
+		todo1, err := manager.CreateTodo(chatCtx, "Test: first todo")
 		require.NoError(t, err)
 
-		todo2, err := manager.Create(chatCtx, "Test: second todo", WithDependsOn(todo1.ID.String()))
+		todo2, err := manager.CreateTodo(chatCtx, "Test: second todo", WithDependsOn(todo1.ID.String()))
 		require.NoError(t, err)
 		assert.Len(t, todo2.DependsOn, 1)
 		assert.Equal(t, todo1.ID, todo2.DependsOn[0])
@@ -74,7 +74,7 @@ func TestTodoManager_Create(t *testing.T) {
 
 	t.Run("create todo with circular dependency self-reference", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: self-dep todo")
+		todo, err := manager.CreateTodo(chatCtx, "Test: self-dep todo")
 		require.NoError(t, err)
 
 		_ = todo
@@ -83,13 +83,13 @@ func TestTodoManager_Create(t *testing.T) {
 
 func TestTodoManager_Start(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("start pending todo with no dependencies", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: start no deps")
+		todo, err := manager.CreateTodo(chatCtx, "Test: start no deps")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -100,10 +100,10 @@ func TestTodoManager_Start(t *testing.T) {
 
 	t.Run("start blocked todo with satisfied dependencies", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo1, err := manager.Create(chatCtx, "Test: dep 1")
+		todo1, err := manager.CreateTodo(chatCtx, "Test: dep 1")
 		require.NoError(t, err)
 
-		todo2, err := manager.Create(chatCtx, "Test: dep 2", WithDependsOn(todo1.ID.String()))
+		todo2, err := manager.CreateTodo(chatCtx, "Test: dep 2", WithDependsOn(todo1.ID.String()))
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -122,10 +122,10 @@ func TestTodoManager_Start(t *testing.T) {
 
 	t.Run("start pending todo with unsatisfied dependencies", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo1, err := manager.Create(chatCtx, "Test: unsatisfied dep")
+		todo1, err := manager.CreateTodo(chatCtx, "Test: unsatisfied dep")
 		require.NoError(t, err)
 
-		todo2, err := manager.Create(chatCtx, "Test: dependent", WithDependsOn(todo1.ID.String()))
+		todo2, err := manager.CreateTodo(chatCtx, "Test: dependent", WithDependsOn(todo1.ID.String()))
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -136,7 +136,7 @@ func TestTodoManager_Start(t *testing.T) {
 
 	t.Run("start from invalid state", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: invalid start")
+		todo, err := manager.CreateTodo(chatCtx, "Test: invalid start")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -151,7 +151,7 @@ func TestTodoManager_Start(t *testing.T) {
 
 	t.Run("start from completed state", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: completed start")
+		todo, err := manager.CreateTodo(chatCtx, "Test: completed start")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -171,13 +171,13 @@ func TestTodoManager_Start(t *testing.T) {
 
 func TestTodoManager_Complete(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("complete in_progress todo with result", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: complete")
+		todo, err := manager.CreateTodo(chatCtx, "Test: complete")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -194,7 +194,7 @@ func TestTodoManager_Complete(t *testing.T) {
 
 	t.Run("complete without result fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: complete no result")
+		todo, err := manager.CreateTodo(chatCtx, "Test: complete no result")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -209,7 +209,7 @@ func TestTodoManager_Complete(t *testing.T) {
 
 	t.Run("complete from non-in_progress state fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: complete wrong state")
+		todo, err := manager.CreateTodo(chatCtx, "Test: complete wrong state")
 		require.NoError(t, err)
 
 		chatCtxForComplete := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -221,13 +221,13 @@ func TestTodoManager_Complete(t *testing.T) {
 
 func TestTodoManager_Fail(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("fail in_progress todo increments retry", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: fail")
+		todo, err := manager.CreateTodo(chatCtx, "Test: fail")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -244,7 +244,7 @@ func TestTodoManager_Fail(t *testing.T) {
 
 	t.Run("fail from non-in_progress state fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: fail wrong state")
+		todo, err := manager.CreateTodo(chatCtx, "Test: fail wrong state")
 		require.NoError(t, err)
 
 		chatCtxForFail := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -255,7 +255,7 @@ func TestTodoManager_Fail(t *testing.T) {
 
 	t.Run("fail exceeds max retries", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: max retries")
+		todo, err := manager.CreateTodo(chatCtx, "Test: max retries")
 		require.NoError(t, err)
 
 		for i := 0; i < 3; i++ {
@@ -285,13 +285,13 @@ func TestTodoManager_Fail(t *testing.T) {
 
 func TestTodoManager_Block(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("block pending todo", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: block pending")
+		todo, err := manager.CreateTodo(chatCtx, "Test: block pending")
 		require.NoError(t, err)
 
 		chatCtxForBlock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -303,7 +303,7 @@ func TestTodoManager_Block(t *testing.T) {
 
 	t.Run("block in_progress todo", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: block in_progress")
+		todo, err := manager.CreateTodo(chatCtx, "Test: block in_progress")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -318,7 +318,7 @@ func TestTodoManager_Block(t *testing.T) {
 
 	t.Run("block already blocked fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: block already")
+		todo, err := manager.CreateTodo(chatCtx, "Test: block already")
 		require.NoError(t, err)
 
 		chatCtxForBlock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -333,7 +333,7 @@ func TestTodoManager_Block(t *testing.T) {
 
 	t.Run("block completed todo fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: block completed")
+		todo, err := manager.CreateTodo(chatCtx, "Test: block completed")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -352,7 +352,7 @@ func TestTodoManager_Block(t *testing.T) {
 
 	t.Run("block failed todo fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: block failed")
+		todo, err := manager.CreateTodo(chatCtx, "Test: block failed")
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -372,13 +372,13 @@ func TestTodoManager_Block(t *testing.T) {
 
 func TestTodoManager_Unblock(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("unblock blocked todo with satisfied deps", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: unblock")
+		todo, err := manager.CreateTodo(chatCtx, "Test: unblock")
 		require.NoError(t, err)
 
 		chatCtxForBlock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -393,7 +393,7 @@ func TestTodoManager_Unblock(t *testing.T) {
 
 	t.Run("unblock non-blocked todo fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: unblock not blocked")
+		todo, err := manager.CreateTodo(chatCtx, "Test: unblock not blocked")
 		require.NoError(t, err)
 
 		chatCtxForUnblock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -404,10 +404,10 @@ func TestTodoManager_Unblock(t *testing.T) {
 
 	t.Run("unblock with unsatisfied dependencies fails", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		depTodo, err := manager.Create(chatCtx, "Test: unblock dep")
+		depTodo, err := manager.CreateTodo(chatCtx, "Test: unblock dep")
 		require.NoError(t, err)
 
-		todo, err := manager.Create(chatCtx, "Test: unblock unsatisfied", WithDependsOn(depTodo.ID.String()))
+		todo, err := manager.CreateTodo(chatCtx, "Test: unblock unsatisfied", WithDependsOn(depTodo.ID.String()))
 		require.NoError(t, err)
 
 		chatCtxForBlock := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -423,16 +423,16 @@ func TestTodoManager_Unblock(t *testing.T) {
 
 func TestTodoManager_CircularDependency(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("detect circular dependency A->B->A", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todoA, err := manager.Create(chatCtx, "Test: circular A")
+		todoA, err := manager.CreateTodo(chatCtx, "Test: circular A")
 		require.NoError(t, err)
 
-		todoB, err := manager.Create(chatCtx, "Test: circular B", WithDependsOn(todoA.ID.String()))
+		todoB, err := manager.CreateTodo(chatCtx, "Test: circular B", WithDependsOn(todoA.ID.String()))
 		require.NoError(t, err)
 
 		chatCtxForStart := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -443,7 +443,7 @@ func TestTodoManager_CircularDependency(t *testing.T) {
 
 	t.Run("self-dependency detected", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: self dep")
+		todo, err := manager.CreateTodo(chatCtx, "Test: self dep")
 		require.NoError(t, err)
 
 		_ = todo
@@ -454,19 +454,19 @@ func TestTodoManager_CircularDependency(t *testing.T) {
 
 func TestTodoManager_GetAvailableTodos(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("get available todos", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo1, err := manager.Create(chatCtx, "Test: available 1")
+		todo1, err := manager.CreateTodo(chatCtx, "Test: available 1")
 		require.NoError(t, err)
 
-		todo2, err := manager.Create(chatCtx, "Test: available 2")
+		todo2, err := manager.CreateTodo(chatCtx, "Test: available 2")
 		require.NoError(t, err)
 
-		_, err = manager.Create(chatCtx, "Test: with dep", WithDependsOn(todo1.ID.String()))
+		_, err = manager.CreateTodo(chatCtx, "Test: with dep", WithDependsOn(todo1.ID.String()))
 		require.NoError(t, err)
 
 		chatCtxForGet := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -484,10 +484,10 @@ func TestTodoManager_GetAvailableTodos(t *testing.T) {
 
 	t.Run("get available after completing dependency", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo1, err := manager.Create(chatCtx, "Test: dep for available")
+		todo1, err := manager.CreateTodo(chatCtx, "Test: dep for available")
 		require.NoError(t, err)
 
-		todo2, err := manager.Create(chatCtx, "Test: waiting", WithDependsOn(todo1.ID.String()))
+		todo2, err := manager.CreateTodo(chatCtx, "Test: waiting", WithDependsOn(todo1.ID.String()))
 		require.NoError(t, err)
 
 		chatCtxForGet := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -528,20 +528,20 @@ func TestTodoManager_GetAvailableTodos(t *testing.T) {
 
 func TestTodoManager_CRUD(t *testing.T) {
 	db := setupTestDB(t)
-	manager := NewTodoManager(db)
+	manager, _ := NewTodoManager(db)
 	ctx := context.Background()
 	sess := createTestSession(t, db)
 
 	t.Run("get non-existent todo", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		_, err := manager.Get(chatCtx, uuid.New().String())
+		_, err := manager.GetTodo(chatCtx, uuid.New().String())
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, ErrTodoNotFound))
 	})
 
 	t.Run("delete todo", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: delete")
+		todo, err := manager.CreateTodo(chatCtx, "Test: delete")
 		require.NoError(t, err)
 
 		chatCtxForDelete := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
@@ -549,7 +549,7 @@ func TestTodoManager_CRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		chatCtxForGet := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		_, err = manager.Get(chatCtxForGet, todo.ID.String())
+		_, err = manager.GetTodo(chatCtxForGet, todo.ID.String())
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, ErrTodoNotFound))
 	})
@@ -564,19 +564,19 @@ func TestTodoManager_CRUD(t *testing.T) {
 	t.Run("list todos", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
 		for i := 0; i < 3; i++ {
-			_, err := manager.Create(chatCtx, fmt.Sprintf("Test: list %d", i))
+			_, err := manager.CreateTodo(chatCtx, fmt.Sprintf("Test: list %d", i))
 			require.NoError(t, err)
 		}
 
 		chatCtxForList := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todos, err := manager.List(chatCtxForList)
+		todos, err := manager.ListTodos(chatCtxForList)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(todos), 3)
 	})
 
 	t.Run("update todo", func(t *testing.T) {
 		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "")
-		todo, err := manager.Create(chatCtx, "Test: update")
+		todo, err := manager.CreateTodo(chatCtx, "Test: update")
 		require.NoError(t, err)
 
 		chatCtxForUpdate := testutil.NewMockChatContext(ctx, sess.ID.String(), "")

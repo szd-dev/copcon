@@ -4,26 +4,27 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/chatcontext"
+	"github.com/copcon/core/iface"
 )
 
 // SessionAgentStore is a concurrency-safe map from sessionID to active ChatContext.
 // It uses sync.RWMutex for explicit read/write lock semantics.
 type SessionAgentStore struct {
 	mu     sync.RWMutex
-	active map[string]*iface.ChatContext
+	active map[string]*chatcontext.ChatContext
 }
 
 // NewSessionAgentStore creates a new SessionAgentStore.
 func NewSessionAgentStore() *SessionAgentStore {
 	return &SessionAgentStore{
-		active: make(map[string]*iface.ChatContext),
+		active: make(map[string]*chatcontext.ChatContext),
 	}
 }
 
 // Put stores a ChatContext for the given sessionID.
 // Returns an error if the sessionID is already active.
-func (s *SessionAgentStore) Put(sessionID string, chatCtx *iface.ChatContext) error {
+func (s *SessionAgentStore) Put(sessionID string, chatCtx *chatcontext.ChatContext) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -37,7 +38,7 @@ func (s *SessionAgentStore) Put(sessionID string, chatCtx *iface.ChatContext) er
 
 // Get retrieves the ChatContext for the given sessionID.
 // Returns the ChatContext and true if found, nil and false otherwise.
-func (s *SessionAgentStore) Get(sessionID string) (*iface.ChatContext, bool) {
+func (s *SessionAgentStore) Get(sessionID string) (*chatcontext.ChatContext, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

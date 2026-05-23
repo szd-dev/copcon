@@ -3,8 +3,8 @@ package tools
 import (
 	"fmt"
 
-	"github.com/copcon/server/internal/domain/iface"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/iface"
+	"github.com/copcon/core/tool"
 )
 
 // ConfirmActionTool asks the user to approve or decline an action.

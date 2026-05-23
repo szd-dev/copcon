@@ -3,12 +3,12 @@ package plugins
 import (
 	"strings"
 
-	"github.com/copcon/server/internal/session"
+	"github.com/copcon/core/storage"
 )
 
 // formatTodoState formats a list of todos into a concise system prompt string,
 // grouped by status. It prefers the ActiveForm over Content when available.
-func formatTodoState(todos []*session.Todo) string {
+func formatTodoState(todos []*storage.Todo) string {
 	var pending, inProgress, completed, failed, blocked []string
 
 	for _, t := range todos {
@@ -17,15 +17,15 @@ func formatTodoState(todos []*session.Todo) string {
 			content = t.ActiveForm
 		}
 		switch t.Status {
-		case session.TodoStatusPending:
+		case storage.TodoStatusPending:
 			pending = append(pending, content)
-		case session.TodoStatusInProgress:
+		case storage.TodoStatusInProgress:
 			inProgress = append(inProgress, content)
-		case session.TodoStatusCompleted:
+		case storage.TodoStatusCompleted:
 			completed = append(completed, content)
-		case session.TodoStatusFailed:
+		case storage.TodoStatusFailed:
 			failed = append(failed, content)
-		case session.TodoStatusBlocked:
+		case storage.TodoStatusBlocked:
 			blocked = append(blocked, content)
 		}
 	}

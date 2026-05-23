@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/server/internal/domain/entity"
-	"github.com/copcon/server/internal/domain/iface"
-	"github.com/copcon/server/internal/hook"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/entity"
+	"github.com/copcon/core/iface"
+	"github.com/copcon/core/hook"
+	"github.com/copcon/core/tool"
 )
 
 // stubChatContext is a minimal ChatContextInterface for tests.

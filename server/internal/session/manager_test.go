@@ -56,7 +56,7 @@ func TestSessionManager_Create(t *testing.T) {
 	ctx := context.Background()
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
 
-	session, err := mgr.Create(chatCtx, "Test Session", "")
+	session, err := mgr.CreateSession(chatCtx, "Test Session", "")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, session)
@@ -71,11 +71,11 @@ func TestSessionManager_Get(t *testing.T) {
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
-	created, err := mgr.Create(chatCtx, "Test Session", "")
+	created, err := mgr.CreateSession(chatCtx, "Test Session", "")
 	require.NoError(t, err)
 
 	chatCtxForGet := testutil.NewMockChatContext(ctx, created.ID.String(), "")
-	session, err := mgr.Get(chatCtxForGet)
+	session, err := mgr.GetSession(chatCtxForGet)
 
 	assert.NoError(t, err)
 	assert.Equal(t, created.ID, session.ID)
@@ -88,7 +88,7 @@ func TestSessionManager_Get_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, uuid.New().String(), "")
-	_, err := mgr.Get(chatCtx)
+	_, err := mgr.GetSession(chatCtx)
 
 	assert.ErrorIs(t, err, ErrSessionNotFound)
 }
@@ -99,13 +99,13 @@ func TestSessionManager_List(t *testing.T) {
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
-	_, err := mgr.Create(chatCtx, "Session 1", "")
+	_, err := mgr.CreateSession(chatCtx, "Session 1", "")
 	require.NoError(t, err)
-	_, err = mgr.Create(chatCtx, "Session 2", "")
+	_, err = mgr.CreateSession(chatCtx, "Session 2", "")
 	require.NoError(t, err)
 
 	chatCtxForList := testutil.NewMockChatContext(ctx, "", "")
-	sessions, total, err := mgr.List(chatCtxForList, 10, 0)
+	sessions, total, err := mgr.ListSessions(chatCtxForList, 10, 0)
 
 	assert.NoError(t, err)
 	assert.Equal(t, int64(2), total)
@@ -118,15 +118,15 @@ func TestSessionManager_Delete(t *testing.T) {
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
-	created, err := mgr.Create(chatCtx, "Test Session", "")
+	created, err := mgr.CreateSession(chatCtx, "Test Session", "")
 	require.NoError(t, err)
 
 	chatCtxForDelete := testutil.NewMockChatContext(ctx, created.ID.String(), "")
-	err = mgr.Delete(chatCtxForDelete)
+	err = mgr.DeleteSession(chatCtxForDelete)
 	assert.NoError(t, err)
 
 	chatCtxForGet := testutil.NewMockChatContext(ctx, created.ID.String(), "")
-	_, err = mgr.Get(chatCtxForGet)
+	_, err = mgr.GetSession(chatCtxForGet)
 	assert.ErrorIs(t, err, ErrSessionNotFound)
 }
 
@@ -136,15 +136,15 @@ func TestSessionManager_UpdateTitle(t *testing.T) {
 	ctx := context.Background()
 
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
-	created, err := mgr.Create(chatCtx, "Old Title", "")
+	created, err := mgr.CreateSession(chatCtx, "Old Title", "")
 	require.NoError(t, err)
 
 	chatCtxForUpdate := testutil.NewMockChatContext(ctx, created.ID.String(), "")
-	err = mgr.UpdateTitle(chatCtxForUpdate, "New Title")
+	err = mgr.UpdateSessionTitle(chatCtxForUpdate, "New Title")
 	assert.NoError(t, err)
 
 	chatCtxForGet := testutil.NewMockChatContext(ctx, created.ID.String(), "")
-	session, err := mgr.Get(chatCtxForGet)
+	session, err := mgr.GetSession(chatCtxForGet)
 	require.NoError(t, err)
 	assert.Equal(t, "New Title", session.Title)
 }
@@ -156,7 +156,7 @@ func TestCreateSessionWithAgent(t *testing.T) {
 
 	agentID := "agent-123"
 	chatCtx := testutil.NewMockChatContext(ctx, "", agentID)
-	session, err := mgr.Create(chatCtx, "Session with Agent", agentID)
+	session, err := mgr.CreateSession(chatCtx, "Session with Agent", agentID)
 
 	require.NoError(t, err)
 	assert.NotNil(t, session)
@@ -165,7 +165,7 @@ func TestCreateSessionWithAgent(t *testing.T) {
 	assert.Equal(t, agentID, session.DefaultAgentID)
 
 	chatCtxForGet := testutil.NewMockChatContext(ctx, session.ID.String(), "")
-	retrieved, err := mgr.Get(chatCtxForGet)
+	retrieved, err := mgr.GetSession(chatCtxForGet)
 	require.NoError(t, err)
 	assert.Equal(t, agentID, retrieved.DefaultAgentID)
 }
@@ -178,12 +178,12 @@ func TestParentSessionID(t *testing.T) {
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
 
 	// Create parent session
-	parent, err := mgr.Create(chatCtx, "Parent Session", "")
+	parent, err := mgr.CreateSession(chatCtx, "Parent Session", "")
 	require.NoError(t, err)
 	require.NotNil(t, parent)
 
 	// Create child session with parent reference
-	child, err := mgr.Create(chatCtx, "Child Session", "", WithParentSessionID(parent.ID))
+	child, err := mgr.CreateSession(chatCtx, "Child Session", "", WithParentSessionID(parent.ID))
 	require.NoError(t, err)
 	require.NotNil(t, child)
 	require.NotNil(t, child.ParentSessionID)
@@ -191,7 +191,7 @@ func TestParentSessionID(t *testing.T) {
 
 	// Verify persistence
 	chatCtxForGet := testutil.NewMockChatContext(ctx, child.ID.String(), "")
-	retrieved, err := mgr.Get(chatCtxForGet)
+	retrieved, err := mgr.GetSession(chatCtxForGet)
 	require.NoError(t, err)
 	require.NotNil(t, retrieved.ParentSessionID)
 	assert.Equal(t, parent.ID, *retrieved.ParentSessionID)
@@ -212,15 +212,15 @@ func TestParentSessionID_FKConstraint(t *testing.T) {
 	chatCtx := testutil.NewMockChatContext(ctx, "", "")
 
 	// Create parent + child
-	parent, err := mgr.Create(chatCtx, "Parent", "")
+	parent, err := mgr.CreateSession(chatCtx, "Parent", "")
 	require.NoError(t, err)
 
-	_, err = mgr.Create(chatCtx, "Child", "", WithParentSessionID(parent.ID))
+	_, err = mgr.CreateSession(chatCtx, "Child", "", WithParentSessionID(parent.ID))
 	require.NoError(t, err)
 
 	// Deleting parent should fail due to FK constraint from child
 	chatCtxForDelete := testutil.NewMockChatContext(ctx, parent.ID.String(), "")
-	err = mgr.Delete(chatCtxForDelete)
+	err = mgr.DeleteSession(chatCtxForDelete)
 	assert.Error(t, err, "deleting parent session with children should violate FK constraint")
 	assert.Contains(t, err.Error(), "violates foreign key constraint")
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/server/internal/context_builder"
-	"github.com/copcon/server/internal/domain/entity"
+	"github.com/copcon/core/context_builder"
+	"github.com/copcon/core/entity"
 	"github.com/copcon/server/internal/session"
 )
 
@@ -18,7 +18,7 @@ func TestSynthesizeUIMessage_UserMessage(t *testing.T) {
 		Role:    "user",
 		Content: "Hello",
 	}
-	uiMsg := context_builder.SynthesizeUIMessage(msg, nil)
+	uiMsg := context_builder.SynthesizeUIMessage(sessionMsgToLegacy(msg), nil)
 	require.NotNil(t, uiMsg)
 	assert.Equal(t, "user", uiMsg.Role)
 	assert.Equal(t, msg.ID.String(), uiMsg.ID)
@@ -41,7 +41,7 @@ func TestSynthesizeUIMessage_AssistantWithToolCalls(t *testing.T) {
 		},
 	}
 	toolResults := map[string]string{"call_1": "file.txt"}
-	uiMsg := context_builder.SynthesizeUIMessage(msg, toolResults)
+	uiMsg := context_builder.SynthesizeUIMessage(sessionMsgToLegacy(msg), toolResults)
 	require.NotNil(t, uiMsg)
 	assert.Equal(t, "assistant", uiMsg.Role)
 	require.Len(t, uiMsg.Steps, 1, "legacy assistant message should have one step (StepIndex=0)")
@@ -71,7 +71,7 @@ func TestSynthesizeUIMessage_AssistantToolCallOnly(t *testing.T) {
 			{ID: "call_2", Type: "function", Function: session.FunctionCall{Name: "python", Arguments: `{"code":"1+1"}`}},
 		},
 	}
-	uiMsg := context_builder.SynthesizeUIMessage(msg, nil)
+	uiMsg := context_builder.SynthesizeUIMessage(sessionMsgToLegacy(msg), nil)
 	require.NotNil(t, uiMsg)
 	require.Len(t, uiMsg.Steps, 1)
 	require.Len(t, uiMsg.Steps[0].Parts, 1)
@@ -85,7 +85,7 @@ func TestSynthesizeUIMessage_UnsupportedRole(t *testing.T) {
 		Role:    "system",
 		Content: "You are helpful.",
 	}
-	uiMsg := context_builder.SynthesizeUIMessage(msg, nil)
+	uiMsg := context_builder.SynthesizeUIMessage(sessionMsgToLegacy(msg), nil)
 	assert.Nil(t, uiMsg, "unsupported roles should return nil")
 }
 

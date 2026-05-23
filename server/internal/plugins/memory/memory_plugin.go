@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/copcon/server/internal/domain/entity"
-	"github.com/copcon/server/internal/hook"
+	"github.com/copcon/core/entity"
+	"github.com/copcon/core/hook"
 	"github.com/copcon/server/internal/memory"
 )
 

@@ -1,6 +1,7 @@
 package todo
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,9 +10,13 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
+	"github.com/copcon/core/storage"
 )
+
+// Compile-time check: todoManager satisfies storage.TodoStore.
+var _ storage.TodoStore = (*todoManager)(nil)
 
 var (
 	ErrTodoNotFound       = errors.New("todo not found")
@@ -29,9 +34,9 @@ var (
 type TodoOption func(*session.Todo)
 
 type TodoManager interface {
-	Create(chatCtx iface.ChatContextInterface, content string, opts ...TodoOption) (*session.Todo, error)
-	Get(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error)
-	List(chatCtx iface.ChatContextInterface) ([]*session.Todo, error)
+	CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...TodoOption) (*session.Todo, error)
+	GetTodo(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error)
+	ListTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error)
 	Update(chatCtx iface.ChatContextInterface, id string, updates map[string]any) (*session.Todo, error)
 	Delete(chatCtx iface.ChatContextInterface, id string) error
 	Start(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error)
@@ -40,7 +45,6 @@ type TodoManager interface {
 	Block(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error)
 	Unblock(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error)
 	GetAvailableTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error)
-	GetDB() *gorm.DB
 }
 
 // todoManager implements TodoManager interface with state machine validation
@@ -48,12 +52,13 @@ type todoManager struct {
 	db *gorm.DB
 }
 
-// NewTodoManager creates a new TodoManager instance
-func NewTodoManager(db *gorm.DB) TodoManager {
-	return &todoManager{db: db}
+// NewTodoManager creates a new TodoManager instance.
+func NewTodoManager(db *gorm.DB) (TodoManager, storage.TodoStore) {
+	m := &todoManager{db: db}
+	return m, m
 }
 
-func (m *todoManager) Create(chatCtx iface.ChatContextInterface, content string, opts ...TodoOption) (*session.Todo, error) {
+func (m *todoManager) CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...TodoOption) (*session.Todo, error) {
 	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
 	if err != nil {
 		return nil, fmt.Errorf("parse session id: %w", err)
@@ -107,7 +112,7 @@ func (m *todoManager) Create(chatCtx iface.ChatContextInterface, content string,
 	return todo, nil
 }
 
-func (m *todoManager) Get(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
+func (m *todoManager) GetTodo(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
 	var todo session.Todo
 	if err := m.db.WithContext(chatCtx.Context()).Where("id = ?", id).First(&todo).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -118,7 +123,7 @@ func (m *todoManager) Get(chatCtx iface.ChatContextInterface, id string) (*sessi
 	return &todo, nil
 }
 
-func (m *todoManager) List(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
+func (m *todoManager) ListTodos(chatCtx iface.ChatContextInterface) ([]*session.Todo, error) {
 	var todos []*session.Todo
 
 	if err := m.db.WithContext(chatCtx.Context()).
@@ -132,7 +137,7 @@ func (m *todoManager) List(chatCtx iface.ChatContextInterface) ([]*session.Todo,
 }
 
 func (m *todoManager) Update(chatCtx iface.ChatContextInterface, id string, updates map[string]any) (*session.Todo, error) {
-	todo, err := m.Get(chatCtx, id)
+	todo, err := m.GetTodo(chatCtx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +150,7 @@ func (m *todoManager) Update(chatCtx iface.ChatContextInterface, id string, upda
 		return nil, ErrTodoNotFound
 	}
 
-	return m.Get(chatCtx, id)
+	return m.GetTodo(chatCtx, id)
 }
 
 func (m *todoManager) Delete(chatCtx iface.ChatContextInterface, id string) error {
@@ -160,7 +165,7 @@ func (m *todoManager) Delete(chatCtx iface.ChatContextInterface, id string) erro
 }
 
 func (m *todoManager) Start(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
-	todo, err := m.Get(chatCtx, id)
+	todo, err := m.GetTodo(chatCtx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +190,7 @@ func (m *todoManager) Complete(chatCtx iface.ChatContextInterface, id string, re
 		return nil, ErrResultRequired
 	}
 
-	todo, err := m.Get(chatCtx, id)
+	todo, err := m.GetTodo(chatCtx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +210,7 @@ func (m *todoManager) Complete(chatCtx iface.ChatContextInterface, id string, re
 }
 
 func (m *todoManager) Fail(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
-	todo, err := m.Get(chatCtx, id)
+	todo, err := m.GetTodo(chatCtx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +240,7 @@ func (m *todoManager) Fail(chatCtx iface.ChatContextInterface, id string, reason
 }
 
 func (m *todoManager) Block(chatCtx iface.ChatContextInterface, id string, reason string) (*session.Todo, error) {
-	todo, err := m.Get(chatCtx, id)
+	todo, err := m.GetTodo(chatCtx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +266,7 @@ func (m *todoManager) Block(chatCtx iface.ChatContextInterface, id string, reaso
 }
 
 func (m *todoManager) Unblock(chatCtx iface.ChatContextInterface, id string) (*session.Todo, error) {
-	todo, err := m.Get(chatCtx, id)
+	todo, err := m.GetTodo(chatCtx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -314,18 +319,13 @@ func (m *todoManager) GetAvailableTodos(chatCtx iface.ChatContextInterface) ([]*
 	return available, nil
 }
 
-// GetDB returns the underlying database connection
-func (m *todoManager) GetDB() *gorm.DB {
-	return m.db
-}
-
 func (m *todoManager) checkDependencies(chatCtx iface.ChatContextInterface, todo *session.Todo) error {
 	if len(todo.DependsOn) == 0 {
 		return nil
 	}
 
 	for _, depID := range todo.DependsOn {
-		dep, err := m.Get(chatCtx, depID.String())
+		dep, err := m.GetTodo(chatCtx, depID.String())
 		if err != nil {
 			if errors.Is(err, ErrTodoNotFound) {
 				return fmt.Errorf("dependency %s not found", depID)
@@ -350,7 +350,7 @@ func (m *todoManager) validateNoCircularDeps(chatCtx iface.ChatContextInterface,
 		visited[id] = true
 		recStack[id] = true
 
-		todo, err := m.Get(chatCtx, id.String())
+		todo, err := m.GetTodo(chatCtx, id.String())
 		if err != nil {
 			if errors.Is(err, ErrTodoNotFound) {
 				recStack[id] = false
@@ -414,4 +414,72 @@ func WithValidation(validation string) TodoOption {
 	return func(t *session.Todo) {
 		t.Validation = validation
 	}
+}
+
+// storage.TodoStore interface methods
+
+func (m *todoManager) Create(ctx context.Context, todo *storage.Todo) (*storage.Todo, error) {
+	model := session.TodoFromStorage(todo)
+	if model.ID == uuid.Nil {
+		model.ID = uuid.New()
+	}
+	if model.Status == "" {
+		model.Status = session.TodoStatusPending
+	}
+
+	if err := m.db.WithContext(ctx).Create(model).Error; err != nil {
+		return nil, fmt.Errorf("create todo: %w", err)
+	}
+	return session.TodoToStorage(model), nil
+}
+
+func (m *todoManager) Get(ctx context.Context, id uuid.UUID) (*storage.Todo, error) {
+	var t session.Todo
+	if err := m.db.WithContext(ctx).Where("id = ?", id).First(&t).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTodoNotFound
+		}
+		return nil, fmt.Errorf("get todo: %w", err)
+	}
+	return session.TodoToStorage(&t), nil
+}
+
+func (m *todoManager) List(ctx context.Context, sessionID uuid.UUID) ([]*storage.Todo, error) {
+	var todos []*session.Todo
+
+	if err := m.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("created_at DESC").
+		Find(&todos).Error; err != nil {
+		return nil, fmt.Errorf("list todos: %w", err)
+	}
+
+	result := make([]*storage.Todo, len(todos))
+	for i, t := range todos {
+		result[i] = session.TodoToStorage(t)
+	}
+	return result, nil
+}
+
+func (m *todoManager) UpdateStatus(ctx context.Context, id uuid.UUID, status storage.TodoStatus) (*storage.Todo, error) {
+	result := m.db.WithContext(ctx).
+		Model(&session.Todo{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":     session.TodoStatus(status),
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return nil, fmt.Errorf("update todo status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrTodoNotFound
+	}
+	return m.Get(ctx, id)
+}
+
+func (m *todoManager) DeleteBySession(ctx context.Context, sessionID uuid.UUID) error {
+	return m.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Delete(&session.Todo{}).Error
 }

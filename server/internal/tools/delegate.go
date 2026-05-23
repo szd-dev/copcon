@@ -6,13 +6,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/copcon/server/internal/agent"
+	"github.com/copcon/core/agent"
 	"github.com/copcon/server/internal/chat_context"
-	"github.com/copcon/server/internal/context_builder"
-	"github.com/copcon/server/internal/domain/entity"
-	chatcontextpkg "github.com/copcon/server/internal/domain/iface"
+	"github.com/copcon/core/chatcontext"
+	"github.com/copcon/core/context_builder"
+	"github.com/copcon/core/entity"
+	iface "github.com/copcon/core/iface"
 	"github.com/copcon/server/internal/session"
-	"github.com/copcon/server/internal/tool"
+	"github.com/copcon/core/tool"
 )
 
 // DelegateToTool delegates a task to a sub-agent running in its own session.
@@ -74,7 +75,7 @@ func (t *DelegateToTool) IsDelegationTool() bool {
 	return true
 }
 
-func (t *DelegateToTool) Execute(chatCtx chatcontextpkg.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
+func (t *DelegateToTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	agentID, _ := args["agent_id"].(string)
 	task, _ := args["task"].(string)
 
@@ -105,7 +106,7 @@ func (t *DelegateToTool) Execute(chatCtx chatcontextpkg.ChatContextInterface, ar
 		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("invalid parent session ID: %v", err)}, nil
 	}
 
-	subSession, err := t.sessionMgr.Create(
+	subSession, err := t.sessionMgr.CreateSession(
 		chatCtx,
 		fmt.Sprintf("Sub-agent: %s", agentID),
 		agentID,
@@ -115,7 +116,7 @@ func (t *DelegateToTool) Execute(chatCtx chatcontextpkg.ChatContextInterface, ar
 		return &tool.ToolResult{Success: false, Error: fmt.Sprintf("failed to create sub-session: %v", err)}, nil
 	}
 
-	subChatCtx := chatcontextpkg.NewChatContext(chatCtx.Context(), subSession.ID.String(), agentID)
+	subChatCtx := chatcontext.NewChatContext(chatCtx.Context(), subSession.ID.String(), agentID)
 	subChatCtx.WithDepth(chatCtx.Depth() + 1)
 
 	if err := t.contextMgr.AddMessage(subChatCtx, &session.Message{
@@ -141,7 +142,7 @@ func (t *DelegateToTool) Execute(chatCtx chatcontextpkg.ChatContextInterface, ar
 	}, nil
 }
 
-func buildSummary(chatCtx chatcontextpkg.ChatContextInterface) string {
+func buildSummary(chatCtx iface.ChatContextInterface) string {
 	msg := map[string]string{
 		"session_id": chatCtx.SessionID(),
 		"agent_id":   chatCtx.AgentID(),
@@ -151,7 +152,7 @@ func buildSummary(chatCtx chatcontextpkg.ChatContextInterface) string {
 	return string(data)
 }
 
-func collectSummary(contextMgr chat_context.ContextManager, chatCtx chatcontextpkg.ChatContextInterface) string {
+func collectSummary(contextMgr chat_context.ContextManager, chatCtx iface.ChatContextInterface) string {
 	messages, err := contextMgr.GetHistory(chatCtx, 20)
 	if err != nil || len(messages) == 0 {
 		return "Task completed"
@@ -203,14 +204,14 @@ func (t *ReadSubSessionTool) InputSchema() map[string]any {
 	}
 }
 
-func (t *ReadSubSessionTool) Execute(chatCtx chatcontextpkg.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
+func (t *ReadSubSessionTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	subSessionID, _ := args["sub_session_id"].(string)
 	if subSessionID == "" {
 		return &tool.ToolResult{Success: false, Error: "sub_session_id is required"}, nil
 	}
 
-	subChatCtx := chatcontextpkg.NewChatContext(chatCtx.Context(), subSessionID, "")
-	subSession, err := t.sessionMgr.Get(subChatCtx)
+	subChatCtx := chatcontext.NewChatContext(chatCtx.Context(), subSessionID, "")
+	subSession, err := t.sessionMgr.GetSession(subChatCtx)
 	if err != nil {
 		return &tool.ToolResult{Success: false, Error: "sub-session not found"}, nil
 	}
@@ -289,7 +290,7 @@ func convertMessagesToUI(messages []session.Message) []entity.UIMessage {
 				},
 			})
 		} else {
-			uiMsg := context_builder.SynthesizeUIMessage(msg, toolResultByCallID)
+			uiMsg := context_builder.SynthesizeUIMessage(sessionMsgToLegacy(msg), toolResultByCallID)
 			if uiMsg != nil {
 				uiMsg.SessionID = msg.SessionID.String()
 				uiMsg.Metadata = entity.UIMetadata{

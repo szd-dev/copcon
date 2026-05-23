@@ -1,8 +1,9 @@
 module github.com/copcon/server
 
-go 1.26
+go 1.26.1
 
 require (
+	github.com/copcon/core v0.0.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-cz/ringbuf v0.4.0
 	github.com/google/uuid v1.6.0
@@ -60,3 +61,5 @@ require (
 	google.golang.org/grpc v1.78.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace github.com/copcon/core => ../core
