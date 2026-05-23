@@ -40,10 +40,10 @@ type testHarness struct {
 	agentRegistry agent.AgentRegistry
 }
 
-func (h *testHarness) Store() storage.StoreProvider    { return h.store }
-func (h *testHarness) Engine() agent.AgentEngine        { return h.engine }
-func (h *testHarness) Registry() agent.AgentRegistry    { return h.agentRegistry }
-func (h *testHarness) SessionStore() chat.SessionStore { return chat.NewSessionStore() }
+func (h *testHarness) Store() storage.StoreProvider        { return h.store }
+func (h *testHarness) Engine() agent.AgentEngine           { return h.engine }
+func (h *testHarness) Registry() agent.AgentRegistry       { return h.agentRegistry }
+func (h *testHarness) ActiveSessions() chat.ActiveSessions { return chat.NewActiveSessions() }
 
 type mockSessionStore struct {
 	sessions map[uuid.UUID]*storage.Session
@@ -513,7 +513,7 @@ func (m *mockAgentEngine) Chat(chatCtx iface.ChatContextInterface, userInput str
 	return nil
 }
 
-func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, chat.SessionStore, func()) {
+func setupChatTestHandler(t *testing.T, mockAgent *mockAgentEngine) (*Handler, chat.ActiveSessions, func()) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{
@@ -752,7 +752,7 @@ func TestChat_FirstConnectEmptyContent(t *testing.T) {
 }
 
 func TestSessionAgentStore(t *testing.T) {
-	store := chat.NewSessionStore()
+	store := chat.NewActiveSessions()
 
 	_, ok := store.Get("nonexistent")
 	assert.False(t, ok)

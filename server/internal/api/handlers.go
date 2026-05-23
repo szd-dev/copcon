@@ -17,24 +17,24 @@ import (
 )
 
 type Handler struct {
-	config            *config.Config
-	sessionStore      storage.SessionStore
-	messageStore      storage.MessageStore
-	todoStore         storage.TodoStore
-	agent             agent.AgentEngine
-	agentRegistry     agent.AgentRegistry
-	chatStore         chat.SessionStore
+	config        *config.Config
+	sessionStore  storage.SessionStore
+	messageStore  storage.MessageStore
+	todoStore     storage.TodoStore
+	agent         agent.AgentEngine
+	agentRegistry agent.AgentRegistry
+	chatStore     chat.ActiveSessions
 }
 
 func NewHandler(cfg *config.Config, h core.APIProvider) *Handler {
 	return &Handler{
-		config:            cfg,
-		sessionStore:      h.Store().Sessions(),
-		messageStore:      h.Store().Messages(),
-		todoStore:         h.Store().Todos(),
-		agent:             h.Engine(),
-		agentRegistry:     h.Registry(),
-		chatStore:         h.SessionStore(),
+		config:        cfg,
+		sessionStore:  h.Store().Sessions(),
+		messageStore:  h.Store().Messages(),
+		todoStore:     h.Store().Todos(),
+		agent:         h.Engine(),
+		agentRegistry: h.Registry(),
+		chatStore:     h.ActiveSessions(),
 	}
 }
 

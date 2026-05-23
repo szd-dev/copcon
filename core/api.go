@@ -7,8 +7,8 @@ import (
 )
 
 type APIProvider interface {
-	Store()        storage.StoreProvider
-	Engine()       agent.AgentEngine
-	Registry()     agent.AgentRegistry
-	SessionStore() chat.SessionStore
+	Store() storage.StoreProvider
+	Engine() agent.AgentEngine
+	Registry() agent.AgentRegistry
+	ActiveSessions() chat.ActiveSessions
 }

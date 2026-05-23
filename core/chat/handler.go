@@ -28,7 +28,7 @@ func HandleChat(
 	flusher http.Flusher,
 	req ChatRequest,
 	engine agent.AgentEngine,
-	store SessionStore,
+	store ActiveSessions,
 ) error {
 	if req.Reconnect {
 		chatCtx, found := store.Get(req.SessionID)

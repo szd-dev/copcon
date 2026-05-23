@@ -6,6 +6,7 @@ import (
 
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/llm"
+	"github.com/copcon/core/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -13,9 +14,16 @@ import (
 	_ "github.com/copcon/core/capabilities/tools"
 )
 
+type testStoreProvider struct{}
+
+func (testStoreProvider) Sessions() storage.SessionStore { return nil }
+func (testStoreProvider) Messages() storage.MessageStore { return nil }
+func (testStoreProvider) Todos() storage.TodoStore       { return nil }
+
 func TestNewHarness_BasicBuild(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{
 				ID:            "test-agent",
@@ -38,7 +46,8 @@ func TestNewHarness_BasicBuild(t *testing.T) {
 
 func TestNewHarness_DoubleBuild(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{
 				ID:           "a",
@@ -55,66 +64,14 @@ func TestNewHarness_DoubleBuild(t *testing.T) {
 	assert.Contains(t, err.Error(), "already built")
 }
 
-func TestNewHarness_NilStoresGetNoop(t *testing.T) {
+func TestNewHarness_NilProviderReturnsError(t *testing.T) {
 	h := NewHarness(HarnessConfig{
 		LLM: llm.NewMockProvider(),
-		Agents: []AgentSpec{
-			{
-				ID:           "a",
-				Name:         "A",
-				Model:        "gpt-4o",
-				SystemPrompt: "test",
-			},
-		},
+		Agents: []AgentSpec{{ID: "a", Name: "A", Model: "gpt-4o", SystemPrompt: "test"}},
 	})
-
-	require.NoError(t, h.Build())
-
-	_, ok := h.config.Store.Provider.(noopStoreProvider)
-	assert.True(t, ok, "nil Provider should be replaced with noopStoreProvider")
-
-	_, ok = h.config.Store.Provider.Sessions().(*noopSessionStore)
-	assert.True(t, ok, "nil Sessions should be replaced with noopSessionStore")
-
-	_, ok = h.config.Store.Memory.(*noopMemoryStore)
-	assert.True(t, ok, "nil MemoryStore should be replaced with noopMemoryStore")
-}
-
-func TestNewHarness_AgentRegistryPopulation(t *testing.T) {
-	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
-		Agents: []AgentSpec{
-			{
-				ID:            "agent-a",
-				Name:          "Agent A",
-				Model:         "gpt-4o",
-				SystemPrompt:  "You are agent A.",
-				Tools:         []string{"tools.code_executor"},
-				AllowDelegate: true,
-			},
-			{
-				ID:            "agent-b",
-				Name:          "Agent B",
-				Model:         "gpt-4o-mini",
-				SystemPrompt:  "You are agent B.",
-				AllowDelegate: false,
-			},
-		},
-	})
-
-	require.NoError(t, h.Build())
-
-	agents := h.Registry().List()
-	assert.Len(t, agents, 2)
-
-	def, err := h.Registry().Get("agent-a")
-	require.NoError(t, err)
-	assert.Equal(t, "Agent A", def.Name)
-	assert.Equal(t, "gpt-4o", def.Model)
-
-	delegatable := h.Registry().ListDelegatable()
-	assert.Len(t, delegatable, 1)
-	assert.Equal(t, "agent-a", delegatable[0].ID)
+	err := h.Build()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Provider")
 }
 
 func TestNewHarness_AgentFactorySpec(t *testing.T) {
@@ -130,7 +87,8 @@ func TestNewHarness_AgentFactorySpec(t *testing.T) {
 	}
 
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		AgentFactories: []AgentFactorySpec{
 			{
 				ID:            "factory-agent",
@@ -152,7 +110,8 @@ func TestNewHarness_AgentFactorySpec(t *testing.T) {
 
 func TestNewHarness_FirstAgentIsDefault(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{ID: "first", Name: "First", Model: "gpt-4o", SystemPrompt: "first"},
 			{ID: "second", Name: "Second", Model: "gpt-4o", SystemPrompt: "second"},
@@ -168,7 +127,8 @@ func TestNewHarness_FirstAgentIsDefault(t *testing.T) {
 
 func TestNewHarness_DefaultFromFactorySpec(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		AgentFactories: []AgentFactorySpec{
 			{
 				ID:            "factory-default",
@@ -191,7 +151,8 @@ func TestNewHarness_DefaultFromFactorySpec(t *testing.T) {
 
 func TestNewHarness_WildcardCapabilityExpansion(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{ID: "wildcard-agent", Name: "Wildcard Agent", Model: "gpt-4o", SystemPrompt: "test",
 				Tools: []string{"code_executor"}, AllowDelegate: false},
@@ -210,7 +171,8 @@ func TestNewHarness_WildcardCapabilityExpansion(t *testing.T) {
 
 func TestNewHarness_CapabilityDependencyResolution(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{
 				ID:           "dep-agent",
@@ -260,7 +222,8 @@ func TestNewAgent_QuickConfig(t *testing.T) {
 
 func TestNewHarness_UnknownCapability(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{
 				ID:           "bad-agent",
@@ -279,7 +242,8 @@ func TestNewHarness_UnknownCapability(t *testing.T) {
 
 func TestNewHarness_AgentSpecModelOverride(t *testing.T) {
 	h := NewHarness(HarnessConfig{
-		LLM: llm.NewMockProvider(),
+		LLM:   llm.NewMockProvider(),
+		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{
 				ID:            "override-agent",

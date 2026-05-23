@@ -7,7 +7,7 @@ import (
 	"github.com/copcon/core/iface"
 )
 
-type SessionStore interface {
+type ActiveSessions interface {
 	Get(sessionID string) (*chatcontext.ChatContext, bool)
 	Put(sessionID string, chatCtx *chatcontext.ChatContext)
 	Remove(sessionID string)
@@ -18,7 +18,7 @@ type sessionStore struct {
 	active map[string]*chatcontext.ChatContext
 }
 
-func NewSessionStore() SessionStore {
+func NewActiveSessions() ActiveSessions {
 	return &sessionStore{active: make(map[string]*chatcontext.ChatContext)}
 }
 

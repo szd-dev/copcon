@@ -14,65 +14,7 @@ import (
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
-	"github.com/google/uuid"
 )
-
-type noopSessionStore struct{}
-
-var _ storage.SessionStore = (*noopSessionStore)(nil)
-
-func (noopSessionStore) Create(_ context.Context, s *storage.Session) (*storage.Session, error) {
-	return s, nil
-}
-func (noopSessionStore) Get(_ context.Context, _ uuid.UUID) (*storage.Session, error) {
-	return nil, fmt.Errorf("session not found")
-}
-func (noopSessionStore) List(_ context.Context, _, _ int) ([]*storage.Session, int64, error) {
-	return nil, 0, nil
-}
-func (noopSessionStore) Delete(_ context.Context, _ uuid.UUID) error               { return nil }
-func (noopSessionStore) UpdateTitle(_ context.Context, _ uuid.UUID, _ string) error { return nil }
-func (noopSessionStore) UpdateMetadata(_ context.Context, _ uuid.UUID, _ map[string]any) error {
-	return nil
-}
-func (noopSessionStore) GetMessageCount(_ context.Context, _ uuid.UUID) (int64, error) {
-	return 0, nil
-}
-func (noopSessionStore) AppendMetadata(_ context.Context, _ uuid.UUID, _ string, _ any) error {
-	return nil
-}
-
-type noopMessageStore struct{}
-
-var _ storage.MessageStore = (*noopMessageStore)(nil)
-
-func (noopMessageStore) List(_ context.Context, _ uuid.UUID, _ int) ([]*storage.Message, error) {
-	return nil, nil
-}
-func (noopMessageStore) Add(_ context.Context, _ *storage.Message) error    { return nil }
-func (noopMessageStore) Update(_ context.Context, _ *storage.Message) error { return nil }
-func (noopMessageStore) Upsert(_ context.Context, _ *storage.Message) error { return nil }
-func (noopMessageStore) DeleteBySession(_ context.Context, _ uuid.UUID) error {
-	return nil
-}
-
-type noopTodoStore struct{}
-
-var _ storage.TodoStore = (*noopTodoStore)(nil)
-
-func (noopTodoStore) Create(_ context.Context, t *storage.Todo) (*storage.Todo, error) {
-	return t, nil
-}
-func (noopTodoStore) Get(_ context.Context, _ uuid.UUID) (*storage.Todo, error) {
-	return nil, fmt.Errorf("todo not found")
-}
-func (noopTodoStore) List(_ context.Context, _ uuid.UUID) ([]*storage.Todo, error) {
-	return nil, nil
-}
-func (noopTodoStore) UpdateStatus(_ context.Context, _ uuid.UUID, _ storage.TodoStatus) (*storage.Todo, error) {
-	return nil, fmt.Errorf("todo not found")
-}
-func (noopTodoStore) DeleteBySession(_ context.Context, _ uuid.UUID) error { return nil }
 
 type noopMemoryStore struct{}
 
@@ -106,7 +48,7 @@ type quickStoreProvider struct {
 
 func (p quickStoreProvider) Sessions() storage.SessionStore { return p.sessionStore }
 func (p quickStoreProvider) Messages() storage.MessageStore { return p.messageStore }
-func (p quickStoreProvider) Todos() storage.TodoStore       { return &noopTodoStore{} }
+func (p quickStoreProvider) Todos() storage.TodoStore       { return nil }
 
 // NewAgent creates a single-agent Harness from an AgentQuickConfig,
 // calls Build(), and returns the Engine and Registry.
@@ -179,7 +121,7 @@ type Harness struct {
 	engine       agent.AgentEngine
 	registry     agent.AgentRegistry
 	asyncTracker tool.AsyncToolTracker
-	sessionStore chat.SessionStore
+	sessionStore chat.ActiveSessions
 	built        bool
 }
 
@@ -187,11 +129,11 @@ func NewHarness(cfg HarnessConfig) *Harness {
 	return &Harness{config: cfg}
 }
 
-func (h *Harness) Engine() agent.AgentEngine             { return h.engine }
-func (h *Harness) Registry() agent.AgentRegistry         { return h.registry }
-func (h *Harness) AsyncTracker() tool.AsyncToolTracker   { return h.asyncTracker }
-func (h *Harness) Store() storage.StoreProvider          { return h.config.Store.Provider }
-func (h *Harness) SessionStore() chat.SessionStore       { return h.sessionStore }
+func (h *Harness) Engine() agent.AgentEngine           { return h.engine }
+func (h *Harness) Registry() agent.AgentRegistry       { return h.registry }
+func (h *Harness) AsyncTracker() tool.AsyncToolTracker { return h.asyncTracker }
+func (h *Harness) Store() storage.StoreProvider        { return h.config.Store.Provider }
+func (h *Harness) ActiveSessions() chat.ActiveSessions { return h.sessionStore }
 
 // Build executes the full construction sequence:
 //  1. Initialize store pointers (nil → no-op)
@@ -203,20 +145,23 @@ func (h *Harness) SessionStore() chat.SessionStore       { return h.sessionStore
 //  7. Register AgentFactorySpecs as factories (direct)
 //  8. Create AgentEngine with registry + session/message stores
 //  9. Register cross-agent tools (delegate_to, read_sub_session)
+//
 // 10. Return Harness with engine + registry references
 func (h *Harness) Build() error {
 	if h.built {
 		return fmt.Errorf("harness already built")
 	}
 
-	h.sessionStore = chat.NewSessionStore()
+	h.sessionStore = chat.NewActiveSessions()
 
 	logger := h.config.Logger
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 
-	h.initStores()
+	if err := h.initStores(); err != nil {
+		return err
+	}
 
 	allCapabilityNames := h.collectCapabilityNames()
 	resolved, err := capabilities.ResolveDependencies(allCapabilityNames)
@@ -350,20 +295,15 @@ func registerCrossAgentTool(capName string, capDeps capabilities.CapabilityDeps,
 	logger.Info("harness: registered cross-agent tool", "tool", t.Name())
 }
 
-func (h *Harness) initStores() {
+func (h *Harness) initStores() error {
 	if h.config.Store.Provider == nil {
-		h.config.Store.Provider = &noopStoreProvider{}
+		return fmt.Errorf("StoreConfig.Provider is required")
 	}
 	if h.config.Store.Memory == nil {
 		h.config.Store.Memory = &noopMemoryStore{}
 	}
+	return nil
 }
-
-type noopStoreProvider struct{}
-
-func (noopStoreProvider) Sessions() storage.SessionStore { return &noopSessionStore{} }
-func (noopStoreProvider) Messages() storage.MessageStore { return &noopMessageStore{} }
-func (noopStoreProvider) Todos() storage.TodoStore       { return &noopTodoStore{} }
 
 func (h *Harness) collectCapabilityNames() []string {
 	seen := make(map[string]bool)

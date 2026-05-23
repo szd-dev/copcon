@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,13 +18,12 @@ import (
 
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/chat"
+	"github.com/copcon/core/entity"
 	pgstore "github.com/copcon/core/providers/postgres"
 	"github.com/copcon/core/storage"
-	"github.com/copcon/core/entity"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/testutil"
-	"github.com/copcon/server/internal/tools/todo"
 )
 
 type integrationHarness struct {
@@ -33,10 +31,10 @@ type integrationHarness struct {
 	agentRegistry agent.AgentRegistry
 }
 
-func (h *integrationHarness) Store() storage.StoreProvider    { return h.store }
-func (h *integrationHarness) Engine() agent.AgentEngine        { return nil }
-func (h *integrationHarness) Registry() agent.AgentRegistry    { return h.agentRegistry }
-func (h *integrationHarness) SessionStore() chat.SessionStore  { return chat.NewSessionStore() }
+func (h *integrationHarness) Store() storage.StoreProvider        { return h.store }
+func (h *integrationHarness) Engine() agent.AgentEngine           { return nil }
+func (h *integrationHarness) Registry() agent.AgentRegistry       { return h.agentRegistry }
+func (h *integrationHarness) ActiveSessions() chat.ActiveSessions { return chat.NewActiveSessions() }
 
 func setupIntegrationTestDB(t *testing.T) *gorm.DB {
 	dsn := "host=localhost user=admin password=changeme dbname=agent_infra port=5432 sslmode=disable"
@@ -151,112 +149,6 @@ func TestIntegrationAllIssues(t *testing.T) {
 		assert.Equal(t, testMessageID, msgData.MessageID, "MessageData must include message_id field")
 		assert.Equal(t, testContent, msgData.Content)
 	})
-
-	t.Run("Todo state injection and duplicate prevention", func(t *testing.T) {
-		todoMgr, _ := todo.NewTodoManager(db)
-		chatCtx := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
-
-		t.Run("duplicate todos not created", func(t *testing.T) {
-			todoContent := "IntegrationTest: duplicate check task"
-			todo1, err := todoMgr.CreateTodo(chatCtx, todoContent)
-			require.NoError(t, err)
-			require.NotNil(t, todo1)
-
-			todo2, err := todoMgr.CreateTodo(chatCtx, todoContent)
-			require.NoError(t, err)
-
-			assert.Equal(t, todo1.ID, todo2.ID, "duplicate creation should return existing todo")
-
-			todos, err := todoMgr.ListTodos(chatCtx)
-			require.NoError(t, err)
-
-			var matchingTodos []*pgstore.Todo
-			for _, t := range todos {
-				if t.Content == todoContent {
-					matchingTodos = append(matchingTodos, t)
-				}
-			}
-			assert.Len(t, matchingTodos, 1, "should only have one todo with identical content")
-		})
-
-		t.Run("todo auto-started after creation", func(t *testing.T) {
-			chatCtx2 := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
-			autoStartContent := "IntegrationTest: auto-start task"
-			createdTodo, err := todoMgr.CreateTodo(chatCtx2, autoStartContent)
-			require.NoError(t, err)
-
-			assert.Equal(t, pgstore.TodoStatusInProgress, createdTodo.Status,
-				"todo should be automatically started after creation")
-		})
-
-		t.Run("todo state can be listed for injection", func(t *testing.T) {
-			chatCtx3 := testutil.NewMockChatContext(ctx, sess.ID.String(), "test-agent")
-			_, err := todoMgr.CreateTodo(chatCtx3, "IntegrationTest: context injection task 1")
-			require.NoError(t, err)
-
-			_, err = todoMgr.CreateTodo(chatCtx3, "IntegrationTest: context injection task 2")
-			require.NoError(t, err)
-
-			todos, err := todoMgr.ListTodos(chatCtx3)
-			require.NoError(t, err)
-			require.GreaterOrEqual(t, len(todos), 2, "should have created todos")
-
-			todoState := formatTodoStateForTest(todos)
-			assert.Contains(t, todoState, "Current todo list",
-				"todo state should include header")
-
-			hasStatus := false
-			for _, t := range todos {
-				if strings.Contains(todoState, t.Content) {
-					hasStatus = true
-					break
-				}
-			}
-			assert.True(t, hasStatus, "todo content should appear in formatted state")
-		})
-	})
-}
-
-func formatTodoStateForTest(todos []*pgstore.Todo) string {
-	var pending, inProgress, completed, failed, blocked []string
-
-	for _, t := range todos {
-		content := t.Content
-		if t.ActiveForm != "" {
-			content = t.ActiveForm
-		}
-		switch t.Status {
-		case pgstore.TodoStatusPending:
-			pending = append(pending, content)
-		case pgstore.TodoStatusInProgress:
-			inProgress = append(inProgress, content)
-		case pgstore.TodoStatusCompleted:
-			completed = append(completed, content)
-		case pgstore.TodoStatusFailed:
-			failed = append(failed, content)
-		case pgstore.TodoStatusBlocked:
-			blocked = append(blocked, content)
-		}
-	}
-
-	var parts []string
-	if len(pending) > 0 {
-		parts = append(parts, "pending: "+strings.Join(pending, ", "))
-	}
-	if len(inProgress) > 0 {
-		parts = append(parts, "in_progress: "+strings.Join(inProgress, ", "))
-	}
-	if len(completed) > 0 {
-		parts = append(parts, "completed: "+strings.Join(completed, ", "))
-	}
-	if len(failed) > 0 {
-		parts = append(parts, "failed: "+strings.Join(failed, ", "))
-	}
-	if len(blocked) > 0 {
-		parts = append(parts, "blocked: "+strings.Join(blocked, ", "))
-	}
-
-	return "Current todo list: [" + strings.Join(parts, ", ") + "]"
 }
 
 type mockAgentRegistryForIntegration struct {
