@@ -16,19 +16,6 @@ import (
 	"github.com/copcon/core/tool"
 )
 
-type noopMemoryStore struct{}
-
-var _ storage.MemoryStore = (*noopMemoryStore)(nil)
-
-func (noopMemoryStore) Store(_ context.Context, _ *storage.Memory) error { return nil }
-func (noopMemoryStore) Search(_ context.Context, _ []float32, _ int) ([]*storage.Memory, error) {
-	return nil, nil
-}
-func (noopMemoryStore) GetBySession(_ context.Context, _ string, _ int) ([]*storage.Memory, error) {
-	return nil, nil
-}
-func (noopMemoryStore) DeleteBySession(_ context.Context, _ string) error { return nil }
-
 // AgentQuickConfig is a simplified configuration for single-agent use cases.
 type AgentQuickConfig struct {
 	Name         string
@@ -203,6 +190,10 @@ func (h *Harness) Build() error {
 			logger.Info("harness: registered tool", "capability", cap.Name(), "tool", t.Name())
 
 		case capabilities.CapabilityTypeHook:
+			if cap.Name() == "hooks.memory" && h.config.Store.Memory == nil {
+				logger.Info("harness: skipping memory hook (MemoryStore not configured)", "capability", cap.Name())
+				continue
+			}
 			hc, ok := cap.(capabilities.HookCapability)
 			if !ok {
 				return fmt.Errorf("capability %q has type hook but does not implement HookCapability", cap.Name())
@@ -299,9 +290,6 @@ func (h *Harness) initStores() error {
 	if h.config.Store.Provider == nil {
 		return fmt.Errorf("StoreConfig.Provider is required")
 	}
-	if h.config.Store.Memory == nil {
-		h.config.Store.Memory = &noopMemoryStore{}
-	}
 	return nil
 }
 
@@ -326,6 +314,8 @@ func (h *Harness) collectCapabilityNames() []string {
 		for _, t := range spec.Tools {
 			if capName, ok := toolNameToCap[t]; ok {
 				add(capName)
+			} else {
+				add(t)
 			}
 		}
 	}
@@ -348,6 +338,8 @@ func (h *Harness) makeAgentFactory(
 		for _, t := range spec.Tools {
 			if capName, ok := toolNameToCap[t]; ok {
 				capNames = append(capNames, capName)
+			} else {
+				capNames = append(capNames, t)
 			}
 		}
 
