@@ -165,14 +165,24 @@ func (t *AskUserTool) Execute(chatCtx iface.ChatContextInterface, args map[strin
 }
 
 func init() {
-	capabilities.Register(&hitlCapability{})
+	capabilities.Register(&confirmActionCapability{})
+	capabilities.Register(&askUserCapability{})
 }
 
-type hitlCapability struct{}
+type confirmActionCapability struct{}
 
-func (c *hitlCapability) Name() string                         { return "tools.hitl" }
-func (c *hitlCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *hitlCapability) DependsOn() []string                  { return nil }
-func (c *hitlCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
+func (c *confirmActionCapability) Name() string                      { return "tools.confirm_action" }
+func (c *confirmActionCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
+func (c *confirmActionCapability) DependsOn() []string               { return nil }
+func (c *confirmActionCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
 	return NewConfirmActionTool(), nil
+}
+
+type askUserCapability struct{}
+
+func (c *askUserCapability) Name() string                      { return "tools.ask_user" }
+func (c *askUserCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
+func (c *askUserCapability) DependsOn() []string               { return nil }
+func (c *askUserCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
+	return NewAskUserTool(), nil
 }

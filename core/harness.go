@@ -64,7 +64,7 @@ func NewAgent(cfg AgentQuickConfig) (agent.AgentEngine, agent.AgentRegistry, err
 
 var builtInHooks = []string{"hooks.todo_injection", "hooks.memory", "hooks.logging", "hooks.tracing"}
 
-var builtInTools = []string{"tools.hitl", "tools.todo", "tools.async"}
+var builtInTools = []string{"tools.confirm_action", "tools.ask_user", "tools.todo", "tools.async"}
 
 var toolNameToCap = map[string]string{
 	"code_executor":  "tools.code_executor",
