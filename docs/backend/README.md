@@ -1,73 +1,111 @@
-# CopCon 后端文档
+# CopCon 后端技术文档
 
-CopCon 是一个用 Go 编写的 AI Agent 基础设施后端。它提供了一套完整的 Agent 引擎、工具系统、会话管理和流式事件推送能力，帮助开发者快速构建 AI 应用。
+## 简介
+
+本文档详细介绍了 CopCon 后端的架构设计、核心概念、开发指南和部署方案。
 
 ## 文档结构
 
 ```
-docs/backend/
-├── README.md                          # 本页，文档索引
-├── 01-getting-started/
-│   ├── quickstart.md                  # 5 分钟快速跑起来
-│   ├── installation.md                # 完整安装指南
-│   └── hello-world.md                 # 第一个 Agent 程序
-├── 02-core-concepts/                  # 核心概念（待补充）
-├── 03-agent/                          # Agent 引擎与注册（待补充）
-├── 04-tool/                           # 工具系统（待补充）
-├── 05-session/                        # 会话管理（待补充）
-├── 06-hook/                           # Hook 插件系统（待补充）
-├── 07-api/                            # REST API 参考（待补充）
-└── 08-deployment/                     # 部署指南（待补充）
+├── 01-quick-start/          快速入门
+├── 02-core-concepts/        核心概念
+├── 03-core-library/         核心库使用
+├── 04-server-app/           服务端应用
+├── 05-built-in-capabilities/ 内置能力详解
+├── 06-extending/            扩展开发指南
+├── 07-deployment/           部署指南
+└── 08-reference/            API 参考
 ```
 
-## 阅读路线
+## 推荐阅读路线
 
-按你的目标选择从哪里开始：
+### 🚀 快速体验 (5分钟)
+1. [安装与环境配置](01-quick-start/installation.md)
+2. [第一个 Agent 应用](01-quick-start/hello-world.md)
+3. [运行完整 Demo](01-quick-start/run-demo.md)
 
-| 目标 | 推荐阅读 |
-|---|---|
-| 只想跑起来 | [快速开始](01-getting-started/quickstart.md) |
-| 加业务逻辑 | [Hello World](01-getting-started/hello-world.md) → Hook 系统 |
-| 换模型 / 换 API | [安装指南](01-getting-started/installation.md) → config.yaml 部分 |
-| 注册新工具 | [Hello World](01-getting-started/hello-world.md) → Tool 系统 |
-| 部署到服务器 | [安装指南](01-getting-started/installation.md) → Docker Compose 部署 |
-| 理解整体架构 | 本页 → [核心概念](02-core-concepts/) |
+### 📚 深入理解核心架构
+1. [架构概览](02-core-concepts/architecture.md)
+2. [Harness 配置](02-core-concepts/harness.md)
+3. [能力系统](02-core-concepts/capabilities.md)
+4. [SSD 流式传输](02-core-concepts/streaming.md)
 
-## 架构概览
+### 🔧 作为独立库使用
+1. [核心库独立使用](03-core-library/as-library.md)
+2. [自定义 Provider](03-core-library/custom-provider.md)
+3. [多 Agent 协作](03-core-library/multi-agent.md)
+
+### 🌐 服务端应用开发
+1. [API 概览](04-server-app/api-overview.md)
+2. [配置详解](04-server-app/configuration.md)
+3. [自定义 Handler](04-server-app/customization.md)
+
+### 🧩 使用内置能力
+1. [Tools 概览](05-built-in-capabilities/tools/overview.md)
+2. [Hooks 概览](05-built-in-capabilities/hooks/overview.md)
+
+### 🔌 扩展开发
+1. [自定义 Tool](06-extending/custom-tool.md)
+2. [自定义 Hook](06-extending/custom-hook.md)
+3. [自定义 LLM Adapter](06-extending/custom-llm-adapter.md)
+
+### 🚢 部署上线
+1. [Docker Compose 部署](07-deployment/docker-compose.md)
+2. [生产环境检查清单](07-deployment/production-checklist.md)
+
+## 核心架构
 
 ```
-HTTP Request → Gin Handler → Agent Engine → LLM Provider (流式)
-                                ↓
-                          Hook 链 (插件拦截)
-                          Tool 执行 (Code/Shell/File)
-                          Session / Context 管理
-                                ↓
-                          PostgreSQL + Qdrant
+┌─────────────────────────────────────┐
+│         core (独立库)                │
+│  ┌──────────┐  ┌──────────────────┐ │
+│  │ Agent    │  │ Capabilities     │ │
+│  │ Engine   │  │ ┌──────────────┐ │ │
+│  │ Loop     │  │ │ Tools & Hooks│ │ │
+│  └──────────┘  │ └──────────────┘ │ │
+│  ┌──────────┐  └──────────────────┘ │
+│  │ SSE      │  ┌──────────────────┐ │
+│  │ Stream   │  │ Storage          │ │
+│  └──────────┘  │ - SessionStore   │ │
+│                │ - MessageStore   │ │
+│                │ - TodoStore      │ │
+│                └──────────────────┘ │
+└─────────────────────────────────────┘
+              ▲
+              │ 依赖
+              │
+┌─────────────────────────────────────┐
+│       server (薄应用)                │
+│  ┌──────────┐  ┌──────────────────┐ │
+│  │ REST API │  │ Config Loader    │ │
+│  └──────────┘  └──────────────────┘ │
+└─────────────────────────────────────┘
 ```
-
-核心组件：
-
-- **Agent Engine**：Agent 循环引擎，负责会话管理、LLM 调用、工具执行的主控逻辑
-- **Tool System**：可扩展的工具注册和执行框架，内置 Code、Shell、File 操作工具
-- **Hook System**：核心-外围架构中的插件拦截器，可在引擎生命周期的 10 个节点注入逻辑
-- **Session Manager**：基于 PostgreSQL 的会话和消息持久化
-- **Context Builder**：上下文窗口管理与组装
-- **Memory System**：基于 Qdrant 的向量记忆
 
 ## 技术栈
 
-| 组件 | 技术 | 版本 |
-|---|---|---|
+| 类别 | 技术 | 版本 |
+|------|------|------|
 | 语言 | Go | 1.26+ |
-| Web 框架 | Gin | 1.12 |
-| ORM | GORM | 1.31 |
-| 向量数据库 | Qdrant | 1.17 |
-| 关系数据库 | PostgreSQL | 15 |
-| LLM SDK | go-openai (openai-go) | v3 |
+| Web 框架 | Gin | 1.12.0 |
+| ORM | GORM | 1.31.1 |
+| 向量数据库 | Qdrant | 1.17.x |
+| 关系数据库 | PostgreSQL | 15.x |
+| LLM SDK | go-openai | v3.29+ |
+| 前端 | React + TypeScript | 19.x + 5.x |
 
 ## 快速链接
 
-- [快速开始](01-getting-started/quickstart.md) — 5 分钟跑起来
-- [安装指南](01-getting-started/installation.md) — 环境配置详解
-- [Hello World](01-getting-started/hello-world.md) — 写第一个 Agent 程序
-- [API 参考](../api/openapi.yaml) — OpenAPI 3.0 规范
+- [OpenAPI 3.0 规范](../../api/openapi.yaml)
+- [前端组件库文档](../../packages/ui/README.md)
+- [项目根 README](../../README.md)
+
+## 反馈与贡献
+
+- 📝 文档勘误: [提交 Issue](https://github.com/copcon/copcon/issues)
+- 🤝 贡献指南: [CONTRIBUTING.md](../../CONTRIBUTING.md)
+- 💬 讨论交流: [GitHub Discussions](https://github.com/copcon/copcon/discussions)
+
+---
+
+**下一步**: [开始安装](01-quick-start/installation.md) ➡️
