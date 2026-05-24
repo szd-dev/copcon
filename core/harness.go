@@ -14,6 +14,9 @@ import (
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
+
+	_ "github.com/copcon/core/capabilities/hooks"
+	_ "github.com/copcon/core/capabilities/tools"
 )
 
 // AgentQuickConfig is a simplified configuration for single-agent use cases.
