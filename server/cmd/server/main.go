@@ -7,27 +7,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-
 	"github.com/copcon/core"
 	"github.com/copcon/core/llm"
-	pgstore "github.com/copcon/core/providers/postgres"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
+	stor "github.com/copcon/server/internal/store"
 )
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg, err := config.Load()
 	chk(log, err)
-	db, err := gorm.Open(postgres.Open(cfg.Database.DSN()), &gorm.Config{})
+	storeProvider, err := stor.CreateStoreProvider(cfg.Database)
 	chk(log, err)
-	pg := pgstore.NewStore(db)
 	cl := openai.NewClient(option.WithAPIKey(cfg.OpenAI.APIKey), option.WithBaseURL(cfg.OpenAI.BaseURL))
 
 	h := core.NewHarness(core.HarnessConfig{
-		Store:  core.StoreConfig{Provider: pg},
+		Store:  core.StoreConfig{Provider: storeProvider},
 		LLM:    llm.NewOpenAIAdapter(&cl, cfg.OpenAI.Model),
 		Logger: log,
 		Agents: agentSpecs(cfg),
