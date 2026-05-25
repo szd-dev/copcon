@@ -47,10 +47,7 @@ cd copcon
 # 启动依赖服务
 docker compose up -d postgres qdrant
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入你的 API Key
-
+# 配置 API Key（编辑 server/config.yaml，可从 config.yaml.template 复制）
 # 启动后端服务
 cd server
 go run cmd/server/main.go

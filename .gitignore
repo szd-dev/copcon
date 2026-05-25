@@ -62,3 +62,7 @@ server/server
 .omp/
 **/config.yaml
 !**/config.yaml.template
+
+# SQLite database artifacts
+*.db
+data/
