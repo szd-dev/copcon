@@ -31,11 +31,13 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DBName   string `yaml:"dbname"`
+	Host       string `yaml:"host"`
+	Port       int    `yaml:"port"`
+	User       string `yaml:"user"`
+	Password   string `yaml:"password"`
+	DBName     string `yaml:"dbname"`
+	Type       string `yaml:"type"`        // "postgres" | "sqlite" | "" (auto-detect)
+	SQLitePath string `yaml:"sqlite_path"` // SQLite file path, default "data/copcon.db"
 }
 
 type OpenAIConfig struct {
@@ -78,6 +80,15 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	// Validate database config: ambiguous if both PG and SQLite paths specified without explicit type
+	if c.Database.Host != "" && c.Database.SQLitePath != "" && c.Database.Type == "" {
+		return fmt.Errorf("ambiguous database config: both host (%s) and sqlite_path (%s) specified without explicit type", c.Database.Host, c.Database.SQLitePath)
+	}
+	// Validate: explicit postgres type but missing host
+	if c.Database.Type == "postgres" && c.Database.Host == "" {
+		return fmt.Errorf("database type is postgres but host is not configured")
+	}
+
 	idSet := make(map[string]bool)
 	for _, agent := range c.Agents {
 		if idSet[agent.ID] {
@@ -95,6 +106,10 @@ func (c *Config) validate() error {
 
 func (d DatabaseConfig) DSN() string {
 	return "host=" + d.Host + " port=" + strconv.Itoa(d.Port) + " user=" + d.User + " password=" + d.Password + " dbname=" + d.DBName + " sslmode=disable"
+}
+
+func (d DatabaseConfig) HasPostgresConfig() bool {
+	return d.Host != ""
 }
 
 func (c *Config) GetAgent(id string) (AgentConfig, error) {

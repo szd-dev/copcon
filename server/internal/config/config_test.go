@@ -241,3 +241,76 @@ qdrant:
 	assert.Empty(t, cfg.Agents)
 	assert.Empty(t, cfg.DefaultAgentID)
 }
+
+func TestValidateAmbiguousDatabaseConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test_config.yaml")
+
+	configContent := `
+server:
+  port: "8080"
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "admin"
+  password: "changeme"
+  dbname: "test"
+  sqlite_path: "data/copcon.db"
+
+openai:
+  api_key: "test-key"
+  base_url: "https://api.test.com/v1"
+  model: "gpt-4"
+
+qdrant:
+  host: "localhost"
+  port: 6333
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	oldConfigPath := os.Getenv("CONFIG_PATH")
+	os.Setenv("CONFIG_PATH", configPath)
+	defer os.Setenv("CONFIG_PATH", oldConfigPath)
+
+	_, err = Load()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous database config")
+}
+
+func TestValidatePostgresMissingHost(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "test_config.yaml")
+
+	configContent := `
+server:
+  port: "8080"
+
+database:
+  type: "postgres"
+  port: 5432
+  user: "admin"
+  password: "changeme"
+  dbname: "test"
+
+openai:
+  api_key: "test-key"
+  base_url: "https://api.test.com/v1"
+  model: "gpt-4"
+
+qdrant:
+  host: "localhost"
+  port: 6333
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	oldConfigPath := os.Getenv("CONFIG_PATH")
+	os.Setenv("CONFIG_PATH", configPath)
+	defer os.Setenv("CONFIG_PATH", oldConfigPath)
+
+	_, err = Load()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "host is not configured")
+}
