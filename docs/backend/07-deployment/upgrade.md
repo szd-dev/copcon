@@ -98,14 +98,10 @@ agents:
 #### 步骤三: 数据库迁移
 
 ```bash
-# 运行迁移(如果有 schema 变更)
-cd server && go run cmd/init-db/main.go  # 新版本会自动处理
-
-# 或使用 GORM AutoMigrate(如果配置中启用了 auto_migrate)
-# Harness 启动时自动执行
+# 数据库表结构在服务器启动时由 GORM AutoMigrate 自动更新
+# 新表、新列、新索引会自动创建,不会删除已有数据
+# 只需启动新版本服务器即可
 ```
-
-注意: `cmd/init-db/main.go` 使用 `CREATE TABLE IF NOT EXISTS`,不会删除已有数据。新增列会自动添加。
 
 #### 步骤四: 执行升级
 

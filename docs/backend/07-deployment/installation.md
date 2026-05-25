@@ -117,9 +117,6 @@ cd copcon
 # 编译 server 模块
 cd server
 go build -o copcon-server ./cmd/server
-
-# 也可以编译数据库初始化工具
-go build -o copcon-init-db ./cmd/init-db
 ```
 
 ### 交叉编译
@@ -152,9 +149,7 @@ go install ./cmd/server
 git clone https://github.com/copcon/copcon.git
 cd copcon
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env,至少填入一个 LLM API Key
+# 配置 API Key（编辑 server/config.yaml，可从 config.yaml.template 复制）
 
 # 启动全部服务
 docker compose up -d
@@ -223,16 +218,14 @@ export DATABASE_PASSWORD="your-strong-password"
 | `QDRANT_HOST` | `qdrant.host` | 否 |
 | `QDRANT_PORT` | `qdrant.port` | 否 |
 
-### 3. 初始化数据库
+### 3. 数据库初始化
+
+服务器启动时,GORM AutoMigrate 会自动创建所需的表和索引,无需手动初始化。
+
+如果需要手动执行 SQL:
 
 ```bash
-# 方式 A: 使用 Go 工具
-cd server && go run cmd/init-db/main.go
-
-# 方式 B: 使用 shell 脚本
-bash scripts/init-db.sh
-
-# 方式 C: 手动 psql
+# 使用 psql
 PGPASSWORD=changeme psql -h localhost -U admin -d copcon -f server/internal/session/schema.sql
 ```
 

@@ -16,25 +16,28 @@ cd copcon
 
 ## 快速启动 (使用 Docker Compose)
 
-### 1. 配置环境变量
+### 1. 配置 LLM API
 
-```bash
-cp .env.example .env
-```
+编辑 `server/config.yaml`（可从 `config.yaml.template` 复制），填入必要的 API Key:
 
-编辑 `.env` 文件,填入必要的 API Key:
-
-```env
-# OpenAI 兼容的 LLM API
-OPENAI_API_KEY=your-api-key-here
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4
+```yaml
+openai:
+  api_key: "your-api-key-here"
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4"
 
 # 数据库配置 (Docker Compose 会自动启动)
-DATABASE_URL=postgres://postgres:password@localhost:5432/copcon?sslmode=disable
+database:
+  host: "localhost"
+  port: 5432
+  user: "agent"
+  password: "agent123"
+  dbname: "agent_infra"
 
 # Qdrant 向量数据库 (可选)
-QDRANT_URL=http://localhost:6333
+qdrant:
+  host: "localhost"
+  port: 6333
 ```
 
 ### 2. 启动依赖服务

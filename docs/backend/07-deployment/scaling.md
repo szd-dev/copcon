@@ -361,20 +361,6 @@ store:
 
 相似请求的 LLM 响应可以缓存,减少 API 调用和延迟:
 
-```yaml
-# LiteLLM 配置
-litellm_settings:
-  cache: true
-  cache_params:
-    type: "redis"
-    host: "redis:6379"
-    ttl: 600  # 10 分钟
-```
-
-### Qdrant 查询缓存
-
-Qdrant 内置查询缓存,默认启用。通过索引优化查询性能:
-
 ```bash
 # 确保索引存在
 curl -X PUT "http://$QDRANT_HOST:6333/collections/agent_memory/index" \

@@ -42,7 +42,7 @@ psql -h localhost -U admin -d postgres -c "\du"
 
 **解决**:
 - 启动 PostgreSQL: `docker compose up -d postgres` 或 `sudo systemctl start postgresql`
-- 创建数据库: `cd server && go run cmd/init-db/main.go`
+- 创建数据库: 服务器启动时 GORM AutoMigrate 会自动创建表和索引,确保 PostgreSQL 已运行后启动服务器即可
 - 修正连接参数: 检查 config.yaml 和环境变量的一致性
 
 #### "Config file not found"
@@ -132,14 +132,7 @@ Error: LLM request failed: 429 Too Many Requests
 curl -s https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY" | jq '.error'
 
-# 2. 测试连通性(经过 LiteLLM)
-curl -s http://litellm:4000/v1/models \
-  -H "Authorization: Bearer $LITELLM_MASTER_KEY"
-
-# 3. 查看 LiteLLM 日志
-docker compose logs litellm --tail 100
-
-# 4. 检查 base_url 配置
+# 2. 检查 base_url 配置
 grep base_url config.yaml
 ```
 
@@ -147,7 +140,6 @@ grep base_url config.yaml
 - 429 限流: 降低并发,或增加 API Key 的 rate limit
 - 401 无效 Key: 更换 API Key
 - 网络不通: 检查 DNS 和防火墙
-- LiteLLM 代理: 确保 LiteLLM 健康检查通过
 
 #### 数据库连接池耗尽
 

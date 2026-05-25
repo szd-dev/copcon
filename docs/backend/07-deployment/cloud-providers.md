@@ -137,18 +137,9 @@ qdrant:
 
 ```yaml
 openai:
-  api_key: "${BEDROCK_API_KEY}"       # 或通过 LiteLLM 代理
-  base_url: "http://litellm:4000/v1"  # LiteLLM 代理 Bedrock
+  api_key: "${BEDROCK_API_KEY}"
+  base_url: "https://bedrock-runtime.us-east-1.amazonaws.com"
   model: "anthropic.claude-3-sonnet"
-```
-
-LiteLLM 配置:
-
-```yaml
-model_list:
-  - model_name: claude-sonnet
-    litellm_params:
-      model: bedrock/anthropic.claude-3-sonnet-20240229-v1:0
 ```
 
 ### 成本估算 (月)
@@ -254,7 +245,7 @@ gcloud sql users create copcon --instance copcon-db --password "$(openssl rand -
 ```yaml
 openai:
   api_key: "${VERTEX_API_KEY}"
-  base_url: "http://litellm:4000/v1"  # LiteLLM 代理
+  base_url: "https://us-central1-aiplatform.googleapis.com/v1"
   model: "gemini-2.5-pro"
 ```
 

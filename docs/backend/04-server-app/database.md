@@ -6,12 +6,14 @@ CopCon uses PostgreSQL as its primary data store, with Qdrant as an optional vec
 
 | Database | Role | Status |
 |----------|------|--------|
-| PostgreSQL 15+ | Primary store (sessions, messages, todos) | Required |
+| PostgreSQL 15+ | Primary store (sessions, messages, todos) | Supported (recommended for production) |
+| SQLite | Embedded store (sessions, messages, todos) | Supported (auto-detected, zero-config) |
 | Qdrant 1.17+ | Vector memory store | Optional (skipped if unavailable) |
-| SQLite | Not supported as server backend | Available only in `core/` as a library option for embedded use |
 | In-memory | Not supported by the server | Available only in unit tests via mock stores |
 
-The server application is designed around PostgreSQL. The `core/providers/postgres` package provides all three store interfaces (SessionStore, MessageStore, TodoStore) backed by the same database connection.
+The server supports both PostgreSQL and SQLite as storage backends. PostgreSQL is recommended for production deployments. SQLite is auto-detected when no PostgreSQL configuration is present, providing a zero-config option for development and lightweight deployments.
+
+The `core/providers/postgres` and `core/providers/sqlite` packages each provide all three store interfaces (SessionStore, MessageStore, TodoStore) backed by the same database connection.
 
 ## PostgreSQL Setup
 
@@ -59,13 +61,7 @@ CREATE DATABASE copcon OWNER copcon_admin;
 GRANT ALL PRIVILEGES ON DATABASE copcon TO copcon_admin;
 ```
 
-Or use the bundled init-db tool:
-
-```bash
-cd server && go run cmd/init-db/main.go
-```
-
-This tool connects to a default Postgres instance (`localhost:5432`, user `admin`, password `changeme`), creates the `copcon` database if it doesn't exist, and runs the initial schema. Adjust the DSN constants in `cmd/init-db/main.go` if your setup differs.
+Tables are created automatically on server startup via GORM `AutoMigrate`. No manual initialization step is needed.
 
 ### Connection String Format
 
@@ -88,6 +84,47 @@ host=postgres port=5432 user=agent password=agent123 dbname=agent_infra sslmode=
 ```
 
 > The `sslmode=disable` suffix is currently hardcoded in `DatabaseConfig.DSN()`. To enable SSL, modify this method in `server/internal/config/config.go` to read an `sslmode` config field, or add `sslmode=require` for production.
+
+## SQLite
+
+SQLite is available as a zero-configuration alternative to PostgreSQL. It's auto-detected when no `database.host` is configured.
+
+### Configuration
+
+Use the SQLite config template:
+
+```bash
+cp server/config.yaml.sqlite.template server/config.yaml
+```
+
+Or manually set the database type:
+
+```yaml
+database:
+  type: sqlite
+  sqlite_path: "data/copcon.db"  # optional, defaults to data/copcon.db
+```
+
+### Auto-Detection
+
+If `database.host` is empty and `database.type` is not set, the server automatically uses SQLite with the default path `data/copcon.db`. No external database service is required.
+
+### PRAGMA Defaults
+
+The SQLite connection is configured with these PRAGMA settings for reliability:
+
+| PRAGMA | Value | Purpose |
+|--------|-------|---------|
+| `journal_mode` | WAL | Write-Ahead Logging for better concurrency |
+| `busy_timeout` | 5000 | Wait up to 5s for locked database |
+| `foreign_keys` | 1 | Enable foreign key constraints |
+| `synchronous` | NORMAL | Balance between safety and performance |
+
+Connection pool is set to `MaxOpenConns=1` for single-writer safety.
+
+### SQLite Auto-Migration
+
+When using SQLite, tables are created automatically on server startup via GORM `AutoMigrate`. No manual initialization step is needed.
 
 ## Schema and Migrations
 
@@ -116,7 +153,7 @@ The three core tables:
 | `default_agent_id` | `varchar(64)` | Agent assigned to this session |
 | `parent_session_id` | `uuid` | Self-referencing FK for session trees |
 | `created_at` | `timestamptz` | Auto-set on insert |
-| `updated_at` | `timestamptz` | Auto-set on update (trigger in init-db) |
+| `updated_at` | `timestamptz` | Auto-set on update (GORM auto-timestamps) |
 | `metadata` | `jsonb` | Flexible key-value store, defaults to `{}` |
 
 **messages**
@@ -178,9 +215,7 @@ psql -h localhost -U admin -d copcon -f server/migrations/001_add_parent_session
 
 Or programmatically, before starting the server:
 
-```bash
-cd server && go run cmd/init-db/main.go
-```
+Tables are auto-created on server startup via GORM `AutoMigrate`.
 
 ### Migration Strategy for New Changes
 
@@ -377,7 +412,7 @@ Always pass `context.Context` through to GORM. The `core/providers/postgres` sto
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | "connection refused" at startup | Postgres not running or wrong host/port | Check `database.*` config, ensure Postgres is healthy (`pg_isready`) |
-| "database copcon does not exist" | Database not created yet | Run `go run cmd/init-db/main.go` or create it manually |
+| "database copcon does not exist" | Database not created yet | Create it manually (see SQL in Manual Setup). If using SQLite, ensure the `data/` directory is writable. |
 | Slow session list with many records | Missing index on `updated_at` | Ensure `idx_sessions_updated_at` exists |
 | GORM migration adds wrong columns | Stale model definition | Check `core/providers/postgres/models.go` matches your schema |
 | Qdrant connection failures | Qdrant not running, wrong port | Check `qdrant.*` config, or set `MemoryStore` to nil to disable |

@@ -26,6 +26,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o server ./cmd/server
+# CGO_ENABLED=0 is compatible with the pure-Go SQLite driver (modernc.org/sqlite),
+# no C compiler required in the build or runtime image
 
 # 阶段二: 运行
 FROM alpine:3.19
@@ -84,15 +86,13 @@ CMD ["./server"]
 |------|------|------|------|
 | postgres | postgres:15-alpine | 5432 | 会话和消息存储 |
 | qdrant | qdrant/qdrant:v1.17.0 | 6333, 6334 | 向量记忆 |
-| litellm | ghcr.io/berriai/litellm:main-stable | 4000 | LLM 代理(可选) |
 | server | 本地构建 | 8080 | CopCon 服务 |
 
 ### 启动全栈
 
 ```bash
 # 配置环境变量
-cp .env.example .env
-# 编辑 .env,填入 API Key
+# 编辑 server/config.yaml，填入你的 API Key（可从 config.yaml.template 复制）
 
 # 启动所有服务
 docker compose up -d
@@ -115,6 +115,18 @@ docker compose up -d postgres qdrant
 cd server && go run cmd/server/main.go
 ```
 
+### SQLite-only deployment (no external dependencies)
+
+If you don't need PostgreSQL or Qdrant, you can run the server with just SQLite:
+
+```bash
+cp server/config.yaml.sqlite.template server/config.yaml
+# Edit config.yaml to set your API key
+cd server && go run cmd/server/main.go
+```
+
+No Docker services are needed. Data is stored in `data/copcon.db`.
+
 ### 停止和清理
 
 ```bash
@@ -133,7 +145,6 @@ Docker Compose 定义了三个数据卷:
 volumes:
   postgres_data:   # PostgreSQL 数据
   qdrant_data:     # Qdrant 向量数据
-  litellm_logs:    # LiteLLM 日志
 ```
 
 生产环境必须确保这些卷映射到持久存储。默认使用 Docker 命名卷,数据存在 `/var/lib/docker/volumes/` 下。
@@ -180,14 +191,11 @@ server:
     - DATABASE_DBNAME=agent_infra
     - QDRANT_HOST=qdrant
     - QDRANT_PORT=6333
-    - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-litellm-key}
-    - OPENAI_BASE_URL=http://litellm:4000/v1
 ```
 
 要点:
-- 容器间通信使用 Docker Compose 服务名(如 `postgres`, `qdrant`, `litellm`)
-- 敏感值通过 `.env` 文件注入,不硬编码在 `docker-compose.yaml` 中
-- `OPENAI_BASE_URL` 指向 LiteLLM 容器时使用 Docker 内部地址
+- 容器间通信使用 Docker Compose 服务名(如 `postgres`, `qdrant`)
+- LLM API Key 和 Base URL 在 `server/config.yaml` 中配置，挂载到 `/app/config.yaml:ro`
 
 ## 生产级 Docker Compose
 
@@ -309,7 +317,6 @@ Docker Compose 自动创建网络,服务间通过服务名互访:
 ```
 server → postgres:5432
 server → qdrant:6333
-server → litellm:4000 (如果使用)
 ```
 
 ### 对外暴露

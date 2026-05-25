@@ -651,44 +651,32 @@ kubectl -n copcon rollout undo deployment/copcon-server --to-revision=2
 
 ## 初始化任务
 
-数据库和 Qdrant 初始化可以用 Job 完成:
+数据库表由 GORM AutoMigrate 在服务器启动时自动创建,无需单独的初始化 Job。
+
+Qdrant 集合初始化可以用 Job 完成:
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: copcon-init-db
+  name: copcon-init-qdrant
   namespace: copcon
 spec:
   template:
     spec:
       restartPolicy: OnFailure
       containers:
-        - name: init-db
-          image: postgres:15-alpine
+        - name: init-qdrant
+          image: curlimages/curl:latest
           command:
-            - psql
-            - -h
-            - copcon-postgres
-            - -U
-            - copcon
+            - curl
+            - -X
+            - PUT
+            - http://copcon-qdrant:6333/collections/agent_memory
+            - -H
+            - "Content-Type: application/json"
             - -d
-            - copcon
-            - -f
-            - /scripts/schema.sql
-          env:
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: copcon-secrets
-                  key: DATABASE_PASSWORD
-          volumeMounts:
-            - name: schema
-              mountPath: /scripts
-      volumes:
-        - name: schema
-          configMap:
-            name: copcon-db-schema
+            - '{"vectors": {"size": 1536, "distance": "Cosine"}}'
 ```
 
 ## 下一步
