@@ -1,29 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bubble, Conversations, Sender, Think, Welcome, XProvider, ThoughtChain } from '@ant-design/x';
-import { XMarkdown } from '@ant-design/x-markdown';
+import { Bubble, Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
 import { theme, Button, Divider, Flex, Spin, Typography } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
-import { AgentClient, useAgentChat, Session, CopConMessage, Step, ToolCallPart, TodoList, TodoItemProps, Todo, HumanInteraction } from '@copcon/ui';
+import { AgentClient } from '@copcon/chat-core';
+import type { Session, CopConMessage, Step, ToolCallPart, Todo } from '@copcon/chat-core';
+import { useChat } from '@copcon/chat-react';
+import { StreamMarkdown } from './components/StreamMarkdown';
+import { ThinkingBlock } from './components/ThinkingBlock';
+import { ToolCallCard } from './components/ToolCallCard';
+import { HumanInteraction } from './components/HumanInteraction';
+import { TodoList } from './components/TodoList';
+import { SubagentCard } from './components/SubagentCard';
 import './App.css';
 
 const { useToken } = theme;
 const { Text } = Typography;
 
 const client = new AgentClient({ baseUrl: '' });
-
-const MarkdownContent: React.FC<{ content: string }> = ({ content }) => (
-  <XMarkdown content={content} />
-);
-
-const mapToolCallStatus = (state: string): 'loading' | 'success' | 'error' => {
-  switch (state) {
-    case 'pending': return 'loading';
-    case 'running': return 'loading';
-    case 'complete': return 'success';
-    case 'error': return 'error';
-    default: return 'loading';
-  }
-};
 
 interface BubbleItem {
   key: string;
@@ -32,52 +25,44 @@ interface BubbleItem {
   loading?: boolean;
 }
 
-const StepContent: React.FC<{ step: Step; sessionId: string }> = ({ step, sessionId }) => {
-  const toolCallParts: ToolCallPart[] = [];
-
+const StepContent: React.FC<{ step: Step; client: AgentClient; sessionId: string }> = ({
+  step,
+  client,
+  sessionId,
+}) => {
   return (
     <>
       {step.parts.map((part, index) => {
         switch (part.type) {
           case 'text':
-            return <MarkdownContent key={index} content={part.text} />;
+            return <StreamMarkdown key={index} content={part.text} />;
           case 'reasoning':
-            return (
-              <Think key={index} title="Thinking" defaultExpanded>
-                <MarkdownContent content={part.text} />
-              </Think>
-            );
-          case 'tool-call':
-            if (part.state === 'waiting_for_input' && part.interrupt) {
-              return (
-                <HumanInteraction
-                  key={index}
-                  interrupt={part.interrupt}
-                  onRespond={(action, content) => {
-                    client.resume(sessionId, part.interrupt!.interruptId, action, content);
-                  }}
-                />
-              );
+            return <ThinkingBlock key={index} part={part} />;
+          case 'tool-call': {
+            const toolPart = part as ToolCallPart;
+            if (toolPart.state === 'waiting_for_input' && toolPart.interrupt) {
+              return <HumanInteraction key={index} part={toolPart} sessionId={sessionId} client={client} />;
             }
-            toolCallParts.push(part);
-            return null; // Will render as ThoughtChain below
+            if (toolPart.toolName === 'delegate_to_agent' && toolPart.args) {
+              const args = typeof toolPart.args === 'string' ? JSON.parse(toolPart.args) : toolPart.args;
+              if (args.sub_session_id) {
+                return (
+                  <SubagentCard
+                    key={index}
+                    subSessionId={args.sub_session_id}
+                    agentName={args.agent_name || 'Subagent'}
+                    client={client}
+                    parentSessionId={sessionId}
+                  />
+                );
+              }
+            }
+            return <ToolCallCard key={index} part={toolPart} />;
+          }
           default:
             return null;
         }
       })}
-      {toolCallParts.length > 0 && (
-        <ThoughtChain
-          items={toolCallParts.map((part) => ({
-            key: part.toolCallId,
-            title: part.toolName,
-            status: mapToolCallStatus(part.state),
-            description: part.args,
-            content: part.output
-              ? <MarkdownContent content={part.output} />
-              : undefined,
-          }))}
-        />
-      )}
     </>
   );
 };
@@ -87,18 +72,15 @@ const App: React.FC = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeKey, setActiveKey] = useState<string>('');
   const [loadingSessions, setLoadingSessions] = useState(true);
-  const [todos, setTodos] = useState<TodoItemProps[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [sidebarVisible, setSidebarVisible] = useState(true);
 
-  const { 
-    messages, 
-    isRequesting, 
-    sendMessage, 
-    abort
-  } = useAgentChat({
+  const { messages, status, sendMessage, abort } = useChat({
     client,
     sessionId: activeKey,
   });
+
+  const isRequesting = status === 'streaming';
 
   const listRef = useRef<HTMLDivElement>(null);
   const senderRef = useRef<any>(null);
@@ -139,14 +121,7 @@ const App: React.FC = () => {
   const loadTodos = async (sessionId: string) => {
     try {
       const result = await client.getTodos(sessionId);
-      const todoItems: TodoItemProps[] = (result.todos || []).map((todo: Todo) => ({
-        id: todo.id,
-        content: todo.content,
-        status: todo.status,
-        activeForm: todo.active_form,
-        result: todo.result,
-      }));
-      setTodos(todoItems);
+      setTodos(result.todos || []);
     } catch (error) {
       console.error('Failed to load todos:', error);
       setTodos([]);
@@ -166,7 +141,7 @@ const App: React.FC = () => {
   const handleDeleteSession = async (key: string) => {
     try {
       await client.deleteSession(key);
-      const remaining = sessions.filter(s => s.id !== key);
+      const remaining = sessions.filter((s) => s.id !== key);
       setSessions(remaining);
       if (activeKey === key) {
         setActiveKey(remaining.length > 0 ? remaining[0].id : '');
@@ -174,6 +149,12 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Failed to delete session:', error);
     }
+  };
+
+  const handleTodoStatusChange = (id: string, newStatus: string) => {
+    setTodos((prev) =>
+      prev.map((todo) => (todo.id === id ? { ...todo, status: newStatus as Todo['status'] } : todo))
+    );
   };
 
   const conversationItems = sessions.map((session) => ({
@@ -191,7 +172,7 @@ const App: React.FC = () => {
         {msg.steps.map((step, stepIndex) => (
           <React.Fragment key={stepIndex}>
             {stepIndex > 0 && <Divider style={{ margin: '8px 0' }} />}
-            <StepContent step={step} sessionId={activeKey} />
+            <StepContent step={step} client={client} sessionId={activeKey} />
           </React.Fragment>
         ))}
       </>
@@ -199,14 +180,13 @@ const App: React.FC = () => {
   };
 
   const bubbleItems: BubbleItem[] = [];
-  
+
   messages.forEach((msg: CopConMessage) => {
-    const isLastAssistant = 
-      msg.role === 'assistant' && 
-      messages.indexOf(msg) === messages.length - 1;
+    const isLastAssistant =
+      msg.role === 'assistant' && messages.indexOf(msg) === messages.length - 1;
 
     if (msg.role === 'user') {
-      const userText = msg.steps[0]?.parts.find(p => p.type === 'text')?.text || '';
+      const userText = msg.steps[0]?.parts.find((p) => p.type === 'text')?.text || '';
       bubbleItems.push({
         key: msg.id,
         role: 'user',
@@ -217,12 +197,17 @@ const App: React.FC = () => {
         key: msg.id,
         role: 'ai',
         content: renderMessageContent(msg),
-        loading: isLastAssistant && isRequesting && 
-          !msg.steps.some(s => s.parts.some(p => 
-            (p.type === 'text' && p.text) || 
-            (p.type === 'reasoning' && p.text) || 
-            p.type === 'tool-call'
-          )),
+        loading:
+          isLastAssistant &&
+          isRequesting &&
+          !msg.steps.some((s) =>
+            s.parts.some(
+              (p) =>
+                (p.type === 'text' && p.text) ||
+                (p.type === 'reasoning' && p.text) ||
+                p.type === 'tool-call'
+            )
+          ),
       });
     }
   });
@@ -250,12 +235,6 @@ const App: React.FC = () => {
       sendMessage(text);
       senderRef.current?.clear();
     }
-  };
-
-  const handleStatusChange = (id: string, status: string) => {
-    setTodos((prev) =>
-      prev.map((todo) => (todo.id === id ? { ...todo, status: status as TodoItemProps['status'] } : todo))
-    );
   };
 
   return (
@@ -381,7 +360,9 @@ const App: React.FC = () => {
                   onSubmit={handleSubmit}
                   onCancel={async () => {
                     if (activeKey) {
-                      try { await client.stop(activeKey); } catch {}
+                      try {
+                        await client.stop(activeKey);
+                      } catch {}
                     }
                     abort();
                   }}
@@ -445,7 +426,7 @@ const App: React.FC = () => {
                 overflow: 'auto',
               }}
             >
-              <TodoList todos={todos} onStatusChange={handleStatusChange} />
+              <TodoList todos={todos} onStatusChange={handleTodoStatusChange} />
             </Flex>
           </Flex>
         )}

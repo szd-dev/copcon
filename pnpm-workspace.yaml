@@ -1,3 +1,6 @@
 packages:
-  - 'packages/ui'
   - 'packages/demo'
+  - 'packages/chat-core'
+  - 'packages/chat-react'
+  - 'packages/headless-hooks'
+  - 'packages/headless-hooks'
