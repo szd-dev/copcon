@@ -17,6 +17,7 @@ export class ChatSession {
   private isRequesting = false;
   private isReconnecting = false;
   private isStreamComplete = false;
+  private streamGeneration = 0;
   private config: ChatSessionConfig;
 
   constructor(config: ChatSessionConfig) {
@@ -40,7 +41,9 @@ export class ChatSession {
     if (this.abortController) {
       this.abortController.abort();
     }
+    this.currentAssistantIndex = null;
     this.isRequesting = false;
+    this.isStreamComplete = false;
     this.updateState('idle');
   }
 
@@ -63,9 +66,12 @@ export class ChatSession {
   }
 
   private async connectStream(content?: string): Promise<void> {
+    const generation = ++this.streamGeneration;
     this.abortController = new AbortController();
     this.isRequesting = true;
     this.isStreamComplete = false;
+    this.currentAssistantIndex = null;
+    this.seq = 0;
 
     const body: Record<string, unknown> = {
       content: content || '',
@@ -134,8 +140,12 @@ export class ChatSession {
       }
       await this.handleReconnect();
     } finally {
-      this.isRequesting = false;
-      this.updateState('idle');
+      if (this.streamGeneration === generation) {
+        this.isRequesting = false;
+        this.isStreamComplete = true;
+        this.currentAssistantIndex = null;
+        this.updateState('idle');
+      }
     }
   }
 

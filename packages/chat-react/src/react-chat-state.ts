@@ -9,6 +9,8 @@ export class ReactChatState {
   private messages: CopConMessage[] = [];
   private state: SessionState = { status: 'idle', error: undefined };
   private listeners = new Set<() => void>();
+  private cachedSnapshot: ChatStateSnapshot | null = null;
+  private snapshotDirty = false;
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -16,16 +18,24 @@ export class ReactChatState {
   }
 
   getSnapshot(): ChatStateSnapshot {
-    return { messages: this.messages, state: this.state };
+    if (this.snapshotDirty || this.cachedSnapshot === null) {
+      this.cachedSnapshot = { messages: this.messages, state: this.state };
+      this.snapshotDirty = false;
+    }
+    return this.cachedSnapshot;
   }
 
   setMessages(messages: CopConMessage[]): void {
+    if (this.messages === messages) return;
     this.messages = messages;
+    this.snapshotDirty = true;
     this.emitChange();
   }
 
   setState(state: SessionState): void {
+    if (this.state.status === state.status && this.state.error === state.error) return;
     this.state = state;
+    this.snapshotDirty = true;
     this.emitChange();
   }
 

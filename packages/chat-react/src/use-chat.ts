@@ -17,13 +17,16 @@ interface UseChatReturn {
 
 export function useChat(options: UseChatOptions): UseChatReturn {
   const { client, sessionId } = options;
-  const chatStateRef = useRef(new ReactChatState());
+  const chatStateRef = useRef<ReactChatState | null>(null);
+  if (chatStateRef.current === null) {
+    chatStateRef.current = new ReactChatState();
+  }
+  const chatState = chatStateRef.current;
   const sessionRef = useRef<ChatSession | null>(null);
 
   useEffect(() => {
     if (!sessionId) return;
 
-    const chatState = chatStateRef.current;
     const session = new ChatSession({
       client,
       sessionId,
@@ -42,8 +45,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   }, [client, sessionId]);
 
   const snapshot = useSyncExternalStore(
-    (callback) => chatStateRef.current.subscribe(callback),
-    () => chatStateRef.current.getSnapshot(),
+    (callback) => chatState.subscribe(callback),
+    () => chatState.getSnapshot(),
   );
 
   const sendMessage = useCallback((content: string) => {
