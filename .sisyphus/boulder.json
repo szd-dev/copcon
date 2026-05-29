@@ -1,101 +1,23 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/ui-architecture-refactoring.md",
-  "started_at": "2026-05-26T13:55:18.731Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/memory-knowledge.md",
+  "started_at": "2026-05-29T16:45:41.666Z",
   "session_ids": [
-    "ses_19b6e7be7ffeiMRvREcOFLJSfm",
-    "ses_19b6d6433ffeJ5Oa3ZhrEj2Het",
-    "ses_19b6d6420ffe3BJRR2zhOxUDYz",
-    "ses_19b6d6400ffe6o3ZoRF7eRcJrC"
+    "ses_18b5f6a97ffeg8iwfOvNob35WY"
   ],
   "session_origins": {
-    "ses_19b6e7be7ffeiMRvREcOFLJSfm": "direct",
-    "ses_19b6d6433ffeJ5Oa3ZhrEj2Het": "appended",
-    "ses_19b6d6420ffe3BJRR2zhOxUDYz": "appended",
-    "ses_19b6d6400ffe6o3ZoRF7eRcJrC": "appended"
+    "ses_18b5f6a97ffeg8iwfOvNob35WY": "direct"
   },
-  "plan_name": "ui-architecture-refactoring",
+  "plan_name": "memory-knowledge",
   "agent": "atlas",
   "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "chat-core Package Scaffold + tsconfig",
-      "session_id": "ses_19b6ab427ffetHIAPmuvlrr9lf",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-26T14:01:09.413Z"
-    },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "Type Extraction + Consolidation",
-      "session_id": "ses_19b65e3dbffeyDg0wpYE1m0O7X",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-26T14:06:04.686Z"
-    },
-    "todo:5": {
-      "task_key": "todo:5",
-      "task_label": "5",
-      "task_title": "Message Reducer (applySSEChunk)",
-      "session_id": "ses_19b61898fffe02PWF6AxeDMxQ0",
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**计划合规审查** — `oracle`",
+      "session_id": "ses_18b3969b0ffelgIsTFocI4IZVK",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-05-26T14:11:29.117Z"
-    },
-    "todo:6": {
-      "task_key": "todo:6",
-      "task_label": "6",
-      "task_title": "ChatSession Class",
-      "session_id": "ses_19b5e39aeffeYQ15DLJ6BTTqo0",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-26T14:20:27.122Z"
-    },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "Vitest Setup + message-reducer Tests",
-      "session_id": "ses_19b5612f9ffe66eAQVzTSC18uU",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-26T14:27:40.042Z"
-    },
-    "todo:10": {
-      "task_key": "todo:10",
-      "task_label": "10",
-      "task_title": "chat-react Adapter (useChat)",
-      "session_id": "ses_19b4e283cffeASxSm3EFSBdwtO",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-26T14:33:14.073Z"
-    },
-    "todo:14": {
-      "task_key": "todo:14",
-      "task_label": "14",
-      "task_title": "StreamMarkdown Component",
-      "session_id": "ses_19b4981beffeKa63KhyweeZFz5",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-26T14:35:56.942Z"
-    },
-    "todo:20": {
-      "task_key": "todo:20",
-      "task_label": "20",
-      "task_title": "App.tsx Rewrite + Demo Integration",
-      "session_id": "ses_19b46d1feffeXP281SAjbLTDU3",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-26T14:43:31.332Z"
-    },
-    "todo:21": {
-      "task_key": "todo:21",
-      "task_label": "21",
-      "task_title": "Delete @copcon/ui + Workspace Cleanup",
-      "session_id": "ses_19b413973ffexoAFanxWGnTg2D",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-26T14:45:23.923Z"
+      "updated_at": "2026-05-29T17:57:12.690Z"
     }
   }
 }

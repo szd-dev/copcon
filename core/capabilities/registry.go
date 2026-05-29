@@ -53,14 +53,17 @@ type HookCapability interface {
 // CapabilityDeps collects the dependencies that capabilities may request
 // when they are instantiated via NewTool or NewHook.
 type CapabilityDeps struct {
-	SessionStore    storage.SessionStore
-	MessageStore    storage.MessageStore
-	TodoStore       storage.TodoStore
-	MemoryStore     storage.MemoryStore
-	FileMemoryStore interface{} // filememory.FileMemoryStore — typed as interface{} to avoid circular imports
-	AgentRegistry   agent.AgentRegistry
-	Engine          interface{} // AgentEngine — typed as interface{} to avoid circular imports
-	Logger          *slog.Logger
+	SessionStore        storage.SessionStore
+	MessageStore        storage.MessageStore
+	TodoStore           storage.TodoStore
+	MemoryStore         storage.MemoryStore
+	FileMemoryStore     interface{} // filememory.FileMemoryStore — typed as interface{} to avoid circular imports
+	AgentRegistry       agent.AgentRegistry
+	Engine              interface{} // AgentEngine — typed as interface{} to avoid circular imports
+	Logger              *slog.Logger
+	KnowledgeStore      interface{} // storage.KnowledgeStore — typed as interface{} to avoid circular imports
+	Embedder            interface{} // embedding.Embedder — typed as interface{} to avoid circular imports
+	AgentKnowledgeBases []string    // KB IDs associated with the current agent
 }
 
 // builtins is the global registry of capabilities. Keys are capability names.

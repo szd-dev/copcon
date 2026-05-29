@@ -1,0 +1,4 @@
+Hello, World!
+
+This is a plain text file for testing.
+It has multiple lines and some unicode: 日本語テスト
