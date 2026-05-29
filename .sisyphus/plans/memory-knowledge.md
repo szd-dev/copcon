@@ -2561,7 +2561,7 @@ Max Concurrent: 3 (Wave 5)
 
 ### Wave 3 — W4: Harness 集成 + W7 评估(并行)
 
-- [ ] W4.1 Harness 双 Bundle 展开 (memory + knowledge_base)
+- [x] W4.1 Harness 双 Bundle 展开 (memory + knowledge_base)
 
   **What to do**:
   - 重写 `core/harness.go:collectCapabilityNames()` 函数:
@@ -2660,7 +2660,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `core/harness.go`
   - Pre-commit: `cd core && go build ./...`
 
-- [ ] W4.2 StoreConfig + KnowledgeStore backend 实例化 + CapabilityDeps 注入
+- [x] W4.2 StoreConfig + KnowledgeStore backend 实例化 + CapabilityDeps 注入
 
   **What to do**:
   - 在 `core/harness.go:StoreConfig` struct 新增:
@@ -2818,7 +2818,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `core/harness.go`
   - Pre-commit: `cd core && go test ./...`
 
-- [ ] W4.3 细粒度 skip 逻辑 (per-hook 依赖检查)
+- [x] W4.3 细粒度 skip 逻辑 (per-hook 依赖检查)
 
   **What to do**:
   - 重写 `core/harness.go:Build()` 中 hook 注册逻辑 (当前 196-209 行):
@@ -2914,7 +2914,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `core/harness.go`, `core/capabilities/hooks/*.go` (修改 NewHook 错误返回)
   - Pre-commit: `cd core && go test ./...`
 
-- [ ] W4.4 Harness 集成测试 (4 种配置组合端到端)
+- [x] W4.4 Harness 集成测试 (4 种配置组合端到端)
 
   **What to do**:
   - 新建或扩展 `core/harness_integration_test.go`:

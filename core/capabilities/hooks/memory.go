@@ -156,6 +156,9 @@ func (c *memoryHookCapability) Name() string                         { return "h
 func (c *memoryHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *memoryHookCapability) DependsOn() []string                  { return nil }
 func (c *memoryHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
+	if deps.MemoryStore == nil {
+		return nil, fmt.Errorf("%w: MemoryStore not configured", capabilities.ErrDependencyUnavailable)
+	}
 	return NewMemoryPlugin(newMemoryManagerFromDeps(deps)), nil
 }
 

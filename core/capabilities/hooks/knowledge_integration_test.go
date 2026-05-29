@@ -67,16 +67,17 @@ func TestKBRecallHookInjectsResults(t *testing.T) {
 			{Content: "relevant chunk", Score: 0.9},
 		},
 	}
-	h := NewKBRecallHook(embedder, kbStore, []string{"kb-1"})
+	h := NewKBRecallHook(embedder, kbStore, map[string][]string{"test-agent": {"kb-1"}})
 
 	messages := []entity.MessageForLLM{
 		{Role: "user", Content: "what is Go?"},
 	}
 	ctx := &hook.HookContext{
-		Messages: &messages,
-		SessionID: "test-session",
+		Messages:     &messages,
+		SessionID:    "test-session",
+		AgentID:      "test-agent",
 		CurrentPoint: hook.AfterContextBuild,
-		ChatCtx: testutil.NewMockChatContext(context.Background(), "test-session", "test-agent"),
+		ChatCtx:      testutil.NewMockChatContext(context.Background(), "test-session", "test-agent"),
 	}
 
 	err := h.Execute(ctx)
@@ -87,9 +88,10 @@ func TestKBRecallHookInjectsResults(t *testing.T) {
 }
 
 func TestKBRecallHookNilMessages(t *testing.T) {
-	h := NewKBRecallHook(&mockHookEmbedder{dimensions: 3}, &mockKBStore{}, []string{"kb-1"})
+	h := NewKBRecallHook(&mockHookEmbedder{dimensions: 3}, &mockKBStore{}, map[string][]string{"test-agent": {"kb-1"}})
 	ctx := &hook.HookContext{
 		CurrentPoint: hook.AfterContextBuild,
+		AgentID:      "test-agent",
 		ChatCtx:      testutil.NewMockChatContext(context.Background(), "test-session", "test-agent"),
 	}
 	err := h.Execute(ctx)
@@ -97,11 +99,12 @@ func TestKBRecallHookNilMessages(t *testing.T) {
 }
 
 func TestKBRecallHookNoUserMessage(t *testing.T) {
-	h := NewKBRecallHook(&mockHookEmbedder{dimensions: 3}, &mockKBStore{}, []string{"kb-1"})
+	h := NewKBRecallHook(&mockHookEmbedder{dimensions: 3}, &mockKBStore{}, map[string][]string{"test-agent": {"kb-1"}})
 	messages := []entity.MessageForLLM{{Role: "system", Content: "sys"}}
 	ctx := &hook.HookContext{
 		Messages:     &messages,
 		CurrentPoint: hook.AfterContextBuild,
+		AgentID:      "test-agent",
 		ChatCtx:      testutil.NewMockChatContext(context.Background(), "test-session", "test-agent"),
 	}
 	err := h.Execute(ctx)

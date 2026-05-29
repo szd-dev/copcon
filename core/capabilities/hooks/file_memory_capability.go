@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"fmt"
+
 	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
 )
@@ -13,13 +15,13 @@ func (c *fileMemoryHookCapability) DependsOn() []string               { return n
 
 func (c *fileMemoryHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
 	if deps.FileMemoryStore == nil {
-		return nil, nil
+		return nil, fmt.Errorf("%w: FileMemoryStore not configured", capabilities.ErrDependencyUnavailable)
 	}
 
 	type basePather interface{ BasePath() string }
 	store, ok := deps.FileMemoryStore.(basePather)
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("%w: FileMemoryStore does not implement BasePath()", capabilities.ErrDependencyUnavailable)
 	}
 
 	return NewFileMemoryHook(store), nil

@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -118,5 +119,8 @@ func (c *todoInjectionHookCapability) Name() string                         { re
 func (c *todoInjectionHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *todoInjectionHookCapability) DependsOn() []string                  { return nil }
 func (c *todoInjectionHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
+	if deps.TodoStore == nil {
+		return nil, fmt.Errorf("%w: TodoStore not configured", capabilities.ErrDependencyUnavailable)
+	}
 	return NewTodoInjectionHook(deps.TodoStore), nil
 }

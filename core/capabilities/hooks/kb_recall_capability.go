@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
@@ -16,8 +17,11 @@ func (c *kbRecallHookCapability) Type() capabilities.CapabilityType { return cap
 func (c *kbRecallHookCapability) DependsOn() []string               { return nil }
 
 func (c *kbRecallHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	if deps.KnowledgeStore == nil || deps.Embedder == nil {
-		return nil, nil
+	if deps.KnowledgeStore == nil {
+		return nil, fmt.Errorf("%w: KnowledgeStore not configured", capabilities.ErrDependencyUnavailable)
+	}
+	if deps.Embedder == nil {
+		return nil, fmt.Errorf("%w: Embedder not configured", capabilities.ErrDependencyUnavailable)
 	}
 
 	type knowledgeStore interface {
@@ -26,12 +30,12 @@ func (c *kbRecallHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook
 
 	ks, ok := deps.KnowledgeStore.(knowledgeStore)
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("%w: KnowledgeStore type assertion failed", capabilities.ErrDependencyUnavailable)
 	}
 
 	emb, ok := deps.Embedder.(embedding.Embedder)
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("%w: Embedder type assertion failed", capabilities.ErrDependencyUnavailable)
 	}
 
 	return NewKBRecallHook(emb, ks, deps.AgentKnowledgeBases), nil

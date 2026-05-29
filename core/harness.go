@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,11 +13,14 @@ import (
 	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/llm"
+	"github.com/copcon/core/providers/embedding"
+	"github.com/copcon/core/providers/filememory"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
 
 	_ "github.com/copcon/core/capabilities/hooks"
 	_ "github.com/copcon/core/capabilities/tools"
+	_ "github.com/copcon/core/providers/sqlitevec"
 )
 
 // AgentQuickConfig is a simplified configuration for single-agent use cases.
@@ -75,8 +79,11 @@ var toolNameToCap = map[string]string{
 }
 
 type StoreConfig struct {
-	Provider storage.StoreProvider
-	Memory   storage.MemoryStore
+	Provider       storage.StoreProvider
+	Memory         storage.MemoryStore
+	FileMemory     interface{} // filememory.FileMemoryStore, typed as interface{} to avoid circular import
+	KnowledgeStore interface{} // storage.KnowledgeStore, typed as interface{} to avoid circular import
+	Embedder       interface{} // embedding.Embedder, typed as interface{} to avoid circular import
 }
 
 // AgentSpec declares a static agent to be auto-converted to an AgentFactory during Build().
@@ -112,12 +119,13 @@ type AgentFactorySpec struct {
 }
 
 type HarnessConfig struct {
-	Store          StoreConfig
-	LLM            llm.LLMProvider
-	Logger         *slog.Logger
-	Agents         []AgentSpec
-	AgentFactories []AgentFactorySpec
-	AsyncTracker   tool.AsyncToolTracker
+	Store           StoreConfig
+	LLM             llm.LLMProvider
+	Logger          *slog.Logger
+	Agents          []AgentSpec
+	AgentFactories  []AgentFactorySpec
+	AsyncTracker    tool.AsyncToolTracker
+	EmbeddingConfig embedding.EmbeddingConfig
 }
 
 type Harness struct {
@@ -126,6 +134,7 @@ type Harness struct {
 	registry     agent.AgentRegistry
 	asyncTracker tool.AsyncToolTracker
 	sessionStore chat.ActiveSessions
+	hookRunner   hook.HookRunner
 	built        bool
 }
 
@@ -138,6 +147,7 @@ func (h *Harness) Registry() agent.AgentRegistry       { return h.registry }
 func (h *Harness) AsyncTracker() tool.AsyncToolTracker { return h.asyncTracker }
 func (h *Harness) Store() storage.StoreProvider        { return h.config.Store.Provider }
 func (h *Harness) ActiveSessions() chat.ActiveSessions { return h.sessionStore }
+func (h *Harness) HookRunner() hook.HookRunner         { return h.hookRunner }
 
 // Build executes the full construction sequence:
 //  1. Initialize store pointers (nil → no-op)
@@ -174,14 +184,25 @@ func (h *Harness) Build() error {
 	}
 
 	toolRegistry := tool.NewToolRegistry()
-	hookRunner := hook.NewHookRunner()
+	h.hookRunner = hook.NewHookRunner()
+
+	agentKBs := make(map[string][]string)
+	for _, spec := range h.config.Agents {
+		if len(spec.KnowledgeBases) > 0 {
+			agentKBs[spec.ID] = spec.KnowledgeBases
+		}
+	}
 
 	capDeps := capabilities.CapabilityDeps{
-		SessionStore: h.config.Store.Provider.Sessions(),
-		MessageStore: h.config.Store.Provider.Messages(),
-		TodoStore:    h.config.Store.Provider.Todos(),
-		MemoryStore:  h.config.Store.Memory,
-		Logger:       logger,
+		SessionStore:        h.config.Store.Provider.Sessions(),
+		MessageStore:        h.config.Store.Provider.Messages(),
+		TodoStore:           h.config.Store.Provider.Todos(),
+		MemoryStore:         h.config.Store.Memory,
+		FileMemoryStore:     h.config.Store.FileMemory,
+		KnowledgeStore:      h.config.Store.KnowledgeStore,
+		Embedder:            h.config.Store.Embedder,
+		AgentKnowledgeBases: agentKBs,
+		Logger:              logger,
 	}
 
 	capToToolName := make(map[string]string)
@@ -207,19 +228,19 @@ func (h *Harness) Build() error {
 			logger.Info("harness: registered tool", "capability", cap.Name(), "tool", t.Name())
 
 		case capabilities.CapabilityTypeHook:
-			if cap.Name() == "hooks.memory" && h.config.Store.Memory == nil {
-				logger.Info("harness: skipping memory hook (MemoryStore not configured)", "capability", cap.Name())
-				continue
-			}
 			hc, ok := cap.(capabilities.HookCapability)
 			if !ok {
 				return fmt.Errorf("capability %q has type hook but does not implement HookCapability", cap.Name())
 			}
 			hk, err := hc.NewHook(capDeps)
 			if err != nil {
+				if errors.Is(err, capabilities.ErrDependencyUnavailable) {
+					logger.Info("harness: skipping hook (dependency unavailable)", "capability", cap.Name(), "reason", err.Error())
+					continue
+				}
 				return fmt.Errorf("create hook from capability %q: %w", cap.Name(), err)
 			}
-			hookRunner.Register(hk)
+			h.hookRunner.Register(hk)
 			logger.Info("harness: registered hook", "capability", cap.Name(), "hook", hk.Name())
 		}
 	}
@@ -235,7 +256,7 @@ func (h *Harness) Build() error {
 	for i := range h.config.Agents {
 		spec := h.config.Agents[i]
 		agentRegistry.RegisterFactory(spec.ID, spec.Name, spec.Model, spec.AllowDelegate,
-			h.makeAgentFactory(spec, toolRegistry, hookRunner, logger, capToToolName),
+			h.makeAgentFactory(spec, toolRegistry, h.hookRunner, logger, capToToolName),
 		)
 		logger.Info("harness: registered agent spec", "id", spec.ID, "name", spec.Name, "model", spec.Model)
 	}
@@ -251,7 +272,7 @@ func (h *Harness) Build() error {
 	}
 
 	engineOpts := []agent.EngineOption{
-		agent.WithHookRunner(hookRunner),
+		agent.WithHookRunner(h.hookRunner),
 		agent.WithLogger(logger),
 	}
 	if h.config.LLM != nil {
@@ -307,7 +328,78 @@ func (h *Harness) initStores() error {
 	if h.config.Store.Provider == nil {
 		return fmt.Errorf("StoreConfig.Provider is required")
 	}
+
+	anyMemoryEnabled := false
+	anyKBReferenced := false
+	for _, spec := range h.config.Agents {
+		if spec.Memory.Enabled {
+			anyMemoryEnabled = true
+		}
+		if len(spec.KnowledgeBases) > 0 {
+			anyKBReferenced = true
+		}
+	}
+
+	if anyMemoryEnabled && h.config.Store.FileMemory == nil {
+		fm, err := filememory.NewFileMemoryStore(
+			h.defaultMemoryBasePath(),
+			h.defaultMaxIndexLines(),
+			h.defaultMaxIndexBytes(),
+		)
+		if err != nil {
+			return fmt.Errorf("create file memory store: %w", err)
+		}
+		h.config.Store.FileMemory = fm
+	}
+
+	if anyKBReferenced && h.config.Store.KnowledgeStore == nil {
+		provider, err := storage.LookupKnowledgeStoreProvider("sqlite-vec")
+		if err != nil {
+			return fmt.Errorf("lookup knowledge store provider: %w", err)
+		}
+		ks, err := provider(map[string]any{"dsn": ":memory:"})
+		if err != nil {
+			return fmt.Errorf("create knowledge store: %w", err)
+		}
+		h.config.Store.KnowledgeStore = ks
+	}
+
+	if anyKBReferenced && h.config.Store.Embedder == nil && h.config.EmbeddingConfig.Backend != "" {
+		emb, err := embedding.NewFromConfig(h.config.EmbeddingConfig, h.config.LLM)
+		if err != nil {
+			return fmt.Errorf("create embedder: %w", err)
+		}
+		h.config.Store.Embedder = emb
+	}
+
 	return nil
+}
+
+func (h *Harness) defaultMemoryBasePath() string {
+	for _, spec := range h.config.Agents {
+		if spec.Memory.Enabled && spec.Memory.BasePath != "" {
+			return spec.Memory.BasePath
+		}
+	}
+	return os.TempDir() + "/copcon-memory"
+}
+
+func (h *Harness) defaultMaxIndexLines() int {
+	for _, spec := range h.config.Agents {
+		if spec.Memory.Enabled && spec.Memory.MaxIndexLines > 0 {
+			return spec.Memory.MaxIndexLines
+		}
+	}
+	return 200
+}
+
+func (h *Harness) defaultMaxIndexBytes() int {
+	for _, spec := range h.config.Agents {
+		if spec.Memory.Enabled && spec.Memory.MaxIndexBytes > 0 {
+			return spec.Memory.MaxIndexBytes
+		}
+	}
+	return 25600
 }
 
 func (h *Harness) collectCapabilityNames() []string {
@@ -335,6 +427,16 @@ func (h *Harness) collectCapabilityNames() []string {
 				add(t)
 			}
 		}
+		if spec.Memory.Enabled {
+			for _, n := range capabilities.MemoryBundleNames() {
+				add(n)
+			}
+		}
+		if len(spec.KnowledgeBases) > 0 {
+			for _, n := range capabilities.KnowledgeBaseBundleNames() {
+				add(n)
+			}
+		}
 	}
 
 	return names
@@ -358,6 +460,12 @@ func (h *Harness) makeAgentFactory(
 			} else {
 				capNames = append(capNames, t)
 			}
+		}
+		if spec.Memory.Enabled {
+			capNames = append(capNames, capabilities.MemoryBundleNames()...)
+		}
+		if len(spec.KnowledgeBases) > 0 {
+			capNames = append(capNames, capabilities.KnowledgeBaseBundleNames()...)
 		}
 
 		expandedTools := capabilities.ExpandWildcards(capNames)

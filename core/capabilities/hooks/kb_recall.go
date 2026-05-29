@@ -14,7 +14,7 @@ import (
 type KBRecallHook struct {
 	embedder embedding.Embedder
 	kbStore  KnowledgeStoreReader
-	kbIDs    []string
+	agentKBs map[string][]string
 	logger   *slog.Logger
 }
 
@@ -22,11 +22,11 @@ type KnowledgeStoreReader interface {
 	Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error)
 }
 
-func NewKBRecallHook(embedder embedding.Embedder, kbStore KnowledgeStoreReader, kbIDs []string) *KBRecallHook {
+func NewKBRecallHook(embedder embedding.Embedder, kbStore KnowledgeStoreReader, agentKBs map[string][]string) *KBRecallHook {
 	return &KBRecallHook{
 		embedder: embedder,
 		kbStore:  kbStore,
-		kbIDs:    kbIDs,
+		agentKBs: agentKBs,
 		logger:   slog.Default(),
 	}
 }
@@ -40,7 +40,8 @@ func (h *KBRecallHook) Points() []hook.HookPoint {
 func (h *KBRecallHook) Priority() int { return 60 }
 
 func (h *KBRecallHook) Execute(ctx *hook.HookContext) error {
-	if h.embedder == nil || h.kbStore == nil || len(h.kbIDs) == 0 {
+	kbIDs := h.agentKBs[ctx.AgentID]
+	if h.embedder == nil || h.kbStore == nil || len(kbIDs) == 0 {
 		return nil
 	}
 
@@ -62,7 +63,7 @@ func (h *KBRecallHook) Execute(ctx *hook.HookContext) error {
 		return nil
 	}
 
-	results, err := h.kbStore.Search(ctx.ChatCtx.Context(), h.kbIDs, queryVec, storage.SearchOptions{
+	results, err := h.kbStore.Search(ctx.ChatCtx.Context(), kbIDs, queryVec, storage.SearchOptions{
 		TopK:                5,
 		SimilarityThreshold: 0.5,
 	})

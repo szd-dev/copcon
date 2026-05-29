@@ -1,6 +1,7 @@
 package capabilities
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -11,6 +12,12 @@ import (
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
 )
+
+// ErrDependencyUnavailable is returned by a capability's NewHook or NewTool
+// when a required dependency is not available. Build() catches this error
+// and skips the capability gracefully (logging an info message) instead
+// of failing.
+var ErrDependencyUnavailable = errors.New("dependency unavailable")
 
 // CapabilityType enumerates the kinds of capabilities the registry manages.
 type CapabilityType string
@@ -63,7 +70,7 @@ type CapabilityDeps struct {
 	Logger              *slog.Logger
 	KnowledgeStore      interface{} // storage.KnowledgeStore — typed as interface{} to avoid circular imports
 	Embedder            interface{} // embedding.Embedder — typed as interface{} to avoid circular imports
-	AgentKnowledgeBases []string    // KB IDs associated with the current agent
+	AgentKnowledgeBases map[string][]string // agentID → KB IDs
 }
 
 // builtins is the global registry of capabilities. Keys are capability names.

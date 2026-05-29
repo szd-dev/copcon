@@ -211,3 +211,50 @@
 - Solution: Use `interface{}` in CapabilityDeps, type-assert in each capability's NewHook/NewTool
 - Tools package defines `MemoryStoreAPI` locally instead of importing FileMemoryStoreInterface
 - Hooks package defines `FileMemoryStoreReader` locally (just needs BasePath())
+
+## 2026-05-30 W4.1-W4.4 — Harness Integration (Wave 4)
+
+### W4.1: Dual Bundle Expansion
+- `collectCapabilityNames()` now expands `MemoryBundleNames()` when `spec.Memory.Enabled` and `KnowledgeBaseBundleNames()` when `len(spec.KnowledgeBases) > 0`
+- Uses existing `seen` map for deduplication — no changes to dedup pattern needed
+- `makeAgentFactory()` also needs bundle expansion for per-agent ToolManager — otherwise tools register globally but don't appear in agent's tool list
+- Key gotcha: `makeAgentFactory` has its own capability name collection separate from `collectCapabilityNames()` — both need bundle awareness
+
+### W4.2: StoreConfig + Backend Instantiation
+- Extended `StoreConfig` with `FileMemory`, `KnowledgeStore`, `Embedder` (all `interface{}` for circular import avoidance)
+- Added `EmbeddingConfig` field to `HarnessConfig` so server can pass embedder config
+- `initStores()` now auto-instantiates FileMemoryStore (when any agent has Memory.Enabled) and KnowledgeStore via sqlite-vec registry (when any agent has KnowledgeBases)
+- Embedder only instantiated when both KB referenced AND EmbeddingConfig.Backend is non-empty
+- Changed `AgentKnowledgeBases` from `[]string` to `map[string][]string` (agentID → kbIDs) for per-agent KB resolution
+- KB recall hook now resolves KB IDs at execution time using `ctx.AgentID` from HookContext
+- Added `_ "github.com/copcon/core/providers/sqlitevec"` blank import to harness.go for auto-registration
+- Added `HookRunner()` accessor and stored hookRunner on Harness struct for testability
+
+### W4.3: Fine-grained Skip Logic
+- Added `ErrDependencyUnavailable` sentinel error to `capabilities` package
+- Build() catches `ErrDependencyUnavailable` from `NewHook()` and skips with info log + continue
+- Replaced old hardcoded `hooks.memory + MemoryStore == nil` check with generic pattern
+- Updated all 5 hooks to return `ErrDependencyUnavailable` when deps missing:
+  - `hooks.memory`: MemoryStore nil
+  - `hooks.todo_injection`: TodoStore nil
+  - `hooks.file_memory`: FileMemoryStore nil or type assertion failed
+  - `hooks.kb_recall`: KnowledgeStore nil, Embedder nil, or type assertion failed
+  - `hooks.memory_persist`: Embedder nil, MemoryStore nil, or type assertion failed
+- Each error wraps `ErrDependencyUnavailable` with `fmt.Errorf("%w: <reason>", ...)` for clear diagnostics
+
+### W4.4: Integration Tests
+- Created `core/harness_integration_test.go` with 11 test functions
+- 4 config combination tests: none, memory-only, kb-only, both
+- 4 collectCapabilityNames tests: memory bundle, kb bundle, both, deduplication
+- Agent KBs map test with multi-agent setup
+- Skip hook on missing dependency test
+- FileMemory hook injection test (verifies hook chain execution via HookRunner)
+- ErrDependencyUnavailable sentinel error test
+- All tests use `t.TempDir()` for file memory paths
+- `integrationStoreProvider` satisfies StoreProvider with all nil stores
+
+### Key Architectural Decisions
+- `AgentKnowledgeBases map[string][]string` enables per-agent KB resolution at hook execution time, not build time
+- HookRunner stored on Harness struct enables integration testing of hook chains
+- `initStores()` defaults to sqlite-vec in-memory for KnowledgeStore when auto-instantiating
+- Memory basePath defaults to `os.TempDir() + "/copcon-memory"` when not specified
