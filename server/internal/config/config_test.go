@@ -314,3 +314,196 @@ qdrant:
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "host is not configured")
 }
+
+func TestValidateDuplicateKnowledgeBaseIDs(t *testing.T) {
+	cfg := &Config{
+		KnowledgeBases: []KnowledgeBaseConfig{
+			{ID: "kb-1", Name: "KB One", Backend: "sqlite_vec", Embedding: EmbeddingConfig{Backend: "openai"}},
+			{ID: "kb-1", Name: "KB One Duplicate", Backend: "sqlite_vec", Embedding: EmbeddingConfig{Backend: "openai"}},
+		},
+	}
+
+	err := cfg.validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate knowledge base ID")
+}
+
+func TestValidateAgentReferencesUnknownKnowledgeBase(t *testing.T) {
+	cfg := &Config{
+		KnowledgeBases: []KnowledgeBaseConfig{
+			{ID: "kb-1", Name: "KB One", Backend: "sqlite_vec", Embedding: EmbeddingConfig{Backend: "openai"}},
+		},
+		Agents: []AgentConfig{
+			{ID: "agent-1", Name: "Agent One", Model: "gpt-4", KnowledgeBases: []string{"kb-1", "kb-2"}},
+		},
+	}
+
+	err := cfg.validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "references unknown knowledge base")
+	assert.Contains(t, err.Error(), "kb-2")
+}
+
+func TestValidateKnowledgeBaseUnsupportedEmbeddingBackend(t *testing.T) {
+	cfg := &Config{
+		KnowledgeBases: []KnowledgeBaseConfig{
+			{ID: "kb-1", Name: "KB One", Backend: "sqlite_vec", Embedding: EmbeddingConfig{Backend: "bge_m3"}},
+		},
+		Agents: []AgentConfig{
+			{ID: "agent-1", Name: "Agent One", Model: "gpt-4", KnowledgeBases: []string{"kb-1"}},
+		},
+	}
+
+	err := cfg.validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported embedding backend")
+}
+
+func TestValidateMemoryBasePathNotAbsolute(t *testing.T) {
+	cfg := &Config{
+		Agents: []AgentConfig{
+			{
+				ID:   "agent-1",
+				Name: "Agent One",
+				Model: "gpt-4",
+				Memory: MemoryConfig{
+					Enabled:  true,
+					BasePath: "relative/path",
+				},
+			},
+		},
+	}
+
+	err := cfg.validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "memory.base_path must be an absolute path")
+}
+
+func TestValidateMemoryBasePathTildePrefix(t *testing.T) {
+	cfg := &Config{
+		Agents: []AgentConfig{
+			{
+				ID:   "agent-1",
+				Name: "Agent One",
+				Model: "gpt-4",
+				Memory: MemoryConfig{
+					Enabled:  true,
+					BasePath: "~/.copcon/memory",
+				},
+			},
+		},
+	}
+
+	err := cfg.validate()
+	assert.NoError(t, err)
+}
+
+func TestValidateMemoryBasePathAbsolute(t *testing.T) {
+	cfg := &Config{
+		Agents: []AgentConfig{
+			{
+				ID:   "agent-1",
+				Name: "Agent One",
+				Model: "gpt-4",
+				Memory: MemoryConfig{
+					Enabled:  true,
+					BasePath: "/data/copcon/memory",
+				},
+			},
+		},
+	}
+
+	err := cfg.validate()
+	assert.NoError(t, err)
+}
+
+func TestValidateEmptyMemoryBasePathIsValid(t *testing.T) {
+	cfg := &Config{
+		Agents: []AgentConfig{
+			{
+				ID:   "agent-1",
+				Name: "Agent One",
+				Model: "gpt-4",
+				Memory: MemoryConfig{
+					Enabled: true,
+				},
+			},
+		},
+	}
+
+	err := cfg.validate()
+	assert.NoError(t, err)
+}
+
+func TestValidateValidMemoryAndKnowledgeBaseConfig(t *testing.T) {
+	cfg := &Config{
+		Server:   ServerConfig{Port: "8080"},
+		Database: DatabaseConfig{Host: "localhost", Port: 5432, User: "admin", Password: "pass", DBName: "test"},
+		OpenAI:   OpenAIConfig{APIKey: "test-key", Model: "gpt-4"},
+		KnowledgeBases: []KnowledgeBaseConfig{
+			{
+				ID:           "my-docs",
+				Name:         "My Documentation",
+				Backend:      "sqlite_vec",
+				SQLitePath:   "data/knowledge.db",
+				ChunkSize:    1000,
+				ChunkOverlap: 200,
+				Embedding: EmbeddingConfig{
+					Backend:     "openai",
+					OpenAIModel: "text-embedding-3-small",
+				},
+			},
+		},
+		Agents: []AgentConfig{
+			{
+				ID:             "agent-1",
+				Name:           "Agent One",
+				Model:          "gpt-4",
+				SystemPrompt:   "You are helpful.",
+				KnowledgeBases: []string{"my-docs"},
+				Memory: MemoryConfig{
+					Enabled:       true,
+					BasePath:      "~/.copcon/memory",
+					SystemDir:     "system",
+					IndexFile:     "INDEX.md",
+					MaxIndexLines: 200,
+					MaxIndexBytes: 25600,
+				},
+			},
+		},
+		DefaultAgentID: "agent-1",
+	}
+
+	err := cfg.validate()
+	assert.NoError(t, err)
+}
+
+func TestValidateKnowledgeBaseEmptyEmbeddingBackendIsValid(t *testing.T) {
+	cfg := &Config{
+		KnowledgeBases: []KnowledgeBaseConfig{
+			{
+				ID:      "kb-1",
+				Name:    "KB One",
+				Backend: "sqlite_vec",
+			},
+		},
+	}
+
+	err := cfg.validate()
+	assert.NoError(t, err)
+}
+
+func TestValidateAgentEmptyKnowledgeBasesIsValid(t *testing.T) {
+	cfg := &Config{
+		KnowledgeBases: []KnowledgeBaseConfig{
+			{ID: "kb-1", Name: "KB One", Backend: "sqlite_vec", Embedding: EmbeddingConfig{Backend: "openai"}},
+		},
+		Agents: []AgentConfig{
+			{ID: "agent-1", Name: "Agent One", Model: "gpt-4"},
+		},
+		DefaultAgentID: "agent-1",
+	}
+
+	err := cfg.validate()
+	assert.NoError(t, err)
+}

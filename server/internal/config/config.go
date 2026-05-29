@@ -2,28 +2,33 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	"os"
 )
 
 type Config struct {
-	Server         ServerConfig   `yaml:"server"`
-	Database       DatabaseConfig `yaml:"database"`
-	OpenAI         OpenAIConfig   `yaml:"openai"`
-	Qdrant         QdrantConfig   `yaml:"qdrant"`
-	Agents         []AgentConfig  `yaml:"agents"`
-	DefaultAgentID string         `yaml:"default_agent_id"`
+	Server         ServerConfig          `yaml:"server"`
+	Database       DatabaseConfig        `yaml:"database"`
+	OpenAI         OpenAIConfig          `yaml:"openai"`
+	Qdrant         QdrantConfig          `yaml:"qdrant"`
+	Agents         []AgentConfig         `yaml:"agents"`
+	DefaultAgentID string                `yaml:"default_agent_id"`
+	KnowledgeBases []KnowledgeBaseConfig `yaml:"knowledge_bases,omitempty"`
 }
 
 type AgentConfig struct {
-	ID           string   `yaml:"id"`
-	Name         string   `yaml:"name"`
-	Model        string   `yaml:"model"`
-	SystemPrompt string   `yaml:"system_prompt"`
-	Tools        []string `yaml:"tools"`
-	BaseURL      string   `yaml:"base_url"`
+	ID             string          `yaml:"id"`
+	Name           string          `yaml:"name"`
+	Model          string          `yaml:"model"`
+	SystemPrompt   string          `yaml:"system_prompt"`
+	Tools          []string        `yaml:"tools"`
+	BaseURL        string          `yaml:"base_url"`
+	Memory         MemoryConfig    `yaml:"memory,omitempty"`
+	KnowledgeBases []string        `yaml:"knowledge_bases,omitempty"`
 }
 
 type ServerConfig struct {
@@ -49,6 +54,31 @@ type OpenAIConfig struct {
 type QdrantConfig struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
+}
+
+type MemoryConfig struct {
+	Enabled       bool   `yaml:"enabled"`
+	BasePath      string `yaml:"base_path,omitempty"`
+	SystemDir     string `yaml:"system_dir,omitempty"`
+	IndexFile     string `yaml:"index_file,omitempty"`
+	MaxIndexLines int    `yaml:"max_index_lines,omitempty"`
+	MaxIndexBytes int    `yaml:"max_index_bytes,omitempty"`
+}
+
+type EmbeddingConfig struct {
+	Backend       string `yaml:"backend"`
+	OpenAIModel   string `yaml:"openai_model,omitempty"`
+	BGEM3Endpoint string `yaml:"bge_m3_endpoint,omitempty"`
+}
+
+type KnowledgeBaseConfig struct {
+	ID           string          `yaml:"id"`
+	Name         string          `yaml:"name"`
+	Backend      string          `yaml:"backend"`
+	SQLitePath   string          `yaml:"sqlite_path,omitempty"`
+	ChunkSize    int             `yaml:"chunk_size,omitempty"`
+	ChunkOverlap int             `yaml:"chunk_overlap,omitempty"`
+	Embedding    EmbeddingConfig `yaml:"embedding"`
 }
 
 func Load() (*Config, error) {
@@ -89,16 +119,51 @@ func (c *Config) validate() error {
 		return fmt.Errorf("database type is postgres but host is not configured")
 	}
 
-	idSet := make(map[string]bool)
+	// Validate agent IDs are unique
+	agentIDSet := make(map[string]bool)
 	for _, agent := range c.Agents {
-		if idSet[agent.ID] {
+		if agentIDSet[agent.ID] {
 			return fmt.Errorf("duplicate agent ID: %s", agent.ID)
 		}
-		idSet[agent.ID] = true
+		agentIDSet[agent.ID] = true
 	}
 
-	if c.DefaultAgentID != "" && !idSet[c.DefaultAgentID] {
+	if c.DefaultAgentID != "" && !agentIDSet[c.DefaultAgentID] {
 		return fmt.Errorf("default agent ID not found: %s", c.DefaultAgentID)
+	}
+
+	// Validate knowledge base IDs are unique
+	kbIDSet := make(map[string]int)
+	for i, kb := range c.KnowledgeBases {
+		if _, exists := kbIDSet[kb.ID]; exists {
+			return fmt.Errorf("duplicate knowledge base ID: %s", kb.ID)
+		}
+		kbIDSet[kb.ID] = i
+	}
+
+	// Validate agent knowledge base references
+	if len(kbIDSet) > 0 || len(c.Agents) > 0 {
+		for _, agent := range c.Agents {
+			for _, kbRef := range agent.KnowledgeBases {
+				if _, exists := kbIDSet[kbRef]; !exists {
+					return fmt.Errorf("agent %q references unknown knowledge base %q", agent.ID, kbRef)
+				}
+				// Validate embedding backend is supported
+				kb := c.KnowledgeBases[kbIDSet[kbRef]]
+				if kb.Embedding.Backend != "" && kb.Embedding.Backend != "openai" {
+					return fmt.Errorf("knowledge base %q has unsupported embedding backend %q (only \"openai\" is supported)", kb.ID, kb.Embedding.Backend)
+				}
+			}
+		}
+	}
+
+	// Validate agent memory base path
+	for _, agent := range c.Agents {
+		if agent.Memory.BasePath != "" {
+			if !filepath.IsAbs(agent.Memory.BasePath) && !strings.HasPrefix(agent.Memory.BasePath, "~/") {
+				return fmt.Errorf("agent %q memory.base_path must be an absolute path or start with ~/, got %q", agent.ID, agent.Memory.BasePath)
+			}
+		}
 	}
 
 	return nil

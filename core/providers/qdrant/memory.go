@@ -130,6 +130,22 @@ func (m *MemoryStore) DeleteBySession(ctx context.Context, sessionID string) err
 	return err
 }
 
+func (m *MemoryStore) List(ctx context.Context, filter storage.MemoryFilter) ([]*storage.Memory, error) {
+	return nil, errors.New("not yet implemented: List")
+}
+
+func (m *MemoryStore) Get(ctx context.Context, id string) (*storage.Memory, error) {
+	return nil, errors.New("not yet implemented: Get")
+}
+
+func (m *MemoryStore) Update(ctx context.Context, memory *storage.Memory) error {
+	return errors.New("not yet implemented: Update")
+}
+
+func (m *MemoryStore) Delete(ctx context.Context, id string) error {
+	return errors.New("not yet implemented: Delete")
+}
+
 func pointToMemory(id *qdrant.PointId, payload map[string]*qdrant.Value) *storage.Memory {
 	memory := &storage.Memory{}
 

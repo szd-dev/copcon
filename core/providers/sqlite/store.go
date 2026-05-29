@@ -27,9 +27,10 @@ func (s *Store) AutoMigrate() error {
 	return AutoMigrate(s.SessionStore.db)
 }
 
-func (s *Store) Sessions() storage.SessionStore  { return s.SessionStore }
-func (s *Store) Messages() storage.MessageStore  { return s.MessageStore }
-func (s *Store) Todos() storage.TodoStore        { return s.TodoStore }
+func (s *Store) Sessions() storage.SessionStore   { return s.SessionStore }
+func (s *Store) Messages() storage.MessageStore   { return s.MessageStore }
+func (s *Store) Todos() storage.TodoStore         { return s.TodoStore }
+func (s *Store) Knowledge() storage.KnowledgeStore { return nil }
 
 var (
 	_ storage.SessionStore  = (*SessionStore)(nil)

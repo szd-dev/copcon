@@ -24,3 +24,21 @@ agents:
     model: "z-ai/glm-5"
     system_prompt: "You are a friendly chat assistant. You engage in natural conversations, answer questions, and provide helpful information. You don't have access to tools, so focus on text-based responses."
     tools: []
+    # memory:
+    #   enabled: true
+    #   base_path: "~/.copcon/memory"
+    #   system_dir: "system"
+    #   index_file: "INDEX.md"
+    #   max_index_lines: 200
+    #   max_index_bytes: 25600
+
+# knowledge_bases:
+#   - id: "my-docs"
+#     name: "My Documentation"
+#     backend: "sqlite_vec"
+#     sqlite_path: "data/knowledge.db"
+#     chunk_size: 1000
+#     chunk_overlap: 200
+#     embedding:
+#       backend: "openai"
+#       openai_model: "text-embedding-3-small"

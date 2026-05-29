@@ -36,9 +36,10 @@ type quickStoreProvider struct {
 	messageStore storage.MessageStore
 }
 
-func (p quickStoreProvider) Sessions() storage.SessionStore { return p.sessionStore }
-func (p quickStoreProvider) Messages() storage.MessageStore { return p.messageStore }
-func (p quickStoreProvider) Todos() storage.TodoStore       { return nil }
+func (p quickStoreProvider) Sessions() storage.SessionStore   { return p.sessionStore }
+func (p quickStoreProvider) Messages() storage.MessageStore   { return p.messageStore }
+func (p quickStoreProvider) Todos() storage.TodoStore         { return nil }
+func (p quickStoreProvider) Knowledge() storage.KnowledgeStore { return nil }
 
 // NewAgent creates a single-agent Harness from an AgentQuickConfig,
 // calls Build(), and returns the Engine and Registry.
@@ -86,6 +87,19 @@ type AgentSpec struct {
 	SystemPrompt  string
 	Tools         []string
 	AllowDelegate bool
+	Memory        MemorySpec
+	KnowledgeBases []string
+}
+
+// MemorySpec defines file-based memory configuration for an agent.
+// This is the core-internal equivalent of the server's MemoryConfig.
+type MemorySpec struct {
+	Enabled       bool
+	BasePath      string
+	SystemDir     string
+	IndexFile     string
+	MaxIndexLines int
+	MaxIndexBytes int
 }
 
 // AgentFactorySpec declares a dynamic agent factory to be registered directly.
