@@ -1,4 +1,4 @@
-import type { Session, CopConMessage, Todo } from './types';
+import type { Session, CopConMessage, Todo, KnowledgeBase, Document, Chunk, SearchResult, Memory } from './types';
 
 export interface AgentClientConfig {
   baseUrl: string;
@@ -153,5 +153,90 @@ export class AgentClient {
     if (!response.ok) {
       throw new Error(`Failed to stop: ${response.statusText}`);
     }
+  }
+
+  async listKnowledgeBases(): Promise<{ knowledge_bases: KnowledgeBase[] }> {
+    const response = await fetch(`${this.baseUrl}/api/kb`);
+    if (!response.ok) throw new Error(`Failed to list knowledge bases: ${response.statusText}`);
+    return response.json();
+  }
+
+  async createKnowledgeBase(name: string, backend?: string, config?: Record<string, unknown>): Promise<KnowledgeBase> {
+    const body: Record<string, unknown> = { name };
+    if (backend) body.backend = backend;
+    if (config) body.config = config;
+    const response = await fetch(`${this.baseUrl}/api/kb`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Failed to create knowledge base: ${response.statusText}`);
+    return response.json();
+  }
+
+  async deleteKnowledgeBase(kbId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`Failed to delete knowledge base: ${response.statusText}`);
+  }
+
+  async listDocuments(kbId: string): Promise<{ documents: Document[] }> {
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs`);
+    if (!response.ok) throw new Error(`Failed to list documents: ${response.statusText}`);
+    return response.json();
+  }
+
+  async uploadDocument(kbId: string, file: File): Promise<Document> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) throw new Error(`Failed to upload document: ${response.statusText}`);
+    return response.json();
+  }
+
+  async deleteDocument(kbId: string, docId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs/${docId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`Failed to delete document: ${response.statusText}`);
+  }
+
+  async getDocumentChunks(kbId: string, docId: string): Promise<{ chunks: Chunk[] }> {
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs/${docId}/chunks`);
+    if (!response.ok) throw new Error(`Failed to get document chunks: ${response.statusText}`);
+    return response.json();
+  }
+
+  async testRetrieval(kbId: string, query: string, topK?: number, similarityThreshold?: number): Promise<SearchResult> {
+    const body: Record<string, unknown> = { query };
+    if (topK !== undefined) body.top_k = topK;
+    if (similarityThreshold !== undefined) body.similarity_threshold = similarityThreshold;
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Failed to test retrieval: ${response.statusText}`);
+    return response.json();
+  }
+
+  async getSessionMemories(sessionId: string, limit?: number): Promise<{ memories: Memory[] }> {
+    const url = limit
+      ? `${this.baseUrl}/api/sessions/${sessionId}/memories?limit=${limit}`
+      : `${this.baseUrl}/api/sessions/${sessionId}/memories`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to get session memories: ${response.statusText}`);
+    return response.json();
+  }
+
+  async deleteSessionMemory(sessionId: string, memoryId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/memories/${memoryId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`Failed to delete session memory: ${response.statusText}`);
   }
 }

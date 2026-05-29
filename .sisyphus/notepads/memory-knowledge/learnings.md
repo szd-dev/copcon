@@ -258,3 +258,66 @@
 - HookRunner stored on Harness struct enables integration testing of hook chains
 - `initStores()` defaults to sqlite-vec in-memory for KnowledgeStore when auto-instantiating
 - Memory basePath defaults to `os.TempDir() + "/copcon-memory"` when not specified
+
+## 2026-05-30 W5.1-W5.7 — Server API + chat-core
+
+### W5.1: KB Management API
+- Created `server/internal/api/knowledge.go` with 9 handler methods:
+  - CreateKB, ListKBs, GetKB, DeleteKB (KB CRUD)
+  - UploadDocument (multipart, async ingestion via goroutine), ListDocuments, GetDocument, DeleteDocument (document management)
+  - SearchKB (embed query + search)
+- JSON serialization helpers: kbToJSON, docToJSON, chunkToJSON
+- Error codes: 400 (bad request), 404 (not found), 503 (store not configured), 202 (upload accepted), 204 (delete success)
+- UploadDocument: reads multipart file, creates Document with pending status, starts goroutine for Pipeline.Ingest if pipeline available, returns 202 immediately
+
+### W5.2: Search + Memory API
+- SearchKB added to knowledge.go: embeds query via Embedder.Embed(), then KnowledgeStore.Search()
+- Created `server/internal/api/memory.go` with 2 handlers:
+  - ListSessionMemories: calls MemoryStore.GetBySession()
+  - DeleteSessionMemory: validates sessionID matches memory's SessionID before deleting (cross-session protection)
+
+### W5.3: Route Registration + DI
+- Extended Handler struct with 4 new fields: knowledgeStore, memoryStore, embedder, ragPipeline
+- NewHandler now accepts variadic HandlerOption for functional options pattern
+- Added 3 option constructors: WithMemoryStore, WithEmbedder, WithRAGPipeline
+- SetupRoutes signature extended with HandlerOption variadic
+- Conditional KB route registration: /api/kb/* routes only mounted when knowledgeStore != nil
+- Memory endpoints registered on /api/sessions/:sessionId/memories
+- Created `server/internal/api/knowledge_options.go` with BuildKnowledgeOptions() that constructs embedder + pipeline from config
+- Updated server/cmd/server/main.go to use BuildKnowledgeOptions
+
+### W5.4: API Integration Tests
+- Created `server/internal/api/knowledge_test.go` with 28 test cases:
+  - KB CRUD: CreateKB, CreateKBMissingName, ListKBs, GetKB, GetKBNotFound, DeleteKB, DeleteKBCascade, DeleteKBNotFound
+  - Document: UploadDocument, UploadDocumentNoFile, UploadDocumentKBNotFound, ListDocuments, GetDocument, GetDocumentNotFound, DeleteDocument, DeleteDocumentNotFound
+  - Search: SearchKB, SearchKBMissingQuery, SearchKBNotFound
+  - Memory: ListSessionMemories, ListSessionMemoriesEmpty, DeleteSessionMemory, DeleteSessionMemoryWrongSession, DeleteSessionMemoryNotFound
+  - Config: KnowledgeStoreNotConfigured, MemoryStoreNotConfigured, SetupRoutesConditionalKB, SetupRoutesWithKB
+- Mock implementations: mockKnowledgeStore, mockMemoryStore, mockEmbedder
+- Compile-time interface check: `var _ embedding.Embedder = (*mockEmbedder)(nil)`
+
+### W5.5: chat-core TypeScript Types
+- Added 7 new types to `packages/chat-core/src/types.ts`:
+  - KnowledgeBase, Document, DocumentStatus, Chunk, SearchResult, MemoryType, Memory
+- All fields use snake_case matching Go backend JSON output
+- Exported all new types from `packages/chat-core/src/index.ts`
+
+### W5.6: AgentClient Extension
+- Added 10 methods to AgentClient:
+  - listKnowledgeBases, createKnowledgeBase, deleteKnowledgeBase
+  - listDocuments, uploadDocument (FormData, no Content-Type header), deleteDocument
+  - getDocumentChunks, testRetrieval
+  - getSessionMemories, deleteSessionMemory
+- uploadDocument uses FormData without setting Content-Type header (browser auto-sets boundary)
+
+### W5.7: chat-core Tests
+- Created `packages/chat-core/src/agent-client.test.ts` with 18 test cases across 10 describe blocks
+- All tests use mockFetch helper with vi.fn() for globalThis.fetch
+- Covers: success paths, error paths (404/500), optional parameters, FormData construction
+
+### Key Architectural Decisions
+- HandlerOption pattern (functional options) for extending Handler without breaking NewHandler signature
+- Conditional route registration prevents 404 on /api/kb when KnowledgeStore is nil
+- Pipeline creation via type assertion: `ks.(rag.PipelineStore)` — only sqlitevec satisfies both interfaces
+- BuildKnowledgeOptions lives in api package to avoid import cycle in main.go
+- Async ingestion: goroutine with background context, document stays pending if pipeline is nil

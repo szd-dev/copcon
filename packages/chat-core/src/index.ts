@@ -41,4 +41,11 @@ export type {
   SessionStatus,
   SessionState,
   ChatSessionCallbacks,
+  KnowledgeBase,
+  DocumentStatus,
+  Document,
+  Chunk,
+  SearchResult,
+  MemoryType,
+  Memory,
 } from './types';

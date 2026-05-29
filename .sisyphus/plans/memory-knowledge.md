@@ -3004,7 +3004,7 @@ Max Concurrent: 3 (Wave 5)
 
 ### Wave 4 — W5: Server API + chat-core 扩展(两 agent 并行: 后端 API + chat-core)
 
-- [ ] W5.1 知识库管理 API (REST CRUD + 文档上传)
+- [x] W5.1 知识库管理 API (REST CRUD + 文档上传)
 
   **What to do**:
   - 新建 `server/internal/api/knowledge.go`:
@@ -3115,7 +3115,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `server/internal/api/knowledge.go`, `server/internal/api/knowledge_test.go`
   - Pre-commit: `cd server && go test ./internal/api/...`
 
-- [ ] W5.2 检索测试 + 会话记忆管理 API
+- [x] W5.2 检索测试 + 会话记忆管理 API
 
   **What to do**:
   - 在 `server/internal/api/knowledge.go` 中新增:
@@ -3189,7 +3189,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `server/internal/api/knowledge.go` (追加 search), `server/internal/api/memory.go` (新建), `server/internal/api/memory_test.go`
   - Pre-commit: `cd server && go test ./internal/api/...`
 
-- [ ] W5.3 API 路由注册 + Handler 依赖注入
+- [x] W5.3 API 路由注册 + Handler 依赖注入
 
   **What to do**:
   - 修改 `server/internal/api/handlers.go:`
@@ -3310,7 +3310,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `server/internal/api/handlers.go`, `server/cmd/server/main.go` (或入口), `core/api.go` (如扩展 APIProvider)
   - Pre-commit: `cd server && go build ./...`
 
-- [ ] W5.4 API 集成测试 (httptest 全覆盖)
+- [x] W5.4 API 集成测试 (httptest 全覆盖)
 
   **What to do**:
   - 扩展 `server/internal/api/knowledge_test.go` + `server/internal/api/memory_test.go`:
@@ -3388,7 +3388,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `server/internal/api/knowledge_test.go` (扩展), `server/internal/api/memory_test.go`
   - Pre-commit: `cd server && go test -race ./internal/api/...`
 
-- [ ] W5.5 `@copcon/chat-core` 类型扩展 (TypeScript)
+- [x] W5.5 `@copcon/chat-core` 类型扩展 (TypeScript)
 
   **What to do**:
   - 修改 `packages/chat-core/src/types.ts`:
@@ -3511,7 +3511,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/chat-core/src/types.ts`, `packages/chat-core/src/types.test.ts` (新建), `packages/chat-core/src/index.ts` (export)
   - Pre-commit: `pnpm --filter @copcon/chat-core build && pnpm --filter @copcon/chat-core test`
 
-- [ ] W5.6 `AgentClient` 方法扩展 (10+ 新方法)
+- [x] W5.6 `AgentClient` 方法扩展 (10+ 新方法)
 
   **What to do**:
   - 修改 `packages/chat-core/src/agent-client.ts`,在 class AgentClient 上新增方法:
@@ -3662,7 +3662,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/chat-core/src/agent-client.ts`
   - Pre-commit: `pnpm --filter @copcon/chat-core build && pnpm --filter @copcon/chat-core test`
 
-- [ ] W5.7 `chat-core` 单元测试 (vitest 全覆盖)
+- [x] W5.7 `chat-core` 单元测试 (vitest 全覆盖)
 
   **What to do**:
   - 扩展或新建 `packages/chat-core/src/agent-client.test.ts`:

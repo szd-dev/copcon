@@ -30,9 +30,12 @@ func main() {
 	})
 	chk(log, h.Build())
 
+	var apiOpts []api.HandlerOption
+	apiOpts = append(apiOpts, api.BuildKnowledgeOptions(cfg, storeProvider, llm.NewOpenAIAdapter(&cl, cfg.OpenAI.Model))...)
+
 	r := gin.Default()
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
-	api.SetupRoutes(r, cfg, h)
+	api.SetupRoutes(r, cfg, h, apiOpts...)
 	log.Info("Server starting", "port", cfg.Server.Port)
 	chk(log, r.Run(":"+cfg.Server.Port))
 }

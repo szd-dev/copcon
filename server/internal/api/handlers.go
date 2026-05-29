@@ -12,6 +12,8 @@ import (
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/iface"
+	"github.com/copcon/core/providers/embedding"
+	"github.com/copcon/core/rag"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/config"
 )
@@ -21,21 +23,44 @@ type Handler struct {
 	sessionStore  storage.SessionStore
 	messageStore  storage.MessageStore
 	todoStore     storage.TodoStore
+	knowledgeStore storage.KnowledgeStore
+	memoryStore   storage.MemoryStore
+	embedder      embedding.Embedder
+	ragPipeline   *rag.Pipeline
 	agent         agent.AgentEngine
 	agentRegistry agent.AgentRegistry
 	chatStore     chat.ActiveSessions
 }
 
-func NewHandler(cfg *config.Config, h core.APIProvider) *Handler {
-	return &Handler{
+func NewHandler(cfg *config.Config, h core.APIProvider, opts ...HandlerOption) *Handler {
+	handler := &Handler{
 		config:        cfg,
 		sessionStore:  h.Store().Sessions(),
 		messageStore:  h.Store().Messages(),
 		todoStore:     h.Store().Todos(),
+		knowledgeStore: h.Store().Knowledge(),
 		agent:         h.Engine(),
 		agentRegistry: h.Registry(),
 		chatStore:     h.ActiveSessions(),
 	}
+	for _, opt := range opts {
+		opt(handler)
+	}
+	return handler
+}
+
+type HandlerOption func(*Handler)
+
+func WithMemoryStore(ms storage.MemoryStore) HandlerOption {
+	return func(h *Handler) { h.memoryStore = ms }
+}
+
+func WithEmbedder(e embedding.Embedder) HandlerOption {
+	return func(h *Handler) { h.embedder = e }
+}
+
+func WithRAGPipeline(p *rag.Pipeline) HandlerOption {
+	return func(h *Handler) { h.ragPipeline = p }
 }
 
 func (h *Handler) CreateSession(c *gin.Context) {
@@ -308,8 +333,8 @@ func (h *Handler) ListAgents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"agents": result})
 }
 
-func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider) {
-	handler := NewHandler(cfg, h)
+func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider, opts ...HandlerOption) {
+	handler := NewHandler(cfg, h, opts...)
 
 	api := r.Group("/api")
 	{
@@ -327,6 +352,23 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider) {
 			sessions.POST("/:sessionId/resume", handler.ResumeSession)
 			sessions.GET("/:sessionId/todos", handler.GetSessionTodos)
 			sessions.GET("/:sessionId/updates", handler.GetSessionUpdates)
+			sessions.GET("/:sessionId/memories", handler.ListSessionMemories)
+			sessions.DELETE("/:sessionId/memories/:memoryId", handler.DeleteSessionMemory)
+		}
+
+		if handler.knowledgeStore != nil {
+			kb := api.Group("/kb")
+			{
+				kb.POST("", handler.CreateKB)
+				kb.GET("", handler.ListKBs)
+				kb.GET("/:kbId", handler.GetKB)
+				kb.DELETE("/:kbId", handler.DeleteKB)
+				kb.POST("/:kbId/docs", handler.UploadDocument)
+				kb.GET("/:kbId/docs", handler.ListDocuments)
+				kb.GET("/:kbId/docs/:docId", handler.GetDocument)
+				kb.DELETE("/:kbId/docs/:docId", handler.DeleteDocument)
+				kb.POST("/:kbId/search", handler.SearchKB)
+			}
 		}
 	}
 }

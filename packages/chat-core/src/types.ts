@@ -198,3 +198,58 @@ export interface ChatSessionCallbacks {
   onMessagesChange: (messages: CopConMessage[]) => void;
   onStateChange: (state: SessionState) => void;
 }
+
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  backend: string;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export type DocumentStatus = 'pending' | 'parsing' | 'ready' | 'error';
+
+export interface Document {
+  id: string;
+  kb_id: string;
+  filename: string;
+  source: string;
+  status: DocumentStatus;
+  chunk_count: number;
+  token_count: number;
+  created_at: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface Chunk {
+  id: string;
+  document_id: string;
+  kb_id: string;
+  content: string;
+  context: string;
+  index: number;
+  token_count: number;
+  metadata: Record<string, unknown>;
+  score: number;
+}
+
+export interface SearchResult {
+  results: Chunk[];
+}
+
+export type MemoryType = 'episodic' | 'semantic' | 'procedural';
+
+export interface Memory {
+  id: string;
+  content: string;
+  session_id: string;
+  role: string;
+  timestamp: string;
+  memory_type: string;
+  metadata: Record<string, unknown>;
+  score: number;
+  importance: number;
+}
