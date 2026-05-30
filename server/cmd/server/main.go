@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openai/openai-go/v3"
@@ -39,7 +41,7 @@ func main() {
 		log.Warn("failed to create file memory store", "error", fmErr)
 	}
 
-	ks, ksErr := sqlitevec.NewKnowledgeStoreFromDSN(knowledgeStoreDSN(cfg))
+	ks, ksErr := createKnowledgeStore(cfg, log)
 	if ksErr != nil {
 		log.Warn("failed to create knowledge store", "error", ksErr)
 	}
@@ -109,7 +111,6 @@ func agentSpecs(cfg *config.Config) []core.AgentSpec {
 				MaxIndexLines: a.Memory.MaxIndexLines,
 				MaxIndexBytes: a.Memory.MaxIndexBytes,
 			},
-			KnowledgeBases: a.KnowledgeBases,
 		})
 	}
 	return out
@@ -124,28 +125,27 @@ func defaultMemoryBasePath() string {
 }
 
 func resolveEmbeddingConfig(cfg *config.Config) embedding.EmbeddingConfig {
-	if len(cfg.KnowledgeBases) == 0 {
-		return embedding.EmbeddingConfig{}
-	}
-
-	kb := cfg.KnowledgeBases[0]
-	if kb.Embedding.Backend == "" {
-		return embedding.EmbeddingConfig{}
-	}
-
+	k := cfg.Knowledge.Embedding
 	return embedding.EmbeddingConfig{
-		Backend:     embedding.BackendType(kb.Embedding.Backend),
-		BaseURL:     cfg.OpenAI.BaseURL,
-		APIKey:      cfg.OpenAI.APIKey,
-		OpenAIModel: kb.Embedding.OpenAIModel,
+		Backend:     embedding.BackendType(k.Backend),
+		OpenAIModel: k.Model,
+		BaseURL:     k.BaseURL,
+		APIKey:      k.APIKey,
 	}
 }
 
-func knowledgeStoreDSN(cfg *config.Config) string {
-	for _, kb := range cfg.KnowledgeBases {
-		if kb.SQLitePath != "" {
-			return kb.SQLitePath
-		}
+func createKnowledgeStore(cfg *config.Config, log *slog.Logger) (*sqlitevec.KnowledgeStore, error) {
+	path := cfg.Knowledge.SQLitePath
+	if path == "" {
+		path = "data/collab/knowledge.db"
 	}
-	return "file::memory:?cache=shared"
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("create knowledge store directory %s: %w", dir, err)
+	}
+
+	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)", path)
+	log.Info("using SQLite for knowledge store", "path", path)
+	return sqlitevec.NewKnowledgeStoreFromDSN(dsn)
 }

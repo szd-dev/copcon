@@ -11,24 +11,23 @@ import (
 )
 
 type Config struct {
-	Server         ServerConfig          `yaml:"server"`
-	Database       DatabaseConfig        `yaml:"database"`
-	OpenAI         OpenAIConfig          `yaml:"openai"`
-	Qdrant         QdrantConfig          `yaml:"qdrant"`
-	Agents         []AgentConfig         `yaml:"agents"`
-	DefaultAgentID string                `yaml:"default_agent_id"`
-	KnowledgeBases []KnowledgeBaseConfig `yaml:"knowledge_bases,omitempty"`
+	Server         ServerConfig    `yaml:"server"`
+	Database       DatabaseConfig  `yaml:"database"`
+	OpenAI         OpenAIConfig    `yaml:"openai"`
+	Qdrant         QdrantConfig    `yaml:"qdrant"`
+	Agents         []AgentConfig   `yaml:"agents"`
+	DefaultAgentID string          `yaml:"default_agent_id"`
+	Knowledge      KnowledgeConfig `yaml:"knowledge,omitempty"`
 }
 
 type AgentConfig struct {
-	ID             string          `yaml:"id"`
-	Name           string          `yaml:"name"`
-	Model          string          `yaml:"model"`
-	SystemPrompt   string          `yaml:"system_prompt"`
-	Tools          []string        `yaml:"tools"`
-	BaseURL        string          `yaml:"base_url"`
-	Memory         MemoryConfig    `yaml:"memory,omitempty"`
-	KnowledgeBases []string        `yaml:"knowledge_bases,omitempty"`
+	ID           string       `yaml:"id"`
+	Name         string       `yaml:"name"`
+	Model        string       `yaml:"model"`
+	SystemPrompt string       `yaml:"system_prompt"`
+	Tools        []string     `yaml:"tools"`
+	BaseURL      string       `yaml:"base_url"`
+	Memory       MemoryConfig `yaml:"memory,omitempty"`
 }
 
 type ServerConfig struct {
@@ -65,20 +64,20 @@ type MemoryConfig struct {
 	MaxIndexBytes int    `yaml:"max_index_bytes,omitempty"`
 }
 
-type EmbeddingConfig struct {
-	Backend       string `yaml:"backend"`
-	OpenAIModel   string `yaml:"openai_model,omitempty"`
-	BGEM3Endpoint string `yaml:"bge_m3_endpoint,omitempty"`
+// KnowledgeConfig configures the knowledge base module.
+// KB metadata (ID, name, chunk_size, etc.) is managed via the API, not here.
+type KnowledgeConfig struct {
+	SQLitePath string              `yaml:"sqlite_path,omitempty"` // default: "data/collab/knowledge.db"
+	Embedding  KnowledgeEmbedConfig `yaml:"embedding,omitempty"`
 }
 
-type KnowledgeBaseConfig struct {
-	ID           string          `yaml:"id"`
-	Name         string          `yaml:"name"`
-	Backend      string          `yaml:"backend"`
-	SQLitePath   string          `yaml:"sqlite_path,omitempty"`
-	ChunkSize    int             `yaml:"chunk_size,omitempty"`
-	ChunkOverlap int             `yaml:"chunk_overlap,omitempty"`
-	Embedding    EmbeddingConfig `yaml:"embedding"`
+// KnowledgeEmbedConfig configures the embedding model used by the knowledge module.
+// APIKey/BaseURL inherit from OpenAI config when not specified.
+type KnowledgeEmbedConfig struct {
+	Backend string `yaml:"backend,omitempty"` // "openai" (default if Model is set)
+	APIKey  string `yaml:"api_key,omitempty"`
+	BaseURL string `yaml:"base_url,omitempty"`
+	Model   string `yaml:"model,omitempty"`
 }
 
 func Load() (*Config, error) {
@@ -92,14 +91,23 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	var cfg Config
+	cfg := Config{}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 
-	// Override with env vars if set
 	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
 		cfg.OpenAI.APIKey = apiKey
+	}
+
+	if cfg.Knowledge.Embedding.APIKey == "" {
+		cfg.Knowledge.Embedding.APIKey = cfg.OpenAI.APIKey
+	}
+	if cfg.Knowledge.Embedding.BaseURL == "" {
+		cfg.Knowledge.Embedding.BaseURL = cfg.OpenAI.BaseURL
+	}
+	if cfg.Knowledge.Embedding.Backend == "" && cfg.Knowledge.Embedding.Model != "" {
+		cfg.Knowledge.Embedding.Backend = "openai"
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -110,16 +118,13 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	// Validate database config: ambiguous if both PG and SQLite paths specified without explicit type
 	if c.Database.Host != "" && c.Database.SQLitePath != "" && c.Database.Type == "" {
 		return fmt.Errorf("ambiguous database config: both host (%s) and sqlite_path (%s) specified without explicit type", c.Database.Host, c.Database.SQLitePath)
 	}
-	// Validate: explicit postgres type but missing host
 	if c.Database.Type == "postgres" && c.Database.Host == "" {
 		return fmt.Errorf("database type is postgres but host is not configured")
 	}
 
-	// Validate agent IDs are unique
 	agentIDSet := make(map[string]bool)
 	for _, agent := range c.Agents {
 		if agentIDSet[agent.ID] {
@@ -132,32 +137,10 @@ func (c *Config) validate() error {
 		return fmt.Errorf("default agent ID not found: %s", c.DefaultAgentID)
 	}
 
-	// Validate knowledge base IDs are unique
-	kbIDSet := make(map[string]int)
-	for i, kb := range c.KnowledgeBases {
-		if _, exists := kbIDSet[kb.ID]; exists {
-			return fmt.Errorf("duplicate knowledge base ID: %s", kb.ID)
-		}
-		kbIDSet[kb.ID] = i
+	if c.Knowledge.Embedding.Backend != "" && c.Knowledge.Embedding.Backend != "openai" {
+		return fmt.Errorf("knowledge embedding backend %q is not supported (only \"openai\" is supported)", c.Knowledge.Embedding.Backend)
 	}
 
-	// Validate agent knowledge base references
-	if len(kbIDSet) > 0 || len(c.Agents) > 0 {
-		for _, agent := range c.Agents {
-			for _, kbRef := range agent.KnowledgeBases {
-				if _, exists := kbIDSet[kbRef]; !exists {
-					return fmt.Errorf("agent %q references unknown knowledge base %q", agent.ID, kbRef)
-				}
-				// Validate embedding backend is supported
-				kb := c.KnowledgeBases[kbIDSet[kbRef]]
-				if kb.Embedding.Backend != "" && kb.Embedding.Backend != "openai" {
-					return fmt.Errorf("knowledge base %q has unsupported embedding backend %q (only \"openai\" is supported)", kb.ID, kb.Embedding.Backend)
-				}
-			}
-		}
-	}
-
-	// Validate agent memory base path
 	for _, agent := range c.Agents {
 		if agent.Memory.BasePath != "" {
 			if !filepath.IsAbs(agent.Memory.BasePath) && !strings.HasPrefix(agent.Memory.BasePath, "~/") {
