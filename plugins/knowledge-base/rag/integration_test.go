@@ -8,38 +8,38 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
 // inMemoryPipelineStore implements knowledgebase.KnowledgeStore
 type inMemoryPipelineStore struct {
-	kbs       map[string]*storage.KnowledgeBase
-	documents map[string]map[string]*storage.Document
-	chunks    map[string]map[string][]*storage.Chunk
+	kbs       map[string]*kbtypes.KnowledgeBase
+	documents map[string]map[string]*kbtypes.Document
+	chunks    map[string]map[string][]*kbtypes.Chunk
 	vectors   map[string]map[string][][]float32
-	statuses  map[string]storage.DocumentStatus
+	statuses  map[string]kbtypes.DocumentStatus
 }
 
 func newInMemoryPipelineStore() *inMemoryPipelineStore {
 	return &inMemoryPipelineStore{
-		kbs:       make(map[string]*storage.KnowledgeBase),
-		documents: make(map[string]map[string]*storage.Document),
-		chunks:    make(map[string]map[string][]*storage.Chunk),
+		kbs:       make(map[string]*kbtypes.KnowledgeBase),
+		documents: make(map[string]map[string]*kbtypes.Document),
+		chunks:    make(map[string]map[string][]*kbtypes.Chunk),
 		vectors:   make(map[string]map[string][][]float32),
-		statuses:  make(map[string]storage.DocumentStatus),
+		statuses:  make(map[string]kbtypes.DocumentStatus),
 	}
 }
 
-func (s *inMemoryPipelineStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
+func (s *inMemoryPipelineStore) CreateKB(ctx context.Context, kb *kbtypes.KnowledgeBase) (*kbtypes.KnowledgeBase, error) {
 	s.kbs[kb.ID] = kb
-	s.documents[kb.ID] = make(map[string]*storage.Document)
-	s.chunks[kb.ID] = make(map[string][]*storage.Chunk)
+	s.documents[kb.ID] = make(map[string]*kbtypes.Document)
+	s.chunks[kb.ID] = make(map[string][]*kbtypes.Chunk)
 	s.vectors[kb.ID] = make(map[string][][]float32)
 	return kb, nil
 }
 
-func (s *inMemoryPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error {
+func (s *inMemoryPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *kbtypes.Document, content []byte) error {
 	if doc.ID == "" {
 		doc.ID = fmt.Sprintf("doc-%d", len(s.documents[kbID])+1)
 	}
@@ -49,18 +49,18 @@ func (s *inMemoryPipelineStore) IngestDocument(ctx context.Context, kbID string,
 	return nil
 }
 
-func (s *inMemoryPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error {
+func (s *inMemoryPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*kbtypes.Chunk, vectors [][]float32) error {
 	s.chunks[kbID][docID] = chunks
 	s.vectors[kbID][docID] = vectors
-	s.statuses[docID] = storage.DocStatusReady
+	s.statuses[docID] = kbtypes.DocStatusReady
 	if doc, ok := s.documents[kbID][docID]; ok {
 		doc.ChunkCount = len(chunks)
-		doc.Status = storage.DocStatusReady
+		doc.Status = kbtypes.DocStatusReady
 	}
 	return nil
 }
 
-func (s *inMemoryPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
+func (s *inMemoryPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status kbtypes.DocumentStatus) error {
 	s.statuses[docID] = status
 	if doc, ok := s.documents[kbID][docID]; ok {
 		doc.Status = status
@@ -68,7 +68,7 @@ func (s *inMemoryPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID s
 	return nil
 }
 
-func (s *inMemoryPipelineStore) GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error) {
+func (s *inMemoryPipelineStore) GetDocument(ctx context.Context, kbID string, docID string) (*kbtypes.Document, error) {
 	doc, ok := s.documents[kbID][docID]
 	if !ok {
 		return nil, fmt.Errorf("document not found")
@@ -76,7 +76,7 @@ func (s *inMemoryPipelineStore) GetDocument(ctx context.Context, kbID string, do
 	return doc, nil
 }
 
-func (s *inMemoryPipelineStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
+func (s *inMemoryPipelineStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*kbtypes.Chunk, error) {
 	chunks, ok := s.chunks[kbID][docID]
 	if !ok {
 		return nil, nil
@@ -92,15 +92,15 @@ func (s *inMemoryPipelineStore) DeleteKB(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *inMemoryPipelineStore) ListKBs(ctx context.Context) ([]*storage.KnowledgeBase, error) {
-	var result []*storage.KnowledgeBase
+func (s *inMemoryPipelineStore) ListKBs(ctx context.Context) ([]*kbtypes.KnowledgeBase, error) {
+	var result []*kbtypes.KnowledgeBase
 	for _, kb := range s.kbs {
 		result = append(result, kb)
 	}
 	return result, nil
 }
 
-func (s *inMemoryPipelineStore) GetKB(ctx context.Context, id string) (*storage.KnowledgeBase, error) {
+func (s *inMemoryPipelineStore) GetKB(ctx context.Context, id string) (*kbtypes.KnowledgeBase, error) {
 	kb, ok := s.kbs[id]
 	if !ok {
 		return nil, fmt.Errorf("kb not found")
@@ -122,8 +122,8 @@ func (s *inMemoryPipelineStore) DeleteDocument(ctx context.Context, kbID string,
 	return nil
 }
 
-func (s *inMemoryPipelineStore) ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error) {
-	var result []*storage.Document
+func (s *inMemoryPipelineStore) ListDocuments(ctx context.Context, kbID string) ([]*kbtypes.Document, error) {
+	var result []*kbtypes.Document
 	if docs, ok := s.documents[kbID]; ok {
 		for _, doc := range docs {
 			result = append(result, doc)
@@ -132,11 +132,11 @@ func (s *inMemoryPipelineStore) ListDocuments(ctx context.Context, kbID string) 
 	return result, nil
 }
 
-func (s *inMemoryPipelineStore) UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error {
+func (s *inMemoryPipelineStore) UpdateChunk(ctx context.Context, kbID string, chunk *kbtypes.Chunk) error {
 	return nil
 }
 
-func (s *inMemoryPipelineStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
+func (s *inMemoryPipelineStore) Search(ctx context.Context, kbIDs []string, query []float32, opts kbtypes.SearchOptions) ([]*kbtypes.Chunk, error) {
 	return nil, nil
 }
 
@@ -174,7 +174,7 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	store := newInMemoryPipelineStore()
 
-	kb, err := store.CreateKB(ctx, &storage.KnowledgeBase{
+	kb, err := store.CreateKB(ctx, &kbtypes.KnowledgeBase{
 		ID:      "kb-1",
 		Name:    "pipeline-kb",
 		Backend: "in-memory",
@@ -185,11 +185,11 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 	parser := NewDefaultParser()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		KBID:     kb.ID,
 		Filename: "sample.txt",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 	content := []byte("This is the first paragraph about Go programming.\n\nThis is the second paragraph about Python scripting.\n\nThis is the third paragraph about Rust systems programming.")
 
@@ -198,7 +198,7 @@ func TestIntegrationPipelineEndToEnd(t *testing.T) {
 
 	gotDoc, err := store.GetDocument(ctx, kb.ID, doc.ID)
 	require.NoError(t, err)
-	assert.Equal(t, storage.DocStatusReady, gotDoc.Status)
+	assert.Equal(t, kbtypes.DocStatusReady, gotDoc.Status)
 	assert.Greater(t, gotDoc.ChunkCount, 0)
 
 	chunks, err := store.GetChunks(ctx, kb.ID, doc.ID)
@@ -210,16 +210,16 @@ func TestIntegrationPipelineMarkdownEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	store := newInMemoryPipelineStore()
 
-	kb, _ := store.CreateKB(ctx, &storage.KnowledgeBase{ID: "kb-md", Name: "md-kb", Backend: "in-memory"})
+	kb, _ := store.CreateKB(ctx, &kbtypes.KnowledgeBase{ID: "kb-md", Name: "md-kb", Backend: "in-memory"})
 
 	embedder := &integrationTestEmbedder{dimensions: 8}
 	pipeline := NewMarkdownPipeline(NewDefaultParser(), embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		KBID:     kb.ID,
 		Filename: "doc.md",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 	content := []byte("# Introduction\n\nThis is the introduction section.\n\n## Details\n\nHere are the details about the system.")
 
@@ -227,23 +227,23 @@ func TestIntegrationPipelineMarkdownEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	gotDoc, _ := store.GetDocument(ctx, kb.ID, doc.ID)
-	assert.Equal(t, storage.DocStatusReady, gotDoc.Status)
+	assert.Equal(t, kbtypes.DocStatusReady, gotDoc.Status)
 }
 
 func TestIntegrationPipelineMultipleDocuments(t *testing.T) {
 	ctx := context.Background()
 	store := newInMemoryPipelineStore()
 
-	kb, _ := store.CreateKB(ctx, &storage.KnowledgeBase{ID: "kb-multi", Name: "multi-kb", Backend: "in-memory"})
+	kb, _ := store.CreateKB(ctx, &kbtypes.KnowledgeBase{ID: "kb-multi", Name: "multi-kb", Backend: "in-memory"})
 	embedder := &integrationTestEmbedder{dimensions: 8}
 	pipeline := NewPipeline(NewDefaultParser(), embedder, store)
 
 	for i := 0; i < 3; i++ {
-		doc := &storage.Document{
+		doc := &kbtypes.Document{
 			KBID:     kb.ID,
 			Filename: "doc" + string(rune('A'+i)) + ".txt",
 			Source:   "upload",
-			Status:   storage.DocStatusPending,
+			Status:   kbtypes.DocStatusPending,
 		}
 		content := []byte("Document " + string(rune('A'+i)) + " content about various topics.")
 		err := pipeline.Ingest(ctx, kb.ID, doc, content, "text/plain", nil)
@@ -251,6 +251,6 @@ func TestIntegrationPipelineMultipleDocuments(t *testing.T) {
 	}
 
 	for docID, status := range store.statuses {
-		assert.Equal(t, storage.DocStatusReady, status, "doc %s should be ready", docID)
+		assert.Equal(t, kbtypes.DocStatusReady, status, "doc %s should be ready", docID)
 	}
 }

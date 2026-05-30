@@ -3,12 +3,12 @@ package knowledgebase
 import (
 	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 )
 
 type kbRecallHookCapabilityClosure struct {
 	ks  KnowledgeStore
-	emb storage.Embedder
+	emb kbtypes.Embedder
 }
 
 func (c *kbRecallHookCapabilityClosure) Name() string                      { return capabilities.HookKBRecall }

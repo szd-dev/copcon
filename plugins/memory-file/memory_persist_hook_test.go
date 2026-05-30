@@ -9,7 +9,8 @@ import (
 
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
+	memtypes "github.com/copcon/plugins/memory-file/types"
 	"github.com/copcon/core/testutil"
 )
 
@@ -37,38 +38,38 @@ func (m *mockHookEmbedder) Dimensions() int { return m.dimensions }
 func (m *mockHookEmbedder) Name() string    { return "mock" }
 
 type mockMemoryStoreForHook struct {
-	memories []*storage.Memory
+	memories []*memtypes.Memory
 }
 
-func (m *mockMemoryStoreForHook) Store(ctx context.Context, memory *storage.Memory) error {
+func (m *mockMemoryStoreForHook) Store(ctx context.Context, memory *memtypes.Memory) error {
 	m.memories = append(m.memories, memory)
 	return nil
 }
 
-func (m *mockMemoryStoreForHook) Search(ctx context.Context, query []float32, limit int) ([]*storage.Memory, error) {
+func (m *mockMemoryStoreForHook) Search(ctx context.Context, query []float32, limit int) ([]*memtypes.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryStoreForHook) GetByAgentID(ctx context.Context, agentID string, limit int) ([]*storage.Memory, error) {
+func (m *mockMemoryStoreForHook) GetByAgentID(ctx context.Context, agentID string, limit int) ([]*memtypes.Memory, error) {
 	return nil, nil
 }
 
 func (m *mockMemoryStoreForHook) DeleteByAgentID(ctx context.Context, agentID string) error { return nil }
 
-func (m *mockMemoryStoreForHook) List(ctx context.Context, filter storage.MemoryFilter) ([]*storage.Memory, error) {
+func (m *mockMemoryStoreForHook) List(ctx context.Context, filter memtypes.MemoryFilter) ([]*memtypes.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryStoreForHook) Get(ctx context.Context, id string) (*storage.Memory, error) {
+func (m *mockMemoryStoreForHook) Get(ctx context.Context, id string) (*memtypes.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryStoreForHook) Update(ctx context.Context, memory *storage.Memory) error { return nil }
+func (m *mockMemoryStoreForHook) Update(ctx context.Context, memory *memtypes.Memory) error { return nil }
 
 func (m *mockMemoryStoreForHook) Delete(ctx context.Context, id string) error { return nil }
 
 var _ MemoryStore = (*mockMemoryStoreForHook)(nil)
-var _ storage.Embedder = (*mockHookEmbedder)(nil)
+var _ kbtypes.Embedder = (*mockHookEmbedder)(nil)
 
 func TestMemoryPersistHookName(t *testing.T) {
 	h := NewMemoryPersistHook(nil, nil)

@@ -1,6 +1,6 @@
 package kbembedding
 
-import "github.com/copcon/core/storage"
+import kbtypes "github.com/copcon/plugins/knowledge-base/types"
 
-// Embedder is an alias for storage.Embedder for backward compatibility.
-type Embedder = storage.Embedder
+// Embedder is an alias for kbtypes.Embedder for backward compatibility.
+type Embedder = kbtypes.Embedder

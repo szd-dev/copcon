@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/copcon/core/storage"
+	memtypes "github.com/copcon/plugins/memory-file/types"
 )
 
 func (h *Handler) ListAgentMemories(c *gin.Context) {
@@ -72,7 +72,7 @@ func (h *Handler) DeleteAgentMemory(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func memoryToJSON(mem *storage.Memory) gin.H {
+func memoryToJSON(mem *memtypes.Memory) gin.H {
 	return gin.H{
 		"id":          mem.ID,
 		"content":     mem.Content,

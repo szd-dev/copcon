@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/core/storage"
+	memtypes "github.com/copcon/plugins/memory-file/types"
 )
 
 func TestNewFileMemoryStore(t *testing.T) {
@@ -38,11 +38,11 @@ func TestFileMemoryStore_StoreAndGetByAgentID(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	mem := &storage.Memory{
+	mem := &memtypes.Memory{
 		Content:    "test content",
 		AgentID:    "agent-1",
 		Role:       "assistant",
-		MemoryType: string(storage.MemoryTypeEpisodic),
+		MemoryType: string(memtypes.MemoryTypeEpisodic),
 	}
 
 	err = store.Store(ctx, mem)
@@ -61,11 +61,11 @@ func TestFileMemoryStore_Store_NoOverwrite(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	mem := &storage.Memory{
+	mem := &memtypes.Memory{
 		ID:         "fixed-id",
 		Content:    "original",
 		AgentID:    "agent-1",
-		MemoryType: string(storage.MemoryTypeEpisodic),
+		MemoryType: string(memtypes.MemoryTypeEpisodic),
 	}
 
 	err = store.Store(ctx, mem)
@@ -83,11 +83,11 @@ func TestFileMemoryStore_Update(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	mem := &storage.Memory{
+	mem := &memtypes.Memory{
 		Content:    "original content",
 		AgentID:    "agent-1",
 		Role:       "assistant",
-		MemoryType: string(storage.MemoryTypeEpisodic),
+		MemoryType: string(memtypes.MemoryTypeEpisodic),
 	}
 
 	err = store.Store(ctx, mem)
@@ -109,10 +109,10 @@ func TestFileMemoryStore_DeleteByAgentID(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	mem := &storage.Memory{
+	mem := &memtypes.Memory{
 		Content:    "to be deleted",
 		AgentID:    "agent-1",
-		MemoryType: string(storage.MemoryTypeEpisodic),
+		MemoryType: string(memtypes.MemoryTypeEpisodic),
 	}
 
 	err = store.Store(ctx, mem)
@@ -216,30 +216,30 @@ func TestFileMemoryStore_List_WithFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	mem1 := &storage.Memory{
+	mem1 := &memtypes.Memory{
 		Content:    "episodic memory",
 		AgentID:    "agent-1",
-		MemoryType: string(storage.MemoryTypeEpisodic),
+		MemoryType: string(memtypes.MemoryTypeEpisodic),
 	}
 	err = store.Store(ctx, mem1)
 	require.NoError(t, err)
 
-	mem2 := &storage.Memory{
+	mem2 := &memtypes.Memory{
 		Content:    "procedural memory",
 		AgentID:    "agent-1",
-		MemoryType: string(storage.MemoryTypeProcedural),
+		MemoryType: string(memtypes.MemoryTypeProcedural),
 	}
 	err = store.Store(ctx, mem2)
 	require.NoError(t, err)
 
-	filter := storage.MemoryFilter{
+	filter := memtypes.MemoryFilter{
 		AgentID:    "agent-1",
-		MemoryType: []storage.MemoryType{storage.MemoryTypeEpisodic},
+		MemoryType: []memtypes.MemoryType{memtypes.MemoryTypeEpisodic},
 	}
 	results, err := store.List(ctx, filter)
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
-	assert.Equal(t, string(storage.MemoryTypeEpisodic), results[0].MemoryType)
+	assert.Equal(t, string(memtypes.MemoryTypeEpisodic), results[0].MemoryType)
 }
 
 // --- Frontmatter tests ---
@@ -410,10 +410,10 @@ func TestIntegration_StoreViaMemoryInterface_RecallViaFileInterface(t *testing.T
 
 	ctx := context.Background()
 
-	mem := &storage.Memory{
+	mem := &memtypes.Memory{
 		Content:    "The user works in Go",
 		AgentID:    "agent-1",
-		MemoryType: string(storage.MemoryTypeSemantic),
+		MemoryType: string(memtypes.MemoryTypeSemantic),
 	}
 	err = store.Store(ctx, mem)
 	require.NoError(t, err)

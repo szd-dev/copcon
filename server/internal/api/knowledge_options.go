@@ -1,12 +1,12 @@
 package api
 
 import (
-	"github.com/copcon/core/storage"
-	"github.com/copcon/plugins/knowledge-base"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
 	kbrag "github.com/copcon/plugins/knowledge-base/rag"
 )
 
-func BuildKnowledgeOptions(ks knowledgebase.KnowledgeStore, emb storage.Embedder) []HandlerOption {
+func BuildKnowledgeOptions(ks knowledgebase.KnowledgeStore, emb kbtypes.Embedder) []HandlerOption {
 	if ks == nil {
 		return nil
 	}

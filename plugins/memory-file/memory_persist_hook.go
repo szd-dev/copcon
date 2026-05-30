@@ -8,16 +8,17 @@ import (
 	"unicode"
 
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
+	memtypes "github.com/copcon/plugins/memory-file/types"
 )
 
 type MemoryPersistHook struct {
-	embedder    storage.Embedder
+	embedder    kbtypes.Embedder
 	memoryStore MemoryStore
 	logger      *slog.Logger
 }
 
-func NewMemoryPersistHook(embedder storage.Embedder, memoryStore MemoryStore) *MemoryPersistHook {
+func NewMemoryPersistHook(embedder kbtypes.Embedder, memoryStore MemoryStore) *MemoryPersistHook {
 	return &MemoryPersistHook{
 		embedder:    embedder,
 		memoryStore: memoryStore,
@@ -75,7 +76,7 @@ func (h *MemoryPersistHook) persistAsync(
 	ctx context.Context,
 	agentID string,
 	content string,
-	embedder storage.Embedder,
+	embedder kbtypes.Embedder,
 	store MemoryStore,
 	logger *slog.Logger,
 ) {
@@ -103,11 +104,11 @@ func (h *MemoryPersistHook) persistAsync(
 		return
 	}
 
-	memory := &storage.Memory{
+	memory := &memtypes.Memory{
 		Content:    content,
 		AgentID:    agentID,
 		Role:       "assistant",
-		MemoryType: string(storage.MemoryTypeSemantic),
+		MemoryType: string(memtypes.MemoryTypeSemantic),
 		Metadata:   map[string]any{"keywords": strings.Join(keywords, ",")},
 	}
 

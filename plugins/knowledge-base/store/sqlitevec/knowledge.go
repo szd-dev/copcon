@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"github.com/copcon/core/storage"
-	"github.com/copcon/plugins/knowledge-base"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
 // KnowledgeStore implements knowledgebase.KnowledgeStore using SQLite + GORM
@@ -71,7 +71,7 @@ func NewKnowledgeStoreFromDSN(dsn string, opts ...Option) (*KnowledgeStore, erro
 
 var _ knowledgebase.KnowledgeStore = (*KnowledgeStore)(nil)
 
-func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
+func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *kbtypes.KnowledgeBase) (*kbtypes.KnowledgeBase, error) {
 	id := kb.ID
 	if id == "" {
 		id = uuid.New().String()
@@ -127,19 +127,19 @@ func (s *KnowledgeStore) DeleteKB(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *KnowledgeStore) ListKBs(ctx context.Context) ([]*storage.KnowledgeBase, error) {
+func (s *KnowledgeStore) ListKBs(ctx context.Context) ([]*kbtypes.KnowledgeBase, error) {
 	var models []kbModel
 	if err := s.db.WithContext(ctx).Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list knowledge bases: %w", err)
 	}
-	result := make([]*storage.KnowledgeBase, len(models))
+	result := make([]*kbtypes.KnowledgeBase, len(models))
 	for i, m := range models {
 		result[i] = m.toDomain()
 	}
 	return result, nil
 }
 
-func (s *KnowledgeStore) GetKB(ctx context.Context, id string) (*storage.KnowledgeBase, error) {
+func (s *KnowledgeStore) GetKB(ctx context.Context, id string) (*kbtypes.KnowledgeBase, error) {
 	var m kbModel
 	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		return nil, fmt.Errorf("get knowledge base %s: %w", id, err)
@@ -147,7 +147,7 @@ func (s *KnowledgeStore) GetKB(ctx context.Context, id string) (*storage.Knowled
 	return m.toDomain(), nil
 }
 
-func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error {
+func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *kbtypes.Document, content []byte) error {
 	docID := doc.ID
 	if docID == "" {
 		docID = uuid.New().String()
@@ -174,12 +174,12 @@ func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *s
 	return nil
 }
 
-func (s *KnowledgeStore) ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error) {
+func (s *KnowledgeStore) ListDocuments(ctx context.Context, kbID string) ([]*kbtypes.Document, error) {
 	var models []docModel
 	if err := s.db.WithContext(ctx).Where("kb_id = ?", kbID).Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list documents for kb %s: %w", kbID, err)
 	}
-	result := make([]*storage.Document, len(models))
+	result := make([]*kbtypes.Document, len(models))
 	for i, m := range models {
 		result[i] = m.toDomain()
 	}
@@ -208,7 +208,7 @@ func (s *KnowledgeStore) DeleteDocument(ctx context.Context, kbID string, docID 
 	return nil
 }
 
-func (s *KnowledgeStore) GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error) {
+func (s *KnowledgeStore) GetDocument(ctx context.Context, kbID string, docID string) (*kbtypes.Document, error) {
 	var m docModel
 	if err := s.db.WithContext(ctx).Where("id = ? AND kb_id = ?", docID, kbID).First(&m).Error; err != nil {
 		return nil, fmt.Errorf("get document %s in kb %s: %w", docID, kbID, err)
@@ -216,19 +216,19 @@ func (s *KnowledgeStore) GetDocument(ctx context.Context, kbID string, docID str
 	return m.toDomain(), nil
 }
 
-func (s *KnowledgeStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
+func (s *KnowledgeStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*kbtypes.Chunk, error) {
 	var models []chunkModel
 	if err := s.db.WithContext(ctx).Where("document_id = ? AND kb_id = ?", docID, kbID).Order("chunk_index ASC").Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("get chunks for document %s: %w", docID, err)
 	}
-	result := make([]*storage.Chunk, len(models))
+	result := make([]*kbtypes.Chunk, len(models))
 	for i, m := range models {
 		result[i] = m.toDomain()
 	}
 	return result, nil
 }
 
-func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error {
+func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *kbtypes.Chunk) error {
 	updates := map[string]any{
 		"content":     chunk.Content,
 		"context":     chunk.Context,
@@ -245,7 +245,7 @@ func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *st
 	return nil
 }
 
-func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
+func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []float32, opts kbtypes.SearchOptions) ([]*kbtypes.Chunk, error) {
 	if len(query) == 0 {
 		return nil, nil
 	}
@@ -301,7 +301,7 @@ func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []flo
 		allResults = allResults[:topK]
 	}
 
-	chunks := make([]*storage.Chunk, 0, len(allResults))
+	chunks := make([]*kbtypes.Chunk, 0, len(allResults))
 	for _, r := range allResults {
 		var m chunkModel
 		if err := s.db.WithContext(ctx).Where("id = ?", r.chunkID).First(&m).Error; err != nil {
@@ -315,7 +315,7 @@ func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []flo
 	return chunks, nil
 }
 
-func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error {
+func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*kbtypes.Chunk, vectors [][]float32) error {
 	if len(chunks) != len(vectors) {
 		return fmt.Errorf("chunks count (%d) != vectors count (%d)", len(chunks), len(vectors))
 	}
@@ -355,7 +355,7 @@ func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID str
 
 		now := time.Now().UTC()
 		if err := tx.Model(&docModel{}).Where("id = ? AND kb_id = ?", docID, kbID).Updates(map[string]any{
-			"status":      string(storage.DocStatusReady),
+			"status":      string(kbtypes.DocStatusReady),
 			"chunk_count": len(chunks),
 			"updated_at":  now,
 		}).Error; err != nil {
@@ -366,7 +366,7 @@ func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID str
 	})
 }
 
-func (s *KnowledgeStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
+func (s *KnowledgeStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status kbtypes.DocumentStatus) error {
 	now := time.Now().UTC()
 	result := s.db.WithContext(ctx).Model(&docModel{}).Where("id = ? AND kb_id = ?", docID, kbID).Updates(map[string]any{
 		"status":     string(status),

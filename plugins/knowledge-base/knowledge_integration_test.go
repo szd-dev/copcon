@@ -9,15 +9,15 @@ import (
 
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	"github.com/copcon/core/testutil"
 )
 
 type mockKBStore struct {
-	chunks []*storage.Chunk
+	chunks []*kbtypes.Chunk
 }
 
-func (m *mockKBStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
+func (m *mockKBStore) Search(ctx context.Context, kbIDs []string, query []float32, opts kbtypes.SearchOptions) ([]*kbtypes.Chunk, error) {
 	return m.chunks, nil
 }
 
@@ -62,7 +62,7 @@ func TestKBRecallHookPriority(t *testing.T) {
 func TestKBRecallHookInjectsResults(t *testing.T) {
 	embedder := &mockHookEmbedder{dimensions: 3}
 	kbStore := &mockKBStore{
-		chunks: []*storage.Chunk{
+		chunks: []*kbtypes.Chunk{
 			{Content: "relevant chunk", Score: 0.9},
 		},
 	}
@@ -124,4 +124,4 @@ func TestKBRecallHookNoDependencies(t *testing.T) {
 	assert.Len(t, messages, 1)
 }
 
-var _ storage.Embedder = (*mockHookEmbedder)(nil)
+var _ kbtypes.Embedder = (*mockHookEmbedder)(nil)

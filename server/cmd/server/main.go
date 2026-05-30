@@ -14,9 +14,9 @@ import (
 	"github.com/copcon/core/capabilities/hooks"
 	"github.com/copcon/core/capabilities/tools"
 	"github.com/copcon/core/llm"
-	"github.com/copcon/core/storage"
 	kbembedding "github.com/copcon/plugins/knowledge-base/embedding"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	"github.com/copcon/plugins/knowledge-base/store/sqlitevec"
 	memoryfile "github.com/copcon/plugins/memory-file"
 	"github.com/copcon/server/internal/api"
@@ -48,7 +48,7 @@ func main() {
 
 	llmAdapter := llm.NewOpenAIAdapter(&cl, cfg.OpenAI.Model)
 	embCfg := resolveEmbeddingConfig(cfg)
-	var emb storage.Embedder
+	var emb kbtypes.Embedder
 	if embCfg.Backend != "" {
 		emb, err = kbembedding.NewFromConfig(embCfg, llmAdapter)
 		if err != nil {

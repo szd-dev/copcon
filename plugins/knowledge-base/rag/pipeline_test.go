@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
@@ -48,22 +48,22 @@ func (m *mockEmbedder) Dimensions() int { return m.dimensions }
 func (m *mockEmbedder) Name() string    { return "mock" }
 
 type mockPipelineStore struct {
-	documents map[string]*storage.Document
-	chunks    map[string][]*storage.Chunk
+	documents map[string]*kbtypes.Document
+	chunks    map[string][]*kbtypes.Chunk
 	vectors   map[string][][]float32
-	statuses  map[string]storage.DocumentStatus
+	statuses  map[string]kbtypes.DocumentStatus
 }
 
 func newMockPipelineStore() *mockPipelineStore {
 	return &mockPipelineStore{
-		documents: make(map[string]*storage.Document),
-		chunks:    make(map[string][]*storage.Chunk),
+		documents: make(map[string]*kbtypes.Document),
+		chunks:    make(map[string][]*kbtypes.Chunk),
 		vectors:   make(map[string][][]float32),
-		statuses:  make(map[string]storage.DocumentStatus),
+		statuses:  make(map[string]kbtypes.DocumentStatus),
 	}
 }
 
-func (s *mockPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error {
+func (s *mockPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *kbtypes.Document, content []byte) error {
 	if doc.ID == "" {
 		doc.ID = "doc-1"
 	}
@@ -72,19 +72,19 @@ func (s *mockPipelineStore) IngestDocument(ctx context.Context, kbID string, doc
 	return nil
 }
 
-func (s *mockPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error {
+func (s *mockPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*kbtypes.Chunk, vectors [][]float32) error {
 	s.chunks[docID] = chunks
 	s.vectors[docID] = vectors
-	s.statuses[docID] = storage.DocStatusReady
+	s.statuses[docID] = kbtypes.DocStatusReady
 	return nil
 }
 
-func (s *mockPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
+func (s *mockPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status kbtypes.DocumentStatus) error {
 	s.statuses[docID] = status
 	return nil
 }
 
-func (s *mockPipelineStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
+func (s *mockPipelineStore) CreateKB(ctx context.Context, kb *kbtypes.KnowledgeBase) (*kbtypes.KnowledgeBase, error) {
 	return kb, nil
 }
 
@@ -92,11 +92,11 @@ func (s *mockPipelineStore) DeleteKB(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *mockPipelineStore) ListKBs(ctx context.Context) ([]*storage.KnowledgeBase, error) {
+func (s *mockPipelineStore) ListKBs(ctx context.Context) ([]*kbtypes.KnowledgeBase, error) {
 	return nil, nil
 }
 
-func (s *mockPipelineStore) GetKB(ctx context.Context, id string) (*storage.KnowledgeBase, error) {
+func (s *mockPipelineStore) GetKB(ctx context.Context, id string) (*kbtypes.KnowledgeBase, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -107,30 +107,30 @@ func (s *mockPipelineStore) DeleteDocument(ctx context.Context, kbID string, doc
 	return nil
 }
 
-func (s *mockPipelineStore) GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error) {
+func (s *mockPipelineStore) GetDocument(ctx context.Context, kbID string, docID string) (*kbtypes.Document, error) {
 	if doc, ok := s.documents[docID]; ok {
 		return doc, nil
 	}
 	return nil, fmt.Errorf("not found")
 }
 
-func (s *mockPipelineStore) ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error) {
-	var docs []*storage.Document
+func (s *mockPipelineStore) ListDocuments(ctx context.Context, kbID string) ([]*kbtypes.Document, error) {
+	var docs []*kbtypes.Document
 	for _, doc := range s.documents {
 		docs = append(docs, doc)
 	}
 	return docs, nil
 }
 
-func (s *mockPipelineStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
+func (s *mockPipelineStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*kbtypes.Chunk, error) {
 	return s.chunks[docID], nil
 }
 
-func (s *mockPipelineStore) UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error {
+func (s *mockPipelineStore) UpdateChunk(ctx context.Context, kbID string, chunk *kbtypes.Chunk) error {
 	return nil
 }
 
-func (s *mockPipelineStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
+func (s *mockPipelineStore) Search(ctx context.Context, kbIDs []string, query []float32, opts kbtypes.SearchOptions) ([]*kbtypes.Chunk, error) {
 	return nil, nil
 }
 
@@ -145,17 +145,17 @@ func TestPipelineIngest(t *testing.T) {
 		progressCalls.Add(1)
 	}
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 	content := []byte("This is a test document. It has multiple sentences. Each one is important.")
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, content, "text/plain", progress)
 	require.NoError(t, err)
 	assert.Equal(t, "doc-1", doc.ID)
-	assert.Equal(t, storage.DocStatusReady, store.statuses[doc.ID])
+	assert.Equal(t, kbtypes.DocStatusReady, store.statuses[doc.ID])
 	assert.Equal(t, int32(4), progressCalls.Load())
 	assert.NotEmpty(t, store.chunks[doc.ID])
 	assert.NotEmpty(t, store.vectors[doc.ID])
@@ -167,16 +167,16 @@ func TestPipelineIngestMarkdown(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		Filename: "test.md",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 	content := []byte("# Title\n\nParagraph one.\n\n## Section\n\nParagraph two.")
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, content, "text/markdown", nil)
 	require.NoError(t, err)
-	assert.Equal(t, storage.DocStatusReady, store.statuses[doc.ID])
+	assert.Equal(t, kbtypes.DocStatusReady, store.statuses[doc.ID])
 }
 
 func TestPipelineIngestParseError(t *testing.T) {
@@ -185,15 +185,15 @@ func TestPipelineIngestParseError(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		Filename: "test.xyz",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte("data"), "application/octet-stream", nil)
 	assert.Error(t, err)
-	assert.Equal(t, storage.DocStatusError, store.statuses[doc.ID])
+	assert.Equal(t, kbtypes.DocStatusError, store.statuses[doc.ID])
 }
 
 func TestPipelineIngestNoProgress(t *testing.T) {
@@ -202,10 +202,10 @@ func TestPipelineIngestNoProgress(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte("Hello world."), "text/plain", nil)
@@ -218,10 +218,10 @@ func TestPipelineIngestEmptyContent(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		Filename: "empty.txt",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte(""), "text/plain", nil)
@@ -273,14 +273,14 @@ func TestPipelineEmbedRetryError(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &storage.Document{
+	doc := &kbtypes.Document{
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   storage.DocStatusPending,
+		Status:   kbtypes.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte("Hello world."), "text/plain", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "after 3 attempts")
-	assert.Equal(t, storage.DocStatusError, store.statuses[doc.ID])
+	assert.Equal(t, kbtypes.DocStatusError, store.statuses[doc.ID])
 }

@@ -13,8 +13,9 @@ import (
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/storage"
-	"github.com/copcon/plugins/knowledge-base"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
 	"github.com/copcon/plugins/memory-file"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	kbrag "github.com/copcon/plugins/knowledge-base/rag"
 	"github.com/copcon/server/internal/config"
 )
@@ -26,7 +27,7 @@ type Handler struct {
 	todoStore      storage.TodoStore
 	knowledgeStore knowledgebase.KnowledgeStore
 	memoryStore    memoryfile.MemoryStore
-	embedder       storage.Embedder
+	embedder       kbtypes.Embedder
 	ragPipeline    *kbrag.Pipeline
 	agent          agent.AgentEngine
 	agentRegistry  agent.AgentRegistry
@@ -56,7 +57,7 @@ func WithMemoryStore(ms memoryfile.MemoryStore) HandlerOption {
 	return func(h *Handler) { h.memoryStore = ms }
 }
 
-func WithEmbedder(e storage.Embedder) HandlerOption {
+func WithEmbedder(e kbtypes.Embedder) HandlerOption {
 	return func(h *Handler) { h.embedder = e }
 }
 

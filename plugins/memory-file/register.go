@@ -3,16 +3,16 @@ package memoryfile
 import (
 	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 )
 
-func RegisterCapabilities(r *capabilities.Registry, store *FileMemoryStore, emb storage.Embedder) {
+func RegisterCapabilities(r *capabilities.Registry, store *FileMemoryStore, emb kbtypes.Embedder) {
 	r.Register(&MemoryModule{store: store})
 	r.Register(&memoryPersistHookCapabilityClosure{emb: emb, store: store})
 }
 
 type memoryPersistHookCapabilityClosure struct {
-	emb   storage.Embedder
+	emb   kbtypes.Embedder
 	store MemoryStore
 }
 

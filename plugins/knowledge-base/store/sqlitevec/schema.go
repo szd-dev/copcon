@@ -8,7 +8,7 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 )
 
 type jsonb map[string]any
@@ -46,8 +46,8 @@ type kbModel struct {
 
 func (kbModel) TableName() string { return "knowledge_bases" }
 
-func (m *kbModel) toDomain() *storage.KnowledgeBase {
-	return &storage.KnowledgeBase{
+func (m *kbModel) toDomain() *kbtypes.KnowledgeBase {
+	return &kbtypes.KnowledgeBase{
 		ID:        m.ID,
 		Name:      m.Name,
 		Backend:   m.Backend,
@@ -73,13 +73,13 @@ type docModel struct {
 
 func (docModel) TableName() string { return "documents" }
 
-func (m *docModel) toDomain() *storage.Document {
-	return &storage.Document{
+func (m *docModel) toDomain() *kbtypes.Document {
+	return &kbtypes.Document{
 		ID:         m.ID,
 		KBID:       m.KBID,
 		Filename:   m.Filename,
 		Source:     m.Source,
-		Status:     storage.DocumentStatus(m.Status),
+		Status:     kbtypes.DocumentStatus(m.Status),
 		ChunkCount: m.ChunkCount,
 		TokenCount: m.TokenCount,
 		CreatedAt:  m.CreatedAt,
@@ -102,8 +102,8 @@ type chunkModel struct {
 
 func (chunkModel) TableName() string { return "chunks" }
 
-func (m *chunkModel) toDomain() *storage.Chunk {
-	return &storage.Chunk{
+func (m *chunkModel) toDomain() *kbtypes.Chunk {
+	return &kbtypes.Chunk{
 		ID:         m.ID,
 		DocumentID: m.DocumentID,
 		KBID:       m.KBID,

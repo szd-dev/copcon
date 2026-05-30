@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/copcon/core/storage"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
@@ -17,12 +17,12 @@ type ProgressFunc func(stage string, current, total int)
 type Pipeline struct {
 	parser  Parser
 	chunker Chunker
-	embedder storage.Embedder
+	embedder kbtypes.Embedder
 	store   knowledgebase.KnowledgeStore
 	logger  *slog.Logger
 }
 
-func NewPipeline(parser Parser, embedder storage.Embedder, store knowledgebase.KnowledgeStore) *Pipeline {
+func NewPipeline(parser Parser, embedder kbtypes.Embedder, store knowledgebase.KnowledgeStore) *Pipeline {
 	return &Pipeline{
 		parser:   parser,
 		chunker:  NewRecursiveChunker(),
@@ -32,7 +32,7 @@ func NewPipeline(parser Parser, embedder storage.Embedder, store knowledgebase.K
 	}
 }
 
-func NewMarkdownPipeline(parser Parser, embedder storage.Embedder, store knowledgebase.KnowledgeStore) *Pipeline {
+func NewMarkdownPipeline(parser Parser, embedder kbtypes.Embedder, store knowledgebase.KnowledgeStore) *Pipeline {
 	return &Pipeline{
 		parser:   parser,
 		chunker:  NewMarkdownAwareChunker(),
@@ -42,19 +42,19 @@ func NewMarkdownPipeline(parser Parser, embedder storage.Embedder, store knowled
 	}
 }
 
-func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *storage.Document, content []byte, mimetype string, progress ProgressFunc) error {
-	doc.Status = storage.DocStatusPending
+func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *kbtypes.Document, content []byte, mimetype string, progress ProgressFunc) error {
+	doc.Status = kbtypes.DocStatusPending
 	if err := p.store.IngestDocument(ctx, kbID, doc, content); err != nil {
 		return fmt.Errorf("create document record: %w", err)
 	}
 
-	if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusParsing); err != nil {
+	if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, kbtypes.DocStatusParsing); err != nil {
 		p.logger.Warn("failed to update document status to parsing", "error", err)
 	}
 
 	text, err := p.parser.Parse(ctx, content, mimetype)
 	if err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, kbtypes.DocStatusError)
 		return fmt.Errorf("parse document: %w", err)
 	}
 	if progress != nil {
@@ -72,16 +72,16 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *storage.Documen
 	}
 	chunkResults, err := chunker.Chunk(text, chunkOpts)
 	if err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, kbtypes.DocStatusError)
 		return fmt.Errorf("chunk document: %w", err)
 	}
 	if progress != nil {
 		progress("chunk", 2, 4)
 	}
 
-	chunks := make([]*storage.Chunk, len(chunkResults))
+	chunks := make([]*kbtypes.Chunk, len(chunkResults))
 	for i, cr := range chunkResults {
-		chunks[i] = &storage.Chunk{
+		chunks[i] = &kbtypes.Chunk{
 			DocumentID: doc.ID,
 			KBID:       kbID,
 			Content:    cr.Content,
@@ -97,7 +97,7 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *storage.Documen
 	}
 
 	if len(texts) == 0 {
-		if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusReady); err != nil {
+		if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, kbtypes.DocStatusReady); err != nil {
 			p.logger.Warn("failed to update document status", "error", err)
 		}
 		return nil
@@ -105,7 +105,7 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *storage.Documen
 
 	vectors, err := p.embedWithRetry(ctx, texts, 3)
 	if err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, kbtypes.DocStatusError)
 		return fmt.Errorf("embed chunks: %w", err)
 	}
 	if progress != nil {
@@ -113,7 +113,7 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *storage.Documen
 	}
 
 	if err := p.store.StoreChunks(ctx, kbID, doc.ID, chunks, vectors); err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, kbtypes.DocStatusError)
 		return fmt.Errorf("store chunks: %w", err)
 	}
 	if progress != nil {
