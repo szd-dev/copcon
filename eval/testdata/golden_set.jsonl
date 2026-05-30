@@ -1,0 +1,50 @@
+{"query": "如何申请退款", "relevant_docs": ["refund_policy_v2.md"], "category": "frequent"}
+{"query": "退款多久能到账", "relevant_docs": ["refund_policy_v2.md"], "category": "frequent"}
+{"query": "试用期可以退款吗", "relevant_docs": ["refund_policy_v2.md"], "category": "frequent"}
+{"query": "API认证怎么配置", "relevant_docs": ["api_auth_guide.md"], "category": "frequent"}
+{"query": "Token过期了怎么办", "relevant_docs": ["api_auth_guide.md"], "category": "frequent"}
+{"query": "怎么获取API密钥", "relevant_docs": ["api_auth_guide.md"], "category": "frequent"}
+{"query": "数据加密方式有哪些", "relevant_docs": ["security_overview.md"], "category": "frequent"}
+{"query": "支持哪些认证方式登录", "relevant_docs": ["security_overview.md", "sso_configuration.md"], "category": "frequent"}
+{"query": "密钥轮换周期是多久", "relevant_docs": ["security_overview.md"], "category": "frequent"}
+{"query": "如何部署CopCon", "relevant_docs": ["deployment_guide.md"], "category": "frequent"}
+{"query": "Docker部署最低配置要求", "relevant_docs": ["deployment_guide.md"], "category": "frequent"}
+{"query": "如何配置环境变量", "relevant_docs": ["deployment_guide.md"], "category": "frequent"}
+{"query": "新员工入职第一周做什么", "relevant_docs": ["onboarding_handbook.md"], "category": "frequent"}
+{"query": "Git提交信息格式规范", "relevant_docs": ["onboarding_handbook.md"], "category": "frequent"}
+{"query": "SLA可用性承诺是多少", "relevant_docs": ["sla_agreement.md"], "category": "frequent"}
+{"query": "服务中断怎么申请补偿", "relevant_docs": ["sla_agreement.md"], "category": "frequent"}
+{"query": "API请求超时怎么排查", "relevant_docs": ["troubleshooting_network.md"], "category": "frequent"}
+{"query": "WebSocket连接老是断开", "relevant_docs": ["troubleshooting_network.md"], "category": "frequent"}
+{"query": "跨域请求被拒绝怎么处理", "relevant_docs": ["troubleshooting_network.md"], "category": "frequent"}
+{"query": "各方案价格和额度对比", "relevant_docs": ["billing_faq.md"], "category": "frequent"}
+{"query": "如何升级订阅方案", "relevant_docs": ["billing_faq.md", "refund_policy_v2.md"], "category": "frequent"}
+{"query": "发票怎么开", "relevant_docs": ["billing_faq.md"], "category": "frequent"}
+{"query": "API限流规则是什么", "relevant_docs": ["rate_limiting_policy.md"], "category": "frequent"}
+{"query": "429错误怎么处理", "relevant_docs": ["rate_limiting_policy.md"], "category": "frequent"}
+{"query": "如何配置Webhook通知", "relevant_docs": ["webhook_integration.md"], "category": "frequent"}
+{"query": "Webhook签名验证方法", "relevant_docs": ["webhook_integration.md"], "category": "frequent"}
+{"query": "如何配置SSO单点登录", "relevant_docs": ["sso_configuration.md"], "category": "frequent"}
+{"query": "SAML配置步骤", "relevant_docs": ["sso_configuration.md"], "category": "frequent"}
+{"query": "权限管理怎么设置", "relevant_docs": ["access_control.md"], "category": "frequent"}
+{"query": "如何创建告警规则", "relevant_docs": ["monitoring_alerting.md"], "category": "frequent"}
+{"query": "自定义角色怎么配策略才能只管知识库不管用户", "relevant_docs": ["access_control.md", "knowledge_management.md"], "category": "longtail"}
+{"query": "迁移过来之后之前的知识库还能用吗", "relevant_docs": ["data_migration_guide.md", "knowledge_management.md"], "category": "longtail"}
+{"query": "企业版和普通版安全上有啥区别", "relevant_docs": ["security_overview.md", "sla_agreement.md", "access_control.md"], "category": "longtail"}
+{"query": "不同方案检索效果会不会不一样", "relevant_docs": ["billing_faq.md", "knowledge_management.md", "rate_limiting_policy.md"], "category": "longtail"}
+{"query": "新来的开发怎么快速上手Agent开发", "relevant_docs": ["onboarding_handbook.md", "agent_tool_guide.md", "architecture_overview.md"], "category": "longtail"}
+{"query": "核心库和应用层是咋分的", "relevant_docs": ["architecture_overview.md"], "category": "longtail"}
+{"query": "出了安全事件谁来负责响应", "relevant_docs": ["incident_response.md", "security_overview.md"], "category": "longtail"}
+{"query": "文档更新了Agent能自动知道吗", "relevant_docs": ["knowledge_management.md", "webhook_integration.md"], "category": "longtail"}
+{"query": "大规模用的话监控怎么配比较合理", "relevant_docs": ["monitoring_alerting.md", "deployment_guide.md"], "category": "longtail"}
+{"query": "Okta和Azure AD都能接吗", "relevant_docs": ["sso_configuration.md"], "category": "longtail"}
+{"query": "明天上海天气怎么样", "relevant_docs": [], "category": "adversarial"}
+{"query": "A股茅台今天收盘价多少", "relevant_docs": [], "category": "adversarial"}
+{"query": "2024年诺贝尔物理学奖给了谁", "relevant_docs": [], "category": "adversarial"}
+{"query": "附近有什么好吃的火锅店", "relevant_docs": [], "category": "adversarial"}
+{"query": "怎么用Python写一个贪吃蛇游戏", "relevant_docs": [], "category": "adversarial"}
+{"query": "最新版本更新了哪些功能", "relevant_docs": ["changelog_2025.md", "release_notes_v3.md"], "category": "temporal"}
+{"query": "最近有没有安全补丁", "relevant_docs": ["changelog_2025.md"], "category": "temporal"}
+{"query": "v3.2相比之前有什么变化", "relevant_docs": ["release_notes_v3.md", "changelog_2025.md"], "category": "temporal"}
+{"query": "退款政策最近改过吗", "relevant_docs": ["refund_policy_v2.md", "changelog_2025.md"], "category": "temporal"}
+{"query": "三月份更新了什么", "relevant_docs": ["changelog_2025.md"], "category": "temporal"}
