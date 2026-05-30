@@ -57,3 +57,13 @@
 - knowledge-base 测试文件中移除 MemoryPersistHook 相关测试和 mock
 
 **原因**: MemoryPersistHook 操作的是 MemoryStore（向量记忆），与 knowledge-base 的 KnowledgeStore（知识检索）职责不同，应归属 memory-file。
+
+## Task 9: 更新 server/main.go 中 embedding 引用路径
+
+- **变更**: `server/cmd/server/main.go` 中 import 从 `"github.com/copcon/plugins/embedding-openai"` 改为 `kbembedding "github.com/copcon/plugins/knowledge-base/embedding"`
+- **引用更新**:
+  - 第18行: import 路径 + 别名 `kbembedding`
+  - 第53行: `embedding.NewFromConfig` → `kbembedding.NewFromConfig`
+  - 第127行: 函数返回类型 `embedding.EmbeddingConfig` → `kbembedding.EmbeddingConfig`
+  - 第129-130行: `embedding.EmbeddingConfig{` 和 `embedding.BackendType` → `kbembedding.EmbeddingConfig{` 和 `kbembedding.BackendType`
+- **验证**: `go build ./server/...` 通过，`grep embedding-openai` 无残留

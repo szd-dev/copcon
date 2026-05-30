@@ -27,6 +27,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-05-30T14:43:46.892Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "更新 server 侧 import 路径",
+      "session_id": "ses_1869d7805ffeGw8htY4h6eqzP3",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-30T14:56:51.686Z"
     }
   }
 }

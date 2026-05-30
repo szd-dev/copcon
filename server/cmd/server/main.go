@@ -15,7 +15,7 @@ import (
 	"github.com/copcon/core/capabilities/tools"
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/storage"
-	"github.com/copcon/plugins/embedding-openai"
+	kbembedding "github.com/copcon/plugins/knowledge-base/embedding"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
 	"github.com/copcon/plugins/knowledge-base/store/sqlitevec"
 	memoryfile "github.com/copcon/plugins/memory-file"
@@ -50,7 +50,7 @@ func main() {
 	embCfg := resolveEmbeddingConfig(cfg)
 	var emb storage.Embedder
 	if embCfg.Backend != "" {
-		emb, err = embedding.NewFromConfig(embCfg, llmAdapter)
+		emb, err = kbembedding.NewFromConfig(embCfg, llmAdapter)
 		if err != nil {
 			log.Warn("failed to create embedder", "error", err)
 		}
@@ -124,10 +124,10 @@ func defaultMemoryBasePath() string {
 	return home + "/.copcon/memory"
 }
 
-func resolveEmbeddingConfig(cfg *config.Config) embedding.EmbeddingConfig {
+func resolveEmbeddingConfig(cfg *config.Config) kbembedding.EmbeddingConfig {
 	k := cfg.Knowledge.Embedding
-	return embedding.EmbeddingConfig{
-		Backend:     embedding.BackendType(k.Backend),
+	return kbembedding.EmbeddingConfig{
+		Backend:     kbembedding.BackendType(k.Backend),
 		OpenAIModel: k.Model,
 		BaseURL:     k.BaseURL,
 		APIKey:      k.APIKey,

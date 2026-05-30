@@ -523,7 +523,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: rename sqlitevec to store/sqlitevec`
   - Files：`plugins/knowledge-base/store/sqlitevec/*`, `plugins/knowledge-base/sqlitevec/`（删除）
 
-- [ ] 9. 更新 server 侧 import 路径
+- [x] 9. 更新 server 侧 import 路径
 
   **What to do**：
   - `server/cmd/server/main.go`：
@@ -581,7 +581,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: update server imports for knowledge-base module restructure`
   - Files：`server/cmd/server/main.go`, `server/internal/api/handlers.go`, `server/internal/api/knowledge_options.go`
 
-- [ ] 10. 全量编译 + 测试验证 plugins
+- [x] 10. 全量编译 + 测试验证 plugins
 
   **What to do**：
   - 运行 `go build ./plugins/...`
@@ -616,7 +616,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
 
   **Commit**：NO（验证 step）
 
-- [ ] 11. 全量编译 + 测试验证 server
+- [x] 11. 全量编译 + 测试验证 server
 
   **What to do**：
   - 运行 `go build ./server/...`
