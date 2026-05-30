@@ -1,4 +1,4 @@
-package rag
+package kbrag
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/copcon/core/storage"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
 var errEmptyText = fmt.Errorf("empty text provided for embedding")
@@ -81,6 +82,56 @@ func (s *mockPipelineStore) StoreChunks(ctx context.Context, kbID string, docID 
 func (s *mockPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
 	s.statuses[docID] = status
 	return nil
+}
+
+func (s *mockPipelineStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
+	return kb, nil
+}
+
+func (s *mockPipelineStore) DeleteKB(ctx context.Context, id string) error {
+	return nil
+}
+
+func (s *mockPipelineStore) ListKBs(ctx context.Context) ([]*storage.KnowledgeBase, error) {
+	return nil, nil
+}
+
+func (s *mockPipelineStore) GetKB(ctx context.Context, id string) (*storage.KnowledgeBase, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (s *mockPipelineStore) DeleteDocument(ctx context.Context, kbID string, docID string) error {
+	delete(s.documents, docID)
+	delete(s.chunks, docID)
+	delete(s.statuses, docID)
+	return nil
+}
+
+func (s *mockPipelineStore) GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error) {
+	if doc, ok := s.documents[docID]; ok {
+		return doc, nil
+	}
+	return nil, fmt.Errorf("not found")
+}
+
+func (s *mockPipelineStore) ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error) {
+	var docs []*storage.Document
+	for _, doc := range s.documents {
+		docs = append(docs, doc)
+	}
+	return docs, nil
+}
+
+func (s *mockPipelineStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
+	return s.chunks[docID], nil
+}
+
+func (s *mockPipelineStore) UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error {
+	return nil
+}
+
+func (s *mockPipelineStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
+	return nil, nil
 }
 
 func TestPipelineIngest(t *testing.T) {
@@ -179,7 +230,7 @@ func TestPipelineIngestEmptyContent(t *testing.T) {
 
 func TestPipelineStoreInterface(t *testing.T) {
 	store := newMockPipelineStore()
-	var _ PipelineStore = store
+	var _ knowledgebase.KnowledgeStore = store
 }
 
 func TestEstimateTokens(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"github.com/copcon/core/storage"
 	"github.com/copcon/plugins/knowledge-base"
 	"github.com/copcon/plugins/memory-file"
-	"github.com/copcon/plugins/rag"
+	kbrag "github.com/copcon/plugins/knowledge-base/rag"
 	"github.com/copcon/server/internal/config"
 )
 
@@ -27,7 +27,7 @@ type Handler struct {
 	knowledgeStore knowledgebase.KnowledgeStore
 	memoryStore    memoryfile.MemoryStore
 	embedder       storage.Embedder
-	ragPipeline    *rag.Pipeline
+	ragPipeline    *kbrag.Pipeline
 	agent          agent.AgentEngine
 	agentRegistry  agent.AgentRegistry
 	chatStore      chat.ActiveSessions
@@ -64,7 +64,7 @@ func WithKnowledgeStore(ks knowledgebase.KnowledgeStore) HandlerOption {
 	return func(h *Handler) { h.knowledgeStore = ks }
 }
 
-func WithRAGPipeline(p *rag.Pipeline) HandlerOption {
+func WithRAGPipeline(p *kbrag.Pipeline) HandlerOption {
 	return func(h *Handler) { h.ragPipeline = p }
 }
 

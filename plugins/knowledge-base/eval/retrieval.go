@@ -1,4 +1,4 @@
-package eval
+package kbeval
 
 type RetrievalTestCase struct {
 	Query          string

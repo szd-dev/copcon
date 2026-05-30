@@ -1,4 +1,4 @@
-package knowledgebase
+package memoryfile
 
 import (
 	"context"
@@ -13,16 +13,11 @@ import (
 
 type MemoryPersistHook struct {
 	embedder    storage.Embedder
-	memoryStore MemoryStorePersister
+	memoryStore MemoryStore
 	logger      *slog.Logger
 }
 
-type MemoryStorePersister interface {
-	Store(ctx context.Context, memory *storage.Memory) error
-	Search(ctx context.Context, query []float32, limit int) ([]*storage.Memory, error)
-}
-
-func NewMemoryPersistHook(embedder storage.Embedder, memoryStore MemoryStorePersister) *MemoryPersistHook {
+func NewMemoryPersistHook(embedder storage.Embedder, memoryStore MemoryStore) *MemoryPersistHook {
 	return &MemoryPersistHook{
 		embedder:    embedder,
 		memoryStore: memoryStore,
@@ -81,7 +76,7 @@ func (h *MemoryPersistHook) persistAsync(
 	agentID string,
 	content string,
 	embedder storage.Embedder,
-	store MemoryStorePersister,
+	store MemoryStore,
 	logger *slog.Logger,
 ) {
 	keywords := extractKeywords(content, 5)

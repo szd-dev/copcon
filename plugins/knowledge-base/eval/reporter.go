@@ -1,4 +1,4 @@
-package eval
+package kbeval
 
 import (
 	"encoding/json"

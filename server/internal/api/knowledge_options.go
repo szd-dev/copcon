@@ -3,7 +3,7 @@ package api
 import (
 	"github.com/copcon/core/storage"
 	"github.com/copcon/plugins/knowledge-base"
-	"github.com/copcon/plugins/rag"
+	kbrag "github.com/copcon/plugins/knowledge-base/rag"
 )
 
 func BuildKnowledgeOptions(ks knowledgebase.KnowledgeStore, emb storage.Embedder) []HandlerOption {
@@ -16,7 +16,7 @@ func BuildKnowledgeOptions(ks knowledgebase.KnowledgeStore, emb storage.Embedder
 	if emb != nil {
 		opts = append(opts, WithEmbedder(emb))
 
-		pipeline := rag.NewPipeline(rag.NewDefaultParser(), emb, ks)
+		pipeline := kbrag.NewPipeline(kbrag.NewDefaultParser(), emb, ks)
 		opts = append(opts, WithRAGPipeline(pipeline))
 	}
 

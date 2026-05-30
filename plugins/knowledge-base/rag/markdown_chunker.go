@@ -1,4 +1,4 @@
-package rag
+package kbrag
 
 import (
 	"regexp"

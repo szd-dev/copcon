@@ -1,4 +1,4 @@
-package eval
+package kbeval
 
 import (
 	"bufio"
@@ -147,8 +147,8 @@ func keywordRetriever(query string, k int, index map[string]string, filenames []
 }
 
 func TestGoldenEval(t *testing.T) {
-	goldenPath := filepath.Join("..", "..", "eval", "testdata", "golden_set.jsonl")
-	fixturesDir := filepath.Join("..", "..", "eval", "testdata", "fixtures")
+	goldenPath := filepath.Join("testdata", "golden_set.jsonl")
+	fixturesDir := filepath.Join("testdata", "fixtures")
 
 	testCases := loadGoldenSet(goldenPath)
 	require.NotEmpty(t, testCases, "golden set must not be empty")
@@ -188,7 +188,7 @@ func TestGoldenEval(t *testing.T) {
 }
 
 func TestGoldenEval_PerfectMock(t *testing.T) {
-	goldenPath := filepath.Join("..", "..", "eval", "testdata", "golden_set.jsonl")
+	goldenPath := filepath.Join("testdata", "golden_set.jsonl")
 	testCases := loadGoldenSet(goldenPath)
 	require.NotEmpty(t, testCases, "golden set must not be empty")
 

@@ -18,6 +18,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-05-30T14:38:37.391Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "移入 embedding-openai → knowledge-base/embedding",
+      "session_id": "ses_186aa0751ffecXO68TT9CK9EEG",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-30T14:43:46.892Z"
     }
   }
 }

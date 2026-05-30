@@ -1,20 +1,59 @@
-# Decisions
+# 决策记录
 
-## Wave 1: Merge `rag.PipelineStore` into `knowledgebase.KnowledgeStore`
+## Task 4: 移动 embedding-openai → knowledge-base/embedding
 
-- **Decision**: 将 `rag.PipelineStore` 接口的 `StoreChunks` 和 `UpdateDocumentStatus` 方法合并到 `knowledgebase.KnowledgeStore` 接口中，然后删除 `rag.PipelineStore` 接口定义。
-- **Rationale**: 消除两个 store 接口的重复定义问题。`KnowledgeStore` 原本已有 `IngestDocument`（PipelineStore 的另一个方法），加上新增的两个方法后，PipelineStore 的三个方法全部存在于 KnowledgeStore 中。
-- **Changes**:
-  1. `plugins/knowledge-base/store_interface.go`: 新增 `StoreChunks` 和 `UpdateDocumentStatus` 方法（KnowledgeStore 从 11 方法增加到 13 方法）
-  2. `plugins/rag/pipeline.go`: 删除 `PipelineStore` 接口（16-20行），`Pipeline.store` 字段类型改为 `knowledgebase.KnowledgeStore`，构造器参数同步更新，添加 `knowledgebase` import
-  3. `server/internal/api/knowledge_options.go`: 移除 `ks.(rag.PipelineStore)` 类型断言，直接传递 `ks` 给 `rag.NewPipeline`
-- **Verification**: `go build ./plugins/...` 和 `go build ./server/...` 均通过，无 LSP 错误
-## [2026-05-30 22:~] Task 4: 清理死代码 + 删除 MemoryStoreDeps
-- Deleted files: `kb_recall_capability.go`, `memory_persist_capability.go` — stub capabilities returning nil,nil
-- Deleted: `MemoryStoreDeps` interface from `register.go`
-- Changed: `RegisterCapabilities` signature removed `ms MemoryStoreDeps` param → `(r *capabilities.Registry, ks KnowledgeStore, emb storage.Embedder)`
-- Deleted: `memoryPersistHookCapabilityClosure` from `capabilities_closure.go`
-- Deleted: `FormatKBResultsStub()` from `memory_persist_hook.go`
-- Removed unused imports: `"context"` from `register.go`, `"fmt"` from `memory_persist_hook.go`
-- Updated caller: `server/cmd/server/main.go:67` — removed `fmStore` arg
-- Status: ✅ 完成 (go build + go vet passed)
+### 变更
+- 将 `plugins/embedding-openai/` 下的 7 个 .go 文件全部移至 `plugins/knowledge-base/embedding/`
+- 包名从 `package embedding` 改为 `package kbembedding`
+- 旧目录 `plugins/embedding-openai/` 已删除
+
+### 技术细节
+- 文件列表: config.go, embedder.go, embedder_test.go, errors.go, factory.go, openai.go, openai_test.go
+- 使用 `git mv` 确保 git 跟踪历史
+- 新包导入路径: `github.com/copcon/plugins/knowledge-base/embedding`
+- `embedder.go` 中的 `type Embedder = storage.Embedder` 类型别名未修改
+- 编译验证通过，无错误
+- 旧目录（`plugins/embedding-openai/`）已无其他文件（无 go.mod/go.sum），已删除
+## Task 4: Move plugins/eval/ into plugins/knowledge-base/eval/
+
+- 将 5 个 .go 文件从 `plugins/eval/` 移到 `plugins/knowledge-base/eval/`
+- 将根目录 `eval/testdata/` 整体移到 `plugins/knowledge-base/eval/testdata/`
+- 包名从 `package eval` 改为 `package kbeval`
+- golden_test.go 中 3 处相对路径从 `filepath.Join("..", "..", "eval", "testdata", ...)` 改为 `filepath.Join("testdata", ...)`
+- 旧目录 `plugins/eval/` 和 `eval/testdata/` 已清空
+- `go test ./plugins/knowledge-base/eval/...` 通过（0.099s）
+
+## 2026-05-30: sqlitevec 目录重命名
+
+- **决策**: 将 `plugins/knowledge-base/sqlitevec/` 重命名为 `plugins/knowledge-base/store/sqlitevec/`
+- **操作**: 5 个 .go 文件通过 `git mv` 移动到新路径
+- **包名**: 保持 `package sqlitevec` 不变（不随目录路径变化）
+- **引用更新**: `server/cmd/server/main.go` 中导入路径从 `.../knowledge-base/sqlitevec` 更新为 `.../knowledge-base/store/sqlitevec`
+- **验证**: `go build` + `lsp_diagnostics` 均通过
+- **旧目录**: 已删除
+
+## Task 4: RAG 包迁移 (plugins/rag → plugins/knowledge-base/rag)
+
+- 使用 `git mv` 移动 14 个 .go 文件和 3 个 testdata 文件
+- 包名从 `package rag` 改为 `package kbrag`（避免与目录名 rag 冲突，kbrag = knowledge-base rag）
+- 更新 server 端 2 个文件的 import：`"github.com/copcon/plugins/rag"` → `kbrag "github.com/copcon/plugins/knowledge-base/rag"`
+- 修复 mock 实现以满足合并后的 `knowledgebase.KnowledgeStore` 接口（Task 1 将 PipelineStore 合并到 KnowledgeStore）
+  - `mockPipelineStore` 添加了 CreateKB, DeleteKB, ListKBs, GetKB, DeleteDocument, GetDocument, ListDocuments, GetChunks, UpdateChunk, Search 方法
+  - `inMemoryPipelineStore` 添加了 DeleteKB, ListKBs, GetKB, DeleteDocument, ListDocuments, UpdateChunk, Search 方法
+- 删除了 `TestPipelineStoreInterface` 中对已不存在的 `PipelineStore` 类型的引用，改为 `knowledgebase.KnowledgeStore`
+- `pipeline.go` 中的 import `knowledgebase "github.com/copcon/plugins/knowledge-base"` 保持不变（正确）
+
+## Task 4: memory_persist_hook.go 迁移至 memory-file
+
+**决策**: 将 `MemoryPersistHook` 从 knowledge-base 积入 memory-file，删除 `MemoryStorePersister` 接口（因 `MemoryStore` 已有 Store/Search 方法），通过 `memoryPersistHookCapabilityClosure` 注册为 HookCapability。
+
+**关键变更**:
+- `memory_persist_hook.go` 包名 `knowledgebase` → `memoryfile`
+- `MemoryStorePersister` 接口删除，改用 `MemoryStore`
+- `RegisterCapabilities` 签名增加 `emb storage.Embedder` 参数
+- 新增 `memoryPersistHookCapabilityClosure` 实现 `HookCapability` 接口
+- capability name 使用 `capabilities.HookMemoryPersist`（即 `"hooks.memory_persist"`）
+- 测试代码同步迁移至 `memory_persist_hook_test.go`，mock 实现 `MemoryStore` 全接口
+- knowledge-base 测试文件中移除 MemoryPersistHook 相关测试和 mock
+
+**原因**: MemoryPersistHook 操作的是 MemoryStore（向量记忆），与 knowledge-base 的 KnowledgeStore（知识检索）职责不同，应归属 memory-file。

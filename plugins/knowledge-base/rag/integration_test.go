@@ -1,4 +1,4 @@
-package rag
+package kbrag
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/copcon/core/storage"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
-// inMemoryPipelineStore implements PipelineStore with in-memory storage
-// for integration-style testing without cross-plugin dependencies.
+// inMemoryPipelineStore implements knowledgebase.KnowledgeStore
 type inMemoryPipelineStore struct {
 	kbs       map[string]*storage.KnowledgeBase
 	documents map[string]map[string]*storage.Document
@@ -83,6 +83,65 @@ func (s *inMemoryPipelineStore) GetChunks(ctx context.Context, kbID string, docI
 	}
 	return chunks, nil
 }
+
+func (s *inMemoryPipelineStore) DeleteKB(ctx context.Context, id string) error {
+	delete(s.kbs, id)
+	delete(s.documents, id)
+	delete(s.chunks, id)
+	delete(s.vectors, id)
+	return nil
+}
+
+func (s *inMemoryPipelineStore) ListKBs(ctx context.Context) ([]*storage.KnowledgeBase, error) {
+	var result []*storage.KnowledgeBase
+	for _, kb := range s.kbs {
+		result = append(result, kb)
+	}
+	return result, nil
+}
+
+func (s *inMemoryPipelineStore) GetKB(ctx context.Context, id string) (*storage.KnowledgeBase, error) {
+	kb, ok := s.kbs[id]
+	if !ok {
+		return nil, fmt.Errorf("kb not found")
+	}
+	return kb, nil
+}
+
+func (s *inMemoryPipelineStore) DeleteDocument(ctx context.Context, kbID string, docID string) error {
+	if docs, ok := s.documents[kbID]; ok {
+		delete(docs, docID)
+	}
+	if chunks, ok := s.chunks[kbID]; ok {
+		delete(chunks, docID)
+	}
+	if vecs, ok := s.vectors[kbID]; ok {
+		delete(vecs, docID)
+	}
+	delete(s.statuses, docID)
+	return nil
+}
+
+func (s *inMemoryPipelineStore) ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error) {
+	var result []*storage.Document
+	if docs, ok := s.documents[kbID]; ok {
+		for _, doc := range docs {
+			result = append(result, doc)
+		}
+	}
+	return result, nil
+}
+
+func (s *inMemoryPipelineStore) UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error {
+	return nil
+}
+
+func (s *inMemoryPipelineStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
+	return nil, nil
+}
+
+// Compile-time check that inMemoryPipelineStore implements KnowledgeStore
+var _ knowledgebase.KnowledgeStore = (*inMemoryPipelineStore)(nil)
 
 type integrationTestEmbedder struct {
 	dimensions int

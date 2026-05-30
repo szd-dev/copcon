@@ -283,7 +283,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`chore: create knowledge-base submodule directories`
   - Files：4 个空目录
 
-- [ ] 4. 移入 embedding-openai → knowledge-base/embedding
+- [x] 4. 移入 embedding-openai → knowledge-base/embedding
 
   **What to do**：
   - 将 `plugins/embedding-openai/` 下所有文件移入 `plugins/knowledge-base/embedding/`
@@ -325,7 +325,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: move embedding-openai into knowledge-base/embedding`
   - Files：`plugins/knowledge-base/embedding/*`, `plugins/embedding-openai/`（删除）
 
-- [ ] 5. 移入 rag → knowledge-base/rag
+- [x] 5. 移入 rag → knowledge-base/rag
 
   **What to do**：
   - 将 `plugins/rag/` 下所有 .go 文件移入 `plugins/knowledge-base/rag/`
@@ -378,7 +378,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: move rag into knowledge-base/rag`
   - Files：`plugins/knowledge-base/rag/*`, `plugins/rag/`（删除）
 
-- [ ] 6. 移入 eval → knowledge-base/eval
+- [x] 6. 移入 eval → knowledge-base/eval
 
   **What to do**：
   - 将 `plugins/eval/` 下所有 .go 文件移入 `plugins/knowledge-base/eval/`
@@ -425,7 +425,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: move eval into knowledge-base/eval with testdata`
   - Files：`plugins/knowledge-base/eval/*`, `plugins/eval/`（删除）, `eval/testdata/`（删除）
 
-- [ ] 7. 移入 memory_persist_hook → memory-file
+- [x] 7. 移入 memory_persist_hook → memory-file
 
   **What to do**：
   - 复制 `memory_persist_hook.go` 到 `plugins/memory-file/`
@@ -482,7 +482,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: move memory_persist_hook from knowledge-base to memory-file`
   - Files：`plugins/memory-file/memory_persist_hook.go`, `plugins/memory-file/register.go`, `plugins/knowledge-base/memory_persist_hook.go`（删除）
 
-- [ ] 8. 重命名 sqlitevec → store/sqlitevec
+- [x] 8. 重命名 sqlitevec → store/sqlitevec
 
   **What to do**：
   - 将 `plugins/knowledge-base/sqlitevec/` 下所有文件移入 `plugins/knowledge-base/store/sqlitevec/`

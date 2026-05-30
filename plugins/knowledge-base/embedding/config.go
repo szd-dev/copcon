@@ -1,4 +1,4 @@
-package embedding
+package kbembedding
 
 // BackendType identifies the embedding provider backend.
 type BackendType string

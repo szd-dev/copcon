@@ -1,4 +1,4 @@
-package rag
+package kbrag
 
 type ChunkOptions struct {
 	ChunkSize    int

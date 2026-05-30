@@ -17,7 +17,7 @@ import (
 	"github.com/copcon/core/storage"
 	"github.com/copcon/plugins/embedding-openai"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
-	"github.com/copcon/plugins/knowledge-base/sqlitevec"
+	"github.com/copcon/plugins/knowledge-base/store/sqlitevec"
 	memoryfile "github.com/copcon/plugins/memory-file"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
@@ -61,7 +61,7 @@ func main() {
 	tools.RegisterAll(reg)
 
 	if fmStore != nil {
-		memoryfile.RegisterCapabilities(reg, fmStore)
+		memoryfile.RegisterCapabilities(reg, fmStore, emb)
 	}
 	if ks != nil {
 		knowledgebase.RegisterCapabilities(reg, ks, emb)
