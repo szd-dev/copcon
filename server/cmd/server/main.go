@@ -39,7 +39,7 @@ func main() {
 		log.Warn("failed to create file memory store", "error", fmErr)
 	}
 
-	ks, ksErr := sqlitevec.NewKnowledgeStoreFromDSN(":memory:")
+	ks, ksErr := sqlitevec.NewKnowledgeStoreFromDSN(knowledgeStoreDSN(cfg))
 	if ksErr != nil {
 		log.Warn("failed to create knowledge store", "error", ksErr)
 	}
@@ -124,15 +124,28 @@ func defaultMemoryBasePath() string {
 }
 
 func resolveEmbeddingConfig(cfg *config.Config) embedding.EmbeddingConfig {
+	if len(cfg.KnowledgeBases) == 0 {
+		return embedding.EmbeddingConfig{}
+	}
+
+	kb := cfg.KnowledgeBases[0]
+	if kb.Embedding.Backend == "" {
+		return embedding.EmbeddingConfig{}
+	}
+
+	return embedding.EmbeddingConfig{
+		Backend:     embedding.BackendType(kb.Embedding.Backend),
+		BaseURL:     cfg.OpenAI.BaseURL,
+		APIKey:      cfg.OpenAI.APIKey,
+		OpenAIModel: kb.Embedding.OpenAIModel,
+	}
+}
+
+func knowledgeStoreDSN(cfg *config.Config) string {
 	for _, kb := range cfg.KnowledgeBases {
-		if kb.Embedding.Backend != "" {
-			return embedding.EmbeddingConfig{
-				Backend:     embedding.BackendType(kb.Embedding.Backend),
-				BaseURL:     cfg.OpenAI.BaseURL,
-				APIKey:      cfg.OpenAI.APIKey,
-				OpenAIModel: kb.Embedding.OpenAIModel,
-			}
+		if kb.SQLitePath != "" {
+			return kb.SQLitePath
 		}
 	}
-	return embedding.EmbeddingConfig{}
+	return "file::memory:?cache=shared"
 }
