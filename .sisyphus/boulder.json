@@ -2,10 +2,18 @@
   "active_plan": "/data/copcon/.sisyphus/plans/kb-cohesion-refactor.md",
   "started_at": "2026-05-30T14:34:24.821Z",
   "session_ids": [
-    "ses_186b13f8cffe4ccHro94DrYxhT"
+    "ses_186b13f8cffe4ccHro94DrYxhT",
+    "ses_1866cbc0bffeju0P3eTlkY5dmm",
+    "ses_1866c91c4ffeONYN7biQzLopc2",
+    "ses_1866c5d96ffeCq3ocY0VmI56J3",
+    "ses_1866c2f33ffevqJZLYyB92FDYQ"
   ],
   "session_origins": {
-    "ses_186b13f8cffe4ccHro94DrYxhT": "direct"
+    "ses_186b13f8cffe4ccHro94DrYxhT": "direct",
+    "ses_1866cbc0bffeju0P3eTlkY5dmm": "appended",
+    "ses_1866c91c4ffeONYN7biQzLopc2": "appended",
+    "ses_1866c5d96ffeCq3ocY0VmI56J3": "appended",
+    "ses_1866c2f33ffevqJZLYyB92FDYQ": "appended"
   },
   "plan_name": "kb-cohesion-refactor",
   "agent": "atlas",
@@ -54,6 +62,33 @@
       "agent": "Sisyphus-Junior",
       "category": "deep",
       "updated_at": "2026-05-30T15:43:20.958Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_1866c2f33ffevqJZLYyB92FDYQ",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-30T15:49:51.054Z"
+    },
+    "final-wave:f2": {
+      "task_key": "final-wave:f2",
+      "task_label": "F2",
+      "task_title": "**Code Quality Review** — `unspecified-high`",
+      "session_id": "ses_1866c91c4ffeONYN7biQzLopc2",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-30T15:51:29.077Z"
+    },
+    "final-wave:f3": {
+      "task_key": "final-wave:f3",
+      "task_label": "F3",
+      "task_title": "**Real Manual QA** — `unspecified-high`",
+      "session_id": "ses_1866c2f33ffevqJZLYyB92FDYQ",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-30T15:57:40.888Z"
     }
   }
 }
