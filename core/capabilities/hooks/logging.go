@@ -124,7 +124,7 @@ func init() {
 
 type loggingHookCapability struct{}
 
-func (c *loggingHookCapability) Name() string                         { return "hooks.logging" }
+func (c *loggingHookCapability) Name() string                         { return capabilities.HookLogging }
 func (c *loggingHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *loggingHookCapability) DependsOn() []string                  { return nil }
 func (c *loggingHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {

@@ -141,12 +141,12 @@ func TestHarness_CollectCapabilityNames_MemoryBundle(t *testing.T) {
 	h := NewHarness(cfg)
 	names := h.collectCapabilityNames()
 
-	assert.Contains(t, names, "hooks.file_memory")
-	assert.Contains(t, names, "tools.memory_store")
-	assert.Contains(t, names, "tools.memory_recall")
-	assert.Contains(t, names, "tools.memory_forget")
-	assert.NotContains(t, names, "hooks.kb_recall")
-	assert.NotContains(t, names, "hooks.memory_persist")
+	assert.Contains(t, names, capabilities.HookFileMemory)
+	assert.Contains(t, names, capabilities.ToolMemoryStore)
+	assert.Contains(t, names, capabilities.ToolMemoryRecall)
+	assert.Contains(t, names, capabilities.ToolMemoryForget)
+	assert.NotContains(t, names, capabilities.HookKBRecall)
+	assert.NotContains(t, names, capabilities.HookMemoryPersist)
 }
 
 func TestHarness_CollectCapabilityNames_KBBundle(t *testing.T) {
@@ -156,10 +156,10 @@ func TestHarness_CollectCapabilityNames_KBBundle(t *testing.T) {
 	h := NewHarness(cfg)
 	names := h.collectCapabilityNames()
 
-	assert.Contains(t, names, "hooks.kb_recall")
-	assert.Contains(t, names, "hooks.memory_persist")
-	assert.NotContains(t, names, "hooks.file_memory")
-	assert.NotContains(t, names, "tools.memory_store")
+	assert.Contains(t, names, capabilities.HookKBRecall)
+	assert.Contains(t, names, capabilities.HookMemoryPersist)
+	assert.NotContains(t, names, capabilities.HookFileMemory)
+	assert.NotContains(t, names, capabilities.ToolMemoryStore)
 }
 
 func TestHarness_CollectCapabilityNames_BothBundles(t *testing.T) {
@@ -170,12 +170,12 @@ func TestHarness_CollectCapabilityNames_BothBundles(t *testing.T) {
 	h := NewHarness(cfg)
 	names := h.collectCapabilityNames()
 
-	assert.Contains(t, names, "hooks.file_memory")
-	assert.Contains(t, names, "tools.memory_store")
-	assert.Contains(t, names, "tools.memory_recall")
-	assert.Contains(t, names, "tools.memory_forget")
-	assert.Contains(t, names, "hooks.kb_recall")
-	assert.Contains(t, names, "hooks.memory_persist")
+	assert.Contains(t, names, capabilities.HookFileMemory)
+	assert.Contains(t, names, capabilities.ToolMemoryStore)
+	assert.Contains(t, names, capabilities.ToolMemoryRecall)
+	assert.Contains(t, names, capabilities.ToolMemoryForget)
+	assert.Contains(t, names, capabilities.HookKBRecall)
+	assert.Contains(t, names, capabilities.HookMemoryPersist)
 }
 
 func TestHarness_CollectCapabilityNames_Deduplication(t *testing.T) {

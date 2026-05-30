@@ -9,7 +9,7 @@ import (
 
 type fileMemoryHookCapability struct{}
 
-func (c *fileMemoryHookCapability) Name() string                      { return "hooks.file_memory" }
+func (c *fileMemoryHookCapability) Name() string                      { return capabilities.HookFileMemory }
 func (c *fileMemoryHookCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeHook }
 func (c *fileMemoryHookCapability) DependsOn() []string               { return nil }
 

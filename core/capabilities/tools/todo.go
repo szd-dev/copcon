@@ -20,7 +20,7 @@ func NewTodoTool(todoMgr TodoManager) *TodoTool {
 }
 
 func (t *TodoTool) Name() string {
-	return "todolist"
+	return capabilities.AliasTodoList
 }
 
 func (t *TodoTool) Description() string {
@@ -319,9 +319,9 @@ func init() {
 
 type todoCapability struct{}
 
-func (c *todoCapability) Name() string                         { return "tools.todo" }
+func (c *todoCapability) Name() string                         { return capabilities.ToolTodo }
 func (c *todoCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *todoCapability) DependsOn() []string                  { return []string{"hooks.todo_injection"} }
+func (c *todoCapability) DependsOn() []string                  { return []string{capabilities.HookTodoInjection} }
 func (c *todoCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
 	return NewTodoTool(newTodoManagerFromDeps(deps)), nil
 }

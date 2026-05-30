@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/copcon/core/agent"
+	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/storage"
 	"github.com/stretchr/testify/assert"
@@ -31,7 +32,7 @@ func TestNewHarness_BasicBuild(t *testing.T) {
 				Name:          "Test Agent",
 				Model:         "gpt-4o",
 				SystemPrompt:  "You are a test agent.",
-				Tools:         []string{"tools.code_executor"},
+				Tools:         []string{capabilities.ToolCodeExecutor},
 				AllowDelegate: false,
 			},
 		},
@@ -156,7 +157,7 @@ func TestNewHarness_WildcardCapabilityExpansion(t *testing.T) {
 		Store: StoreConfig{Provider: testStoreProvider{}},
 		Agents: []AgentSpec{
 			{ID: "wildcard-agent", Name: "Wildcard Agent", Model: "gpt-4o", SystemPrompt: "test",
-				Tools: []string{"code_executor"}, AllowDelegate: false},
+				Tools: []string{capabilities.AliasCodeExecutor}, AllowDelegate: false},
 		},
 	})
 
@@ -180,7 +181,7 @@ func TestNewHarness_CapabilityDependencyResolution(t *testing.T) {
 				Name:         "Dep Agent",
 				Model:        "gpt-4o",
 				SystemPrompt: "test",
-				Tools:        []string{"tools.todo"},
+				Tools:        []string{capabilities.ToolTodo},
 			},
 		},
 	})
@@ -193,7 +194,7 @@ func TestNewHarness_CapabilityDependencyResolution(t *testing.T) {
 	tools := def.ToolManager.List()
 	found := false
 	for _, ti := range tools {
-		if ti.Name == "todolist" {
+		if ti.Name == capabilities.AliasTodoList {
 			found = true
 			break
 		}
@@ -206,7 +207,7 @@ func TestNewAgent_QuickConfig(t *testing.T) {
 		Name:         "Quick Agent",
 		Model:        "gpt-4o",
 		SystemPrompt: "You are a quick agent.",
-		Tools:        []string{"tools.code_executor"},
+			Tools:         []string{capabilities.ToolCodeExecutor},
 		LLM:          llm.NewMockProvider(),
 	})
 
@@ -251,7 +252,7 @@ func TestNewHarness_AgentSpecModelOverride(t *testing.T) {
 				Name:          "Override Agent",
 				Model:         "gpt-4o",
 				SystemPrompt:  "test",
-				Tools:         []string{"tools.code_executor"},
+				Tools:         []string{capabilities.ToolCodeExecutor},
 				AllowDelegate: true,
 			},
 		},

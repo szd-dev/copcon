@@ -77,7 +77,7 @@ func TestExpandWildcards_ToolsStar(t *testing.T) {
 	Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: nil})
 	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 
-	result := ExpandWildcards([]string{"tools.*"})
+	result := ExpandWildcards([]string{WildcardTools})
 	assert.Equal(t, []string{"tool-a", "tool-b"}, result)
 }
 
@@ -87,7 +87,7 @@ func TestExpandWildcards_HooksStar(t *testing.T) {
 	Register(&stubCap{name: "hook-x", capType: CapabilityTypeHook, deps: nil})
 	Register(&stubCap{name: "tool-x", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{"hooks.*"})
+	result := ExpandWildcards([]string{WildcardHooks})
 	assert.Equal(t, []string{"hook-x"}, result)
 }
 
@@ -97,7 +97,7 @@ func TestExpandWildcards_SkillsStar(t *testing.T) {
 	Register(&stubCap{name: "skill-a", capType: CapabilityTypeSkill, deps: nil})
 	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{"skills.*"})
+	result := ExpandWildcards([]string{WildcardSkills})
 	assert.Equal(t, []string{"skill-a"}, result)
 }
 
@@ -106,7 +106,7 @@ func TestExpandWildcards_MemoryStar(t *testing.T) {
 
 	Register(&stubCap{name: "mem-a", capType: CapabilityTypeMemory, deps: nil})
 
-	result := ExpandWildcards([]string{"memory.*"})
+	result := ExpandWildcards([]string{WildcardMemory})
 	assert.Equal(t, []string{"mem-a"}, result)
 }
 
@@ -117,7 +117,7 @@ func TestExpandWildcards_StarAll(t *testing.T) {
 	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 	Register(&stubCap{name: "skill-a", capType: CapabilityTypeSkill, deps: nil})
 
-	result := ExpandWildcards([]string{"*"})
+	result := ExpandWildcards([]string{WildcardAll})
 	assert.Equal(t, []string{"hook-a", "skill-a", "tool-a"}, result)
 }
 
@@ -137,7 +137,7 @@ func TestExpandWildcards_MixedWildcardsAndNames(t *testing.T) {
 	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
 	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 
-	result := ExpandWildcards([]string{"tools.*", "hook-a"})
+	result := ExpandWildcards([]string{WildcardTools, "hook-a"})
 	assert.Equal(t, []string{"hook-a", "tool-a"}, result)
 }
 
@@ -146,7 +146,7 @@ func TestExpandWildcards_Dedup(t *testing.T) {
 
 	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{"tool-a", "tools.*", "tool-a"})
+	result := ExpandWildcards([]string{"tool-a", WildcardTools, "tool-a"})
 	assert.Equal(t, []string{"tool-a"}, result)
 }
 
@@ -269,7 +269,7 @@ func TestResolveDependencies_WithWildcards(t *testing.T) {
 	Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: []string{"tool-a"}})
 	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 
-	result, err := ResolveDependencies([]string{"tools.*"})
+	result, err := ResolveDependencies([]string{WildcardTools})
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 

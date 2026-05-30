@@ -115,7 +115,7 @@ func init() {
 
 type todoInjectionHookCapability struct{}
 
-func (c *todoInjectionHookCapability) Name() string                         { return "hooks.todo_injection" }
+func (c *todoInjectionHookCapability) Name() string                         { return capabilities.HookTodoInjection }
 func (c *todoInjectionHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *todoInjectionHookCapability) DependsOn() []string                  { return nil }
 func (c *todoInjectionHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {

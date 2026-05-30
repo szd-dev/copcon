@@ -152,7 +152,7 @@ func init() {
 
 type memoryHookCapability struct{}
 
-func (c *memoryHookCapability) Name() string                         { return "hooks.memory" }
+func (c *memoryHookCapability) Name() string                         { return capabilities.HookMemory }
 func (c *memoryHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *memoryHookCapability) DependsOn() []string                  { return nil }
 func (c *memoryHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {

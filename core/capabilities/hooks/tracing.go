@@ -111,7 +111,7 @@ func init() {
 
 type tracingHookCapability struct{}
 
-func (c *tracingHookCapability) Name() string                         { return "hooks.tracing" }
+func (c *tracingHookCapability) Name() string                         { return capabilities.HookTracing }
 func (c *tracingHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *tracingHookCapability) DependsOn() []string                  { return nil }
 func (c *tracingHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {

@@ -38,7 +38,7 @@ func NewDelegateToTool(
 }
 
 func (t *DelegateToTool) Name() string {
-	return "delegate_to"
+	return capabilities.AliasDelegateTo
 }
 
 func (t *DelegateToTool) Description() string {
@@ -189,7 +189,7 @@ func NewReadSubSessionTool(sessionStore storage.SessionStore, messageStore stora
 }
 
 func (t *ReadSubSessionTool) Name() string {
-	return "read_sub_session"
+	return capabilities.AliasReadSubSession
 }
 
 func (t *ReadSubSessionTool) Description() string {
@@ -338,7 +338,7 @@ func init() {
 
 type delegateCapability struct{}
 
-func (c *delegateCapability) Name() string                         { return "tools.delegate" }
+func (c *delegateCapability) Name() string                         { return capabilities.ToolDelegate }
 func (c *delegateCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
 func (c *delegateCapability) DependsOn() []string                  { return nil }
 func (c *delegateCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {

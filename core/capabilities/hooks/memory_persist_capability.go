@@ -10,7 +10,7 @@ import (
 
 type memoryPersistHookCapability struct{}
 
-func (c *memoryPersistHookCapability) Name() string                      { return "hooks.memory_persist" }
+func (c *memoryPersistHookCapability) Name() string                      { return capabilities.HookMemoryPersist }
 func (c *memoryPersistHookCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeHook }
 func (c *memoryPersistHookCapability) DependsOn() []string               { return nil }
 

@@ -38,7 +38,7 @@ func NewFileOps(workDir string) *FileOps {
 }
 
 func (t *FileOps) Name() string {
-	return "file_ops"
+	return capabilities.AliasFileOps
 }
 
 func (t *FileOps) Description() string {
@@ -191,7 +191,7 @@ func init() {
 
 type fileOpsCapability struct{}
 
-func (c *fileOpsCapability) Name() string                         { return "tools.file_ops" }
+func (c *fileOpsCapability) Name() string                         { return capabilities.ToolFileOps }
 func (c *fileOpsCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
 func (c *fileOpsCapability) DependsOn() []string                  { return nil }
 func (c *fileOpsCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {

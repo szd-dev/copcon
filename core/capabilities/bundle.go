@@ -5,10 +5,10 @@ package capabilities
 // has Memory.Enabled set to true.
 func MemoryBundleNames() []string {
 	return []string{
-		"hooks.file_memory",
-		"tools.memory_store",
-		"tools.memory_recall",
-		"tools.memory_forget",
+		HookFileMemory,
+		ToolMemoryStore,
+		ToolMemoryRecall,
+		ToolMemoryForget,
 	}
 }
 
@@ -17,7 +17,7 @@ func MemoryBundleNames() []string {
 // specifies one or more KnowledgeBases.
 func KnowledgeBaseBundleNames() []string {
 	return []string{
-		"hooks.kb_recall",
-		"hooks.memory_persist",
+		HookKBRecall,
+		HookMemoryPersist,
 	}
 }

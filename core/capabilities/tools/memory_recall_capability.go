@@ -7,9 +7,9 @@ import (
 
 type memoryRecallCapability struct{}
 
-func (c *memoryRecallCapability) Name() string                      { return "tools.memory_recall" }
+func (c *memoryRecallCapability) Name() string                      { return capabilities.ToolMemoryRecall }
 func (c *memoryRecallCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *memoryRecallCapability) DependsOn() []string               { return []string{"hooks.file_memory"} }
+func (c *memoryRecallCapability) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
 
 func (c *memoryRecallCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
 	if deps.FileMemoryStore == nil {

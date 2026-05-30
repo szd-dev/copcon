@@ -7,9 +7,9 @@ import (
 
 type memoryForgetType struct{}
 
-func (c *memoryForgetType) Name() string                      { return "tools.memory_forget" }
+func (c *memoryForgetType) Name() string                      { return capabilities.ToolMemoryForget }
 func (c *memoryForgetType) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *memoryForgetType) DependsOn() []string               { return []string{"hooks.file_memory"} }
+func (c *memoryForgetType) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
 
 func (c *memoryForgetType) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
 	if deps.FileMemoryStore == nil {

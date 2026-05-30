@@ -124,7 +124,7 @@ func ExpandWildcards(names []string) []string {
 
 	for _, name := range names {
 		switch {
-		case name == "*":
+		case name == WildcardAll:
 			builtins.Range(func(key, value any) bool {
 				n := key.(string)
 				if !seen[n] {
@@ -133,28 +133,28 @@ func ExpandWildcards(names []string) []string {
 				}
 				return true
 			})
-		case name == "tools.*":
+		case name == WildcardTools:
 			for _, c := range ListByType(CapabilityTypeTool) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
 				}
 			}
-		case name == "hooks.*":
+		case name == WildcardHooks:
 			for _, c := range ListByType(CapabilityTypeHook) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
 				}
 			}
-		case name == "skills.*":
+		case name == WildcardSkills:
 			for _, c := range ListByType(CapabilityTypeSkill) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
 				}
 			}
-		case name == "memory.*":
+		case name == WildcardMemory:
 			for _, c := range ListByType(CapabilityTypeMemory) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true

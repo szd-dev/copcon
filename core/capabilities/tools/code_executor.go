@@ -27,7 +27,7 @@ func NewCodeExecutor() *CodeExecutor {
 }
 
 func (t *CodeExecutor) Name() string {
-	return "code_executor"
+	return capabilities.AliasCodeExecutor
 }
 
 func (t *CodeExecutor) Description() string {
@@ -121,7 +121,7 @@ func init() {
 
 type codeExecutorCapability struct{}
 
-func (c *codeExecutorCapability) Name() string                         { return "tools.code_executor" }
+func (c *codeExecutorCapability) Name() string                         { return capabilities.ToolCodeExecutor }
 func (c *codeExecutorCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
 func (c *codeExecutorCapability) DependsOn() []string                  { return nil }
 func (c *codeExecutorCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
@@ -134,7 +134,7 @@ func init() {
 
 type shellExecutorCapability struct{}
 
-func (c *shellExecutorCapability) Name() string                         { return "tools.shell_executor" }
+func (c *shellExecutorCapability) Name() string                         { return capabilities.ToolShellExecutor }
 func (c *shellExecutorCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
 func (c *shellExecutorCapability) DependsOn() []string                  { return nil }
 func (c *shellExecutorCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
@@ -152,7 +152,7 @@ func NewShellExecutor() *ShellExecutor {
 }
 
 func (t *ShellExecutor) Name() string {
-	return "shell_executor"
+	return capabilities.AliasShellExecutor
 }
 
 func (t *ShellExecutor) Description() string {

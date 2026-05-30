@@ -67,15 +67,15 @@ func NewAgent(cfg AgentQuickConfig) (agent.AgentEngine, agent.AgentRegistry, err
 	return h.Engine(), h.Registry(), nil
 }
 
-var builtInHooks = []string{"hooks.todo_injection", "hooks.memory", "hooks.logging", "hooks.tracing"}
+var builtInHooks = []string{capabilities.HookTodoInjection, capabilities.HookMemory, capabilities.HookLogging, capabilities.HookTracing}
 
-var builtInTools = []string{"tools.confirm_action", "tools.ask_user", "tools.todo", "tools.async"}
+var builtInTools = []string{capabilities.ToolConfirmAction, capabilities.ToolAskUser, capabilities.ToolTodo, capabilities.ToolAsync}
 
 var toolNameToCap = map[string]string{
-	"code_executor":  "tools.code_executor",
-	"shell_executor": "tools.shell_executor",
-	"file_ops":       "tools.file_ops",
-	"todolist":       "tools.todo",
+	capabilities.AliasCodeExecutor:  capabilities.ToolCodeExecutor,
+	capabilities.AliasShellExecutor: capabilities.ToolShellExecutor,
+	capabilities.AliasFileOps:       capabilities.ToolFileOps,
+	capabilities.AliasTodoList:      capabilities.ToolTodo,
 }
 
 type StoreConfig struct {
@@ -210,7 +210,7 @@ func (h *Harness) Build() error {
 	for _, cap := range resolved {
 		switch cap.Type() {
 		case capabilities.CapabilityTypeTool:
-			if cap.Name() == "tools.delegate" || cap.Name() == "tools.read_sub_session" {
+			if cap.Name() == capabilities.ToolDelegate || cap.Name() == capabilities.ToolReadSubSession {
 				continue
 			}
 			tc, ok := cap.(capabilities.ToolCapability)
@@ -288,8 +288,8 @@ func (h *Harness) Build() error {
 	capDeps.AgentRegistry = agentRegistry
 	capDeps.Engine = h.engine
 
-	registerCrossAgentTool("tools.delegate", capDeps, toolRegistry, logger, capToToolName)
-	registerCrossAgentTool("tools.read_sub_session", capDeps, toolRegistry, logger, capToToolName)
+	registerCrossAgentTool(capabilities.ToolDelegate, capDeps, toolRegistry, logger, capToToolName)
+	registerCrossAgentTool(capabilities.ToolReadSubSession, capDeps, toolRegistry, logger, capToToolName)
 
 	h.registry = agentRegistry
 	h.built = true
@@ -386,7 +386,7 @@ func (h *Harness) defaultMaxIndexLines() int {
 			return spec.Memory.MaxIndexLines
 		}
 	}
-	return 200
+	return capabilities.DefaultMaxIndexLines
 }
 
 func (h *Harness) defaultMaxIndexBytes() int {
@@ -395,7 +395,7 @@ func (h *Harness) defaultMaxIndexBytes() int {
 			return spec.Memory.MaxIndexBytes
 		}
 	}
-	return 25600
+	return capabilities.DefaultMaxIndexBytes
 }
 
 func (h *Harness) collectCapabilityNames() []string {

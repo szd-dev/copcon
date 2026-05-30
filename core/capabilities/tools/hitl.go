@@ -171,7 +171,7 @@ func init() {
 
 type confirmActionCapability struct{}
 
-func (c *confirmActionCapability) Name() string                      { return "tools.confirm_action" }
+func (c *confirmActionCapability) Name() string                      { return capabilities.ToolConfirmAction }
 func (c *confirmActionCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
 func (c *confirmActionCapability) DependsOn() []string               { return nil }
 func (c *confirmActionCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
@@ -180,7 +180,7 @@ func (c *confirmActionCapability) NewTool(deps capabilities.CapabilityDeps) (too
 
 type askUserCapability struct{}
 
-func (c *askUserCapability) Name() string                      { return "tools.ask_user" }
+func (c *askUserCapability) Name() string                      { return capabilities.ToolAskUser }
 func (c *askUserCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
 func (c *askUserCapability) DependsOn() []string               { return nil }
 func (c *askUserCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {

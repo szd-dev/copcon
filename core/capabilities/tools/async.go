@@ -229,7 +229,7 @@ func init() {
 
 type asyncCapability struct{}
 
-func (c *asyncCapability) Name() string                         { return "tools.async" }
+func (c *asyncCapability) Name() string                         { return capabilities.ToolAsync }
 func (c *asyncCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
 func (c *asyncCapability) DependsOn() []string                  { return nil }
 func (c *asyncCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {

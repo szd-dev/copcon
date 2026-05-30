@@ -12,7 +12,7 @@ import (
 
 type kbRecallHookCapability struct{}
 
-func (c *kbRecallHookCapability) Name() string                      { return "hooks.kb_recall" }
+func (c *kbRecallHookCapability) Name() string                      { return capabilities.HookKBRecall }
 func (c *kbRecallHookCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeHook }
 func (c *kbRecallHookCapability) DependsOn() []string               { return nil }
 
