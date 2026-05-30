@@ -1,6 +1,3 @@
-// Package sqlitevec provides a SQLite-backed KnowledgeStore implementation
-// that stores vector embeddings as BLOBs and computes cosine similarity
-// in Go code. It uses the glebarez/sqlite driver (pure Go, no CGO) via GORM.
 package sqlitevec
 
 import (
@@ -14,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/copcon/core/storage"
 	"github.com/copcon/plugins/knowledge-base"
 )
 
@@ -23,8 +21,6 @@ type KnowledgeStore struct {
 	db *gorm.DB
 }
 
-// NewKnowledgeStore creates a new KnowledgeStore backed by the given GORM DB.
-// It auto-migrates the schema tables.
 func NewKnowledgeStore(db *gorm.DB) (*KnowledgeStore, error) {
 	if err := db.AutoMigrate(
 		&kbModel{},
@@ -36,8 +32,6 @@ func NewKnowledgeStore(db *gorm.DB) (*KnowledgeStore, error) {
 	return &KnowledgeStore{db: db}, nil
 }
 
-// NewKnowledgeStoreFromDSN creates a new KnowledgeStore using a DSN string.
-// Use ":memory:" for an in-memory database.
 func NewKnowledgeStoreFromDSN(dsn string) (*KnowledgeStore, error) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -46,10 +40,9 @@ func NewKnowledgeStoreFromDSN(dsn string) (*KnowledgeStore, error) {
 	return NewKnowledgeStore(db)
 }
 
-// Compile-time interface check.
 var _ knowledgebase.KnowledgeStore = (*KnowledgeStore)(nil)
 
-func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *knowledgebase.KnowledgeBase) (*knowledgebase.KnowledgeBase, error) {
+func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
 	id := kb.ID
 	if id == "" {
 		id = uuid.New().String()
@@ -90,19 +83,19 @@ func (s *KnowledgeStore) DeleteKB(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *KnowledgeStore) ListKBs(ctx context.Context) ([]*knowledgebase.KnowledgeBase, error) {
+func (s *KnowledgeStore) ListKBs(ctx context.Context) ([]*storage.KnowledgeBase, error) {
 	var models []kbModel
 	if err := s.db.WithContext(ctx).Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list knowledge bases: %w", err)
 	}
-	result := make([]*knowledgebase.KnowledgeBase, len(models))
+	result := make([]*storage.KnowledgeBase, len(models))
 	for i, m := range models {
 		result[i] = m.toDomain()
 	}
 	return result, nil
 }
 
-func (s *KnowledgeStore) GetKB(ctx context.Context, id string) (*knowledgebase.KnowledgeBase, error) {
+func (s *KnowledgeStore) GetKB(ctx context.Context, id string) (*storage.KnowledgeBase, error) {
 	var m kbModel
 	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&m).Error; err != nil {
 		return nil, fmt.Errorf("get knowledge base %s: %w", id, err)
@@ -110,7 +103,7 @@ func (s *KnowledgeStore) GetKB(ctx context.Context, id string) (*knowledgebase.K
 	return m.toDomain(), nil
 }
 
-func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *knowledgebase.Document, content []byte) error {
+func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error {
 	docID := doc.ID
 	if docID == "" {
 		docID = uuid.New().String()
@@ -137,12 +130,12 @@ func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *k
 	return nil
 }
 
-func (s *KnowledgeStore) ListDocuments(ctx context.Context, kbID string) ([]*knowledgebase.Document, error) {
+func (s *KnowledgeStore) ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error) {
 	var models []docModel
 	if err := s.db.WithContext(ctx).Where("kb_id = ?", kbID).Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list documents for kb %s: %w", kbID, err)
 	}
-	result := make([]*knowledgebase.Document, len(models))
+	result := make([]*storage.Document, len(models))
 	for i, m := range models {
 		result[i] = m.toDomain()
 	}
@@ -163,7 +156,7 @@ func (s *KnowledgeStore) DeleteDocument(ctx context.Context, kbID string, docID 
 	return nil
 }
 
-func (s *KnowledgeStore) GetDocument(ctx context.Context, kbID string, docID string) (*knowledgebase.Document, error) {
+func (s *KnowledgeStore) GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error) {
 	var m docModel
 	if err := s.db.WithContext(ctx).Where("id = ? AND kb_id = ?", docID, kbID).First(&m).Error; err != nil {
 		return nil, fmt.Errorf("get document %s in kb %s: %w", docID, kbID, err)
@@ -171,19 +164,19 @@ func (s *KnowledgeStore) GetDocument(ctx context.Context, kbID string, docID str
 	return m.toDomain(), nil
 }
 
-func (s *KnowledgeStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*knowledgebase.Chunk, error) {
+func (s *KnowledgeStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
 	var models []chunkModel
 	if err := s.db.WithContext(ctx).Where("document_id = ? AND kb_id = ?", docID, kbID).Order("chunk_index ASC").Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("get chunks for document %s: %w", docID, err)
 	}
-	result := make([]*knowledgebase.Chunk, len(models))
+	result := make([]*storage.Chunk, len(models))
 	for i, m := range models {
 		result[i] = m.toDomain()
 	}
 	return result, nil
 }
 
-func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *knowledgebase.Chunk) error {
+func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error {
 	updates := map[string]any{
 		"content":     chunk.Content,
 		"context":     chunk.Context,
@@ -200,7 +193,7 @@ func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *kn
 	return nil
 }
 
-func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []float32, opts knowledgebase.SearchOptions) ([]*knowledgebase.Chunk, error) {
+func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
 	if len(query) == 0 {
 		return nil, nil
 	}
@@ -220,7 +213,7 @@ func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []flo
 	}
 
 	type scored struct {
-		chunk *knowledgebase.Chunk
+		chunk *storage.Chunk
 		score float32
 	}
 	var results []scored
@@ -246,16 +239,14 @@ func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []flo
 		results = results[:topK]
 	}
 
-	chunks := make([]*knowledgebase.Chunk, len(results))
+	chunks := make([]*storage.Chunk, len(results))
 	for i, r := range results {
 		chunks[i] = r.chunk
 	}
 	return chunks, nil
 }
 
-// StoreChunks persists pre-processed chunks with their embeddings.
-// Used by the RAG pipeline after parsing, chunking, and embedding.
-func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*knowledgebase.Chunk, vectors [][]float32) error {
+func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error {
 	if len(chunks) != len(vectors) {
 		return fmt.Errorf("chunks count (%d) != vectors count (%d)", len(chunks), len(vectors))
 	}
@@ -284,7 +275,7 @@ func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID str
 
 		now := time.Now().UTC()
 		if err := tx.Model(&docModel{}).Where("id = ? AND kb_id = ?", docID, kbID).Updates(map[string]any{
-			"status":      string(knowledgebase.DocStatusReady),
+			"status":      string(storage.DocStatusReady),
 			"chunk_count": len(chunks),
 			"updated_at":  now,
 		}).Error; err != nil {
@@ -295,8 +286,7 @@ func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID str
 	})
 }
 
-// UpdateDocumentStatus sets the processing status of a document.
-func (s *KnowledgeStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status knowledgebase.DocumentStatus) error {
+func (s *KnowledgeStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
 	now := time.Now().UTC()
 	result := s.db.WithContext(ctx).Model(&docModel{}).Where("id = ? AND kb_id = ?", docID, kbID).Updates(map[string]any{
 		"status":     string(status),

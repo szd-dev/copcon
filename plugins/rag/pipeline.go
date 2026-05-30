@@ -8,27 +8,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/copcon/plugins/embedding-openai"
-	"github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/core/storage"
 )
 
 type ProgressFunc func(stage string, current, total int)
 
 type PipelineStore interface {
-	IngestDocument(ctx context.Context, kbID string, doc *knowledgebase.Document, content []byte) error
-	StoreChunks(ctx context.Context, kbID string, docID string, chunks []*knowledgebase.Chunk, vectors [][]float32) error
-	UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status knowledgebase.DocumentStatus) error
+	IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error
+	StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error
+	UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error
 }
 
 type Pipeline struct {
 	parser  Parser
 	chunker Chunker
-	embedder embedding.Embedder
+	embedder storage.Embedder
 	store   PipelineStore
 	logger  *slog.Logger
 }
 
-func NewPipeline(parser Parser, embedder embedding.Embedder, store PipelineStore) *Pipeline {
+func NewPipeline(parser Parser, embedder storage.Embedder, store PipelineStore) *Pipeline {
 	return &Pipeline{
 		parser:   parser,
 		chunker:  NewRecursiveChunker(),
@@ -38,7 +37,7 @@ func NewPipeline(parser Parser, embedder embedding.Embedder, store PipelineStore
 	}
 }
 
-func NewMarkdownPipeline(parser Parser, embedder embedding.Embedder, store PipelineStore) *Pipeline {
+func NewMarkdownPipeline(parser Parser, embedder storage.Embedder, store PipelineStore) *Pipeline {
 	return &Pipeline{
 		parser:   parser,
 		chunker:  NewMarkdownAwareChunker(),
@@ -48,19 +47,19 @@ func NewMarkdownPipeline(parser Parser, embedder embedding.Embedder, store Pipel
 	}
 }
 
-func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *knowledgebase.Document, content []byte, mimetype string, progress ProgressFunc) error {
-	doc.Status = knowledgebase.DocStatusPending
+func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *storage.Document, content []byte, mimetype string, progress ProgressFunc) error {
+	doc.Status = storage.DocStatusPending
 	if err := p.store.IngestDocument(ctx, kbID, doc, content); err != nil {
 		return fmt.Errorf("create document record: %w", err)
 	}
 
-	if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, knowledgebase.DocStatusParsing); err != nil {
+	if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusParsing); err != nil {
 		p.logger.Warn("failed to update document status to parsing", "error", err)
 	}
 
 	text, err := p.parser.Parse(ctx, content, mimetype)
 	if err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, knowledgebase.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
 		return fmt.Errorf("parse document: %w", err)
 	}
 	if progress != nil {
@@ -78,16 +77,16 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *knowledgebase.D
 	}
 	chunkResults, err := chunker.Chunk(text, chunkOpts)
 	if err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, knowledgebase.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
 		return fmt.Errorf("chunk document: %w", err)
 	}
 	if progress != nil {
 		progress("chunk", 2, 4)
 	}
 
-	chunks := make([]*knowledgebase.Chunk, len(chunkResults))
+	chunks := make([]*storage.Chunk, len(chunkResults))
 	for i, cr := range chunkResults {
-		chunks[i] = &knowledgebase.Chunk{
+		chunks[i] = &storage.Chunk{
 			DocumentID: doc.ID,
 			KBID:       kbID,
 			Content:    cr.Content,
@@ -103,7 +102,7 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *knowledgebase.D
 	}
 
 	if len(texts) == 0 {
-		if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, knowledgebase.DocStatusReady); err != nil {
+		if err := p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusReady); err != nil {
 			p.logger.Warn("failed to update document status", "error", err)
 		}
 		return nil
@@ -111,7 +110,7 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *knowledgebase.D
 
 	vectors, err := p.embedWithRetry(ctx, texts, 3)
 	if err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, knowledgebase.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
 		return fmt.Errorf("embed chunks: %w", err)
 	}
 	if progress != nil {
@@ -119,7 +118,7 @@ func (p *Pipeline) Ingest(ctx context.Context, kbID string, doc *knowledgebase.D
 	}
 
 	if err := p.store.StoreChunks(ctx, kbID, doc.ID, chunks, vectors); err != nil {
-		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, knowledgebase.DocStatusError)
+		_ = p.store.UpdateDocumentStatus(ctx, kbID, doc.ID, storage.DocStatusError)
 		return fmt.Errorf("store chunks: %w", err)
 	}
 	if progress != nil {

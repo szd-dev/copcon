@@ -1,12 +1,8 @@
 package knowledgebase
 
 import (
-	"context"
-	"fmt"
-
 	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/plugins/embedding-openai"
 )
 
 type kbRecallHookCapability struct{}
@@ -16,26 +12,5 @@ func (c *kbRecallHookCapability) Type() capabilities.CapabilityType { return cap
 func (c *kbRecallHookCapability) DependsOn() []string               { return nil }
 
 func (c *kbRecallHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	if deps.KnowledgeStore == nil {
-		return nil, fmt.Errorf("%w: KnowledgeStore not configured", capabilities.ErrDependencyUnavailable)
-	}
-	if deps.Embedder == nil {
-		return nil, fmt.Errorf("%w: Embedder not configured", capabilities.ErrDependencyUnavailable)
-	}
-
-	type knowledgeStore interface {
-		Search(ctx context.Context, kbIDs []string, query []float32, opts SearchOptions) ([]*Chunk, error)
-	}
-
-	ks, ok := deps.KnowledgeStore.(knowledgeStore)
-	if !ok {
-		return nil, fmt.Errorf("%w: KnowledgeStore type assertion failed", capabilities.ErrDependencyUnavailable)
-	}
-
-	emb, ok := deps.Embedder.(embedding.Embedder)
-	if !ok {
-		return nil, fmt.Errorf("%w: Embedder type assertion failed", capabilities.ErrDependencyUnavailable)
-	}
-
-	return NewKBRecallHook(emb, ks, deps.AgentKnowledgeBases), nil
+	return nil, nil
 }

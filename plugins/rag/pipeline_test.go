@@ -9,9 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/plugins/embedding-openai"
-	"github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/core/storage"
 )
+
+var errEmptyText = fmt.Errorf("empty text provided for embedding")
 
 type mockEmbedder struct {
 	dimensions int
@@ -19,7 +20,7 @@ type mockEmbedder struct {
 
 func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	if text == "" {
-		return nil, embedding.ErrEmptyText
+		return nil, errEmptyText
 	}
 	vec := make([]float32, m.dimensions)
 	vec[0] = 1.0
@@ -28,12 +29,12 @@ func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 
 func (m *mockEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
-		return nil, embedding.ErrEmptyText
+		return nil, errEmptyText
 	}
 	results := make([][]float32, len(texts))
 	for i, text := range texts {
 		if text == "" {
-			return nil, embedding.ErrEmptyText
+			return nil, errEmptyText
 		}
 		vec := make([]float32, m.dimensions)
 		vec[0] = float32(i) / float32(len(texts))
@@ -46,22 +47,22 @@ func (m *mockEmbedder) Dimensions() int { return m.dimensions }
 func (m *mockEmbedder) Name() string    { return "mock" }
 
 type mockPipelineStore struct {
-	documents map[string]*knowledgebase.Document
-	chunks    map[string][]*knowledgebase.Chunk
+	documents map[string]*storage.Document
+	chunks    map[string][]*storage.Chunk
 	vectors   map[string][][]float32
-	statuses  map[string]knowledgebase.DocumentStatus
+	statuses  map[string]storage.DocumentStatus
 }
 
 func newMockPipelineStore() *mockPipelineStore {
 	return &mockPipelineStore{
-		documents: make(map[string]*knowledgebase.Document),
-		chunks:    make(map[string][]*knowledgebase.Chunk),
+		documents: make(map[string]*storage.Document),
+		chunks:    make(map[string][]*storage.Chunk),
 		vectors:   make(map[string][][]float32),
-		statuses:  make(map[string]knowledgebase.DocumentStatus),
+		statuses:  make(map[string]storage.DocumentStatus),
 	}
 }
 
-func (s *mockPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *knowledgebase.Document, content []byte) error {
+func (s *mockPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error {
 	if doc.ID == "" {
 		doc.ID = "doc-1"
 	}
@@ -70,14 +71,14 @@ func (s *mockPipelineStore) IngestDocument(ctx context.Context, kbID string, doc
 	return nil
 }
 
-func (s *mockPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*knowledgebase.Chunk, vectors [][]float32) error {
+func (s *mockPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error {
 	s.chunks[docID] = chunks
 	s.vectors[docID] = vectors
-	s.statuses[docID] = knowledgebase.DocStatusReady
+	s.statuses[docID] = storage.DocStatusReady
 	return nil
 }
 
-func (s *mockPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status knowledgebase.DocumentStatus) error {
+func (s *mockPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
 	s.statuses[docID] = status
 	return nil
 }
@@ -93,17 +94,17 @@ func TestPipelineIngest(t *testing.T) {
 		progressCalls.Add(1)
 	}
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	content := []byte("This is a test document. It has multiple sentences. Each one is important.")
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, content, "text/plain", progress)
 	require.NoError(t, err)
 	assert.Equal(t, "doc-1", doc.ID)
-	assert.Equal(t, knowledgebase.DocStatusReady, store.statuses[doc.ID])
+	assert.Equal(t, storage.DocStatusReady, store.statuses[doc.ID])
 	assert.Equal(t, int32(4), progressCalls.Load())
 	assert.NotEmpty(t, store.chunks[doc.ID])
 	assert.NotEmpty(t, store.vectors[doc.ID])
@@ -115,16 +116,16 @@ func TestPipelineIngestMarkdown(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		Filename: "test.md",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	content := []byte("# Title\n\nParagraph one.\n\n## Section\n\nParagraph two.")
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, content, "text/markdown", nil)
 	require.NoError(t, err)
-	assert.Equal(t, knowledgebase.DocStatusReady, store.statuses[doc.ID])
+	assert.Equal(t, storage.DocStatusReady, store.statuses[doc.ID])
 }
 
 func TestPipelineIngestParseError(t *testing.T) {
@@ -133,15 +134,15 @@ func TestPipelineIngestParseError(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		Filename: "test.xyz",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte("data"), "application/octet-stream", nil)
 	assert.Error(t, err)
-	assert.Equal(t, knowledgebase.DocStatusError, store.statuses[doc.ID])
+	assert.Equal(t, storage.DocStatusError, store.statuses[doc.ID])
 }
 
 func TestPipelineIngestNoProgress(t *testing.T) {
@@ -150,10 +151,10 @@ func TestPipelineIngestNoProgress(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte("Hello world."), "text/plain", nil)
@@ -166,10 +167,10 @@ func TestPipelineIngestEmptyContent(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		Filename: "empty.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte(""), "text/plain", nil)
@@ -221,14 +222,14 @@ func TestPipelineEmbedRetryError(t *testing.T) {
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 
 	err := pipeline.Ingest(context.Background(), "kb-1", doc, []byte("Hello world."), "text/plain", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "after 3 attempts")
-	assert.Equal(t, knowledgebase.DocStatusError, store.statuses[doc.ID])
+	assert.Equal(t, storage.DocStatusError, store.statuses[doc.ID])
 }

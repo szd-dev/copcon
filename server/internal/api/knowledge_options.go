@@ -1,34 +1,17 @@
 package api
 
 import (
-	"log/slog"
-	"os"
-
-	"github.com/copcon/core/llm"
-	"github.com/copcon/plugins/embedding-openai"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/plugins/knowledge-base"
 	"github.com/copcon/plugins/rag"
-	"github.com/copcon/server/internal/config"
 )
 
-func BuildKnowledgeOptions(cfg *config.Config, ks knowledgebase.KnowledgeStore, llmProvider llm.LLMProvider) []HandlerOption {
-	var opts []HandlerOption
-
+func BuildKnowledgeOptions(ks knowledgebase.KnowledgeStore, emb storage.Embedder) []HandlerOption {
 	if ks == nil {
-		return opts
+		return nil
 	}
 
-	opts = append(opts, WithKnowledgeStore(ks))
-
-	embCfg := resolveEmbeddingConfig(cfg)
-	var emb embedding.Embedder
-	if embCfg.Backend != "" {
-		var err error
-		emb, err = embedding.NewFromConfig(embCfg, llmProvider)
-		if err != nil {
-			slog.New(slog.NewTextHandler(os.Stderr, nil)).Warn("failed to create embedder for API", "error", err)
-		}
-	}
+	opts := []HandlerOption{WithKnowledgeStore(ks)}
 
 	if emb != nil {
 		opts = append(opts, WithEmbedder(emb))
@@ -40,18 +23,4 @@ func BuildKnowledgeOptions(cfg *config.Config, ks knowledgebase.KnowledgeStore, 
 	}
 
 	return opts
-}
-
-func resolveEmbeddingConfig(cfg *config.Config) embedding.EmbeddingConfig {
-	for _, kb := range cfg.KnowledgeBases {
-		if kb.Embedding.Backend != "" {
-			return embedding.EmbeddingConfig{
-				Backend:     embedding.BackendType(kb.Embedding.Backend),
-				BaseURL:     cfg.OpenAI.BaseURL,
-				APIKey:      cfg.OpenAI.APIKey,
-				OpenAIModel: kb.Embedding.OpenAIModel,
-			}
-		}
-	}
-	return embedding.EmbeddingConfig{}
 }

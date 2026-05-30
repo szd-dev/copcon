@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/core/storage"
 )
 
 func newTestStore(t *testing.T) *KnowledgeStore {
@@ -73,7 +73,7 @@ func TestKBLifecycle(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, err := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{
+	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{
 		Name:    "test-kb",
 		Backend: "sqlite-vec",
 		Config:  map[string]any{"key": "value"},
@@ -109,14 +109,14 @@ func TestDocumentCRUD(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, err := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "docs-kb", Backend: "sqlite-vec"})
+	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "docs-kb", Backend: "sqlite-vec"})
 	require.NoError(t, err)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		KBID:     kb.ID,
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	err = ks.IngestDocument(ctx, kb.ID, doc, nil)
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func TestDocumentCRUD(t *testing.T) {
 	got, err := ks.GetDocument(ctx, kb.ID, doc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "test.txt", got.Filename)
-	assert.Equal(t, knowledgebase.DocStatusPending, got.Status)
+	assert.Equal(t, storage.DocStatusPending, got.Status)
 
 	list, err := ks.ListDocuments(ctx, kb.ID)
 	require.NoError(t, err)
@@ -149,19 +149,19 @@ func TestChunkCRUD(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, err := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "chunks-kb", Backend: "sqlite-vec"})
+	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "chunks-kb", Backend: "sqlite-vec"})
 	require.NoError(t, err)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		KBID:     kb.ID,
 		Filename: "doc.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	err = ks.IngestDocument(ctx, kb.ID, doc, nil)
 	require.NoError(t, err)
 
-	chunks := []*knowledgebase.Chunk{
+	chunks := []*storage.Chunk{
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "chunk 0", Index: 0, TokenCount: 2},
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "chunk 1", Index: 1, TokenCount: 2},
 	}
@@ -181,7 +181,7 @@ func TestChunkCRUD(t *testing.T) {
 
 	gotDoc, err := ks.GetDocument(ctx, kb.ID, doc.ID)
 	require.NoError(t, err)
-	assert.Equal(t, knowledgebase.DocStatusReady, gotDoc.Status)
+	assert.Equal(t, storage.DocStatusReady, gotDoc.Status)
 	assert.Equal(t, 2, gotDoc.ChunkCount)
 }
 
@@ -189,11 +189,11 @@ func TestUpdateChunk(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "update-kb", Backend: "sqlite-vec"})
-	doc := &knowledgebase.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "update-kb", Backend: "sqlite-vec"})
+	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb.ID, doc, nil)
 
-	chunks := []*knowledgebase.Chunk{
+	chunks := []*storage.Chunk{
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "original", Index: 0},
 	}
 	vectors := [][]float32{{1.0, 0.0}}
@@ -212,26 +212,26 @@ func TestUpdateDocumentStatus(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "status-kb", Backend: "sqlite-vec"})
-	doc := &knowledgebase.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "status-kb", Backend: "sqlite-vec"})
+	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb.ID, doc, nil)
 
-	err := ks.UpdateDocumentStatus(ctx, kb.ID, doc.ID, knowledgebase.DocStatusError)
+	err := ks.UpdateDocumentStatus(ctx, kb.ID, doc.ID, storage.DocStatusError)
 	require.NoError(t, err)
 
 	got, _ := ks.GetDocument(ctx, kb.ID, doc.ID)
-	assert.Equal(t, knowledgebase.DocStatusError, got.Status)
+	assert.Equal(t, storage.DocStatusError, got.Status)
 }
 
 func TestSearch(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "search-kb", Backend: "sqlite-vec"})
-	doc := &knowledgebase.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "search-kb", Backend: "sqlite-vec"})
+	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb.ID, doc, nil)
 
-	chunks := []*knowledgebase.Chunk{
+	chunks := []*storage.Chunk{
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "about cats", Index: 0},
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "about dogs", Index: 1},
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "about birds", Index: 2},
@@ -243,7 +243,7 @@ func TestSearch(t *testing.T) {
 	}
 	ks.StoreChunks(ctx, kb.ID, doc.ID, chunks, vectors)
 
-	results, err := ks.Search(ctx, []string{kb.ID}, []float32{1.0, 0.1, 0.0}, knowledgebase.SearchOptions{TopK: 2})
+	results, err := ks.Search(ctx, []string{kb.ID}, []float32{1.0, 0.1, 0.0}, storage.SearchOptions{TopK: 2})
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
 	assert.Equal(t, "about cats", results[0].Content)
@@ -254,11 +254,11 @@ func TestSearchWithThreshold(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "threshold-kb", Backend: "sqlite-vec"})
-	doc := &knowledgebase.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "threshold-kb", Backend: "sqlite-vec"})
+	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb.ID, doc, nil)
 
-	chunks := []*knowledgebase.Chunk{
+	chunks := []*storage.Chunk{
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "close match", Index: 0},
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "far match", Index: 1},
 	}
@@ -268,7 +268,7 @@ func TestSearchWithThreshold(t *testing.T) {
 	}
 	ks.StoreChunks(ctx, kb.ID, doc.ID, chunks, vectors)
 
-	results, err := ks.Search(ctx, []string{kb.ID}, []float32{1.0, 0.0}, knowledgebase.SearchOptions{
+	results, err := ks.Search(ctx, []string{kb.ID}, []float32{1.0, 0.0}, storage.SearchOptions{
 		TopK:                10,
 		SimilarityThreshold: 0.99,
 	})
@@ -280,7 +280,7 @@ func TestSearchWithThreshold(t *testing.T) {
 func TestSearchEmptyQuery(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
-	results, err := ks.Search(ctx, []string{"kb1"}, []float32{}, knowledgebase.SearchOptions{})
+	results, err := ks.Search(ctx, []string{"kb1"}, []float32{}, storage.SearchOptions{})
 	require.NoError(t, err)
 	assert.Nil(t, results)
 }
@@ -289,22 +289,22 @@ func TestSearchCrossKB(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb1, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "kb1", Backend: "sqlite-vec"})
-	kb2, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "kb2", Backend: "sqlite-vec"})
+	kb1, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb1", Backend: "sqlite-vec"})
+	kb2, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb2", Backend: "sqlite-vec"})
 
-	doc1 := &knowledgebase.Document{KBID: kb1.ID, Filename: "doc1.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	doc1 := &storage.Document{KBID: kb1.ID, Filename: "doc1.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb1.ID, doc1, nil)
-	doc2 := &knowledgebase.Document{KBID: kb2.ID, Filename: "doc2.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	doc2 := &storage.Document{KBID: kb2.ID, Filename: "doc2.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb2.ID, doc2, nil)
 
-	ks.StoreChunks(ctx, kb1.ID, doc1.ID, []*knowledgebase.Chunk{
+	ks.StoreChunks(ctx, kb1.ID, doc1.ID, []*storage.Chunk{
 		{DocumentID: doc1.ID, KBID: kb1.ID, Content: "kb1 content", Index: 0},
 	}, [][]float32{{1.0, 0.0}})
-	ks.StoreChunks(ctx, kb2.ID, doc2.ID, []*knowledgebase.Chunk{
+	ks.StoreChunks(ctx, kb2.ID, doc2.ID, []*storage.Chunk{
 		{DocumentID: doc2.ID, KBID: kb2.ID, Content: "kb2 content", Index: 0},
 	}, [][]float32{{0.0, 1.0}})
 
-	results, err := ks.Search(ctx, []string{kb1.ID, kb2.ID}, []float32{1.0, 0.5}, knowledgebase.SearchOptions{TopK: 10})
+	results, err := ks.Search(ctx, []string{kb1.ID, kb2.ID}, []float32{1.0, 0.5}, storage.SearchOptions{TopK: 10})
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
 }
@@ -313,7 +313,7 @@ func TestStoreChunksCountMismatch(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	err := ks.StoreChunks(ctx, "kb1", "doc1", []*knowledgebase.Chunk{{}}, [][]float32{{1.0}, {2.0}})
+	err := ks.StoreChunks(ctx, "kb1", "doc1", []*storage.Chunk{{}}, [][]float32{{1.0}, {2.0}})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "count")
 }
@@ -322,10 +322,10 @@ func TestDeleteKBCascades(t *testing.T) {
 	ctx := context.Background()
 	ks := newTestStore(t)
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "cascade-kb", Backend: "sqlite-vec"})
-	doc := &knowledgebase.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "cascade-kb", Backend: "sqlite-vec"})
+	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb.ID, doc, nil)
-	ks.StoreChunks(ctx, kb.ID, doc.ID, []*knowledgebase.Chunk{
+	ks.StoreChunks(ctx, kb.ID, doc.ID, []*storage.Chunk{
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "chunk", Index: 0},
 	}, [][]float32{{1.0}})
 
@@ -336,4 +336,3 @@ func TestDeleteKBCascades(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, chunks)
 }
-

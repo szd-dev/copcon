@@ -75,11 +75,7 @@ var toolNameToCap = map[string]string{
 }
 
 type StoreConfig struct {
-	Provider       storage.StoreProvider
-	Memory         interface{} // was: storage.MemoryStore — moved to plugins/memory-file
-	FileMemory     interface{} // filememory.FileMemoryStore, typed as interface{} to avoid circular import
-	KnowledgeStore interface{} // was: storage.KnowledgeStore — moved to plugins/knowledge-base
-	Embedder       interface{} // embedding.Embedder, typed as interface{} to avoid circular import
+	Provider storage.StoreProvider
 }
 
 // AgentSpec declares a static agent to be auto-converted to an AgentFactory during Build().
@@ -200,10 +196,6 @@ func (h *Harness) Build() error {
 		SessionStore:        h.config.Store.Provider.Sessions(),
 		MessageStore:        h.config.Store.Provider.Messages(),
 		TodoStore:           h.config.Store.Provider.Todos(),
-		MemoryStore:         h.config.Store.Memory,
-		FileMemoryStore:     h.config.Store.FileMemory,
-		KnowledgeStore:      h.config.Store.KnowledgeStore,
-		Embedder:            h.config.Store.Embedder,
 		AgentKnowledgeBases: agentKBs,
 		Logger:              logger,
 	}

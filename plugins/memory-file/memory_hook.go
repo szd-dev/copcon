@@ -8,6 +8,7 @@ import (
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/iface"
+	"github.com/copcon/core/storage"
 )
 
 type MemoryPlugin struct {
@@ -99,7 +100,7 @@ func (p *MemoryPlugin) onMessagePersist(ctx *hook.HookContext) error {
 			logger := p.logger
 
 			go func() {
-				err := mgr.Store(chatCtx, &Memory{
+				err := mgr.Store(chatCtx, &storage.Memory{
 					Content:    content,
 					SessionID:  sessionID,
 					Role:       "assistant",
@@ -137,7 +138,7 @@ func encodeTextToVector(text string) []float32 {
 	return vec
 }
 
-func formatSearchResults(results []*Memory) string {
+func formatSearchResults(results []*storage.Memory) string {
 	out := "Relevant context from previous conversations:\n"
 	for _, r := range results {
 		out += fmt.Sprintf("- %s\n", r.Content)
@@ -151,31 +152,17 @@ func (c *memoryHookCapability) Name() string                         { return ca
 func (c *memoryHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
 func (c *memoryHookCapability) DependsOn() []string                  { return nil }
 func (c *memoryHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	if deps.MemoryStore == nil {
-		return nil, fmt.Errorf("%w: MemoryStore not configured", capabilities.ErrDependencyUnavailable)
-	}
-	return NewMemoryPlugin(newMemoryManagerFromDeps(deps)), nil
-}
-
-func newMemoryManagerFromDeps(deps capabilities.CapabilityDeps) MemoryManager {
-	if deps.MemoryStore == nil {
-		return nil
-	}
-	ms, ok := deps.MemoryStore.(MemoryStore)
-	if !ok {
-		return nil
-	}
-	return &memoryManagerAdapter{store: ms}
+	return nil, nil
 }
 
 type memoryManagerAdapter struct {
 	store MemoryStore
 }
 
-func (a *memoryManagerAdapter) Store(chatCtx iface.ChatContextInterface, memory *Memory) error {
+func (a *memoryManagerAdapter) Store(chatCtx iface.ChatContextInterface, memory *storage.Memory) error {
 	return a.store.Store(chatCtx.Context(), memory)
 }
 
-func (a *memoryManagerAdapter) Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*Memory, error) {
+func (a *memoryManagerAdapter) Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*storage.Memory, error) {
 	return a.store.Search(chatCtx.Context(), query, limit)
 }

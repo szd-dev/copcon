@@ -9,16 +9,15 @@ import (
 
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/plugins/embedding-openai"
-	"github.com/copcon/plugins/memory-file"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/core/testutil"
 )
 
 type mockKBStore struct {
-	chunks []*Chunk
+	chunks []*storage.Chunk
 }
 
-func (m *mockKBStore) Search(ctx context.Context, kbIDs []string, query []float32, opts SearchOptions) ([]*Chunk, error) {
+func (m *mockKBStore) Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
 	return m.chunks, nil
 }
 
@@ -63,7 +62,7 @@ func TestKBRecallHookPriority(t *testing.T) {
 func TestKBRecallHookInjectsResults(t *testing.T) {
 	embedder := &mockHookEmbedder{dimensions: 3}
 	kbStore := &mockKBStore{
-		chunks: []*Chunk{
+		chunks: []*storage.Chunk{
 			{Content: "relevant chunk", Score: 0.9},
 		},
 	}
@@ -126,30 +125,30 @@ func TestKBRecallHookNoDependencies(t *testing.T) {
 }
 
 type mockMemoryStore struct {
-	memories []*memoryfile.Memory
+	memories []*storage.Memory
 }
 
-func (m *mockMemoryStore) Store(ctx context.Context, memory *memoryfile.Memory) error {
+func (m *mockMemoryStore) Store(ctx context.Context, memory *storage.Memory) error {
 	m.memories = append(m.memories, memory)
 	return nil
 }
 
-func (m *mockMemoryStore) Search(ctx context.Context, query []float32, limit int) ([]*memoryfile.Memory, error) {
+func (m *mockMemoryStore) Search(ctx context.Context, query []float32, limit int) ([]*storage.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryStore) GetBySession(ctx context.Context, sessionID string, limit int) ([]*memoryfile.Memory, error) {
+func (m *mockMemoryStore) GetBySession(ctx context.Context, sessionID string, limit int) ([]*storage.Memory, error) {
 	return nil, nil
 }
 
 func (m *mockMemoryStore) DeleteBySession(ctx context.Context, sessionID string) error { return nil }
-func (m *mockMemoryStore) List(ctx context.Context, filter memoryfile.MemoryFilter) ([]*memoryfile.Memory, error) {
+func (m *mockMemoryStore) List(ctx context.Context, filter storage.MemoryFilter) ([]*storage.Memory, error) {
 	return nil, nil
 }
-func (m *mockMemoryStore) Get(ctx context.Context, id string) (*memoryfile.Memory, error) {
+func (m *mockMemoryStore) Get(ctx context.Context, id string) (*storage.Memory, error) {
 	return nil, nil
 }
-func (m *mockMemoryStore) Update(ctx context.Context, memory *memoryfile.Memory) error { return nil }
+func (m *mockMemoryStore) Update(ctx context.Context, memory *storage.Memory) error { return nil }
 func (m *mockMemoryStore) Delete(ctx context.Context, id string) error                   { return nil }
 
 func TestMemoryPersistHookName(t *testing.T) {
@@ -254,4 +253,4 @@ func TestIsStopWord(t *testing.T) {
 	assert.True(t, isStopWord("x"))
 }
 
-var _ embedding.Embedder = (*mockHookEmbedder)(nil)
+var _ storage.Embedder = (*mockHookEmbedder)(nil)

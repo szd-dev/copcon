@@ -12,14 +12,5 @@ func (c *memoryForgetType) Type() capabilities.CapabilityType { return capabilit
 func (c *memoryForgetType) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
 
 func (c *memoryForgetType) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	if deps.FileMemoryStore == nil {
-		return nil, nil
-	}
-
-	store, ok := deps.FileMemoryStore.(MemoryStoreAPI)
-	if !ok {
-		return nil, nil
-	}
-
-	return NewMemoryForgetTool(store), nil
+	return nil, nil
 }

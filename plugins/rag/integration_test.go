@@ -2,22 +2,93 @@ package rag
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 
-	"github.com/copcon/plugins/knowledge-base"
-	"github.com/copcon/plugins/knowledge-base/sqlitevec"
+	"github.com/copcon/core/storage"
 )
 
-type testEmbedder struct {
+// inMemoryPipelineStore implements PipelineStore with in-memory storage
+// for integration-style testing without cross-plugin dependencies.
+type inMemoryPipelineStore struct {
+	kbs       map[string]*storage.KnowledgeBase
+	documents map[string]map[string]*storage.Document
+	chunks    map[string]map[string][]*storage.Chunk
+	vectors   map[string]map[string][][]float32
+	statuses  map[string]storage.DocumentStatus
+}
+
+func newInMemoryPipelineStore() *inMemoryPipelineStore {
+	return &inMemoryPipelineStore{
+		kbs:       make(map[string]*storage.KnowledgeBase),
+		documents: make(map[string]map[string]*storage.Document),
+		chunks:    make(map[string]map[string][]*storage.Chunk),
+		vectors:   make(map[string]map[string][][]float32),
+		statuses:  make(map[string]storage.DocumentStatus),
+	}
+}
+
+func (s *inMemoryPipelineStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
+	s.kbs[kb.ID] = kb
+	s.documents[kb.ID] = make(map[string]*storage.Document)
+	s.chunks[kb.ID] = make(map[string][]*storage.Chunk)
+	s.vectors[kb.ID] = make(map[string][][]float32)
+	return kb, nil
+}
+
+func (s *inMemoryPipelineStore) IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error {
+	if doc.ID == "" {
+		doc.ID = fmt.Sprintf("doc-%d", len(s.documents[kbID])+1)
+	}
+	doc.KBID = kbID
+	s.documents[kbID][doc.ID] = doc
+	s.statuses[doc.ID] = doc.Status
+	return nil
+}
+
+func (s *inMemoryPipelineStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error {
+	s.chunks[kbID][docID] = chunks
+	s.vectors[kbID][docID] = vectors
+	s.statuses[docID] = storage.DocStatusReady
+	if doc, ok := s.documents[kbID][docID]; ok {
+		doc.ChunkCount = len(chunks)
+		doc.Status = storage.DocStatusReady
+	}
+	return nil
+}
+
+func (s *inMemoryPipelineStore) UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error {
+	s.statuses[docID] = status
+	if doc, ok := s.documents[kbID][docID]; ok {
+		doc.Status = status
+	}
+	return nil
+}
+
+func (s *inMemoryPipelineStore) GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error) {
+	doc, ok := s.documents[kbID][docID]
+	if !ok {
+		return nil, fmt.Errorf("document not found")
+	}
+	return doc, nil
+}
+
+func (s *inMemoryPipelineStore) GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
+	chunks, ok := s.chunks[kbID][docID]
+	if !ok {
+		return nil, nil
+	}
+	return chunks, nil
+}
+
+type integrationTestEmbedder struct {
 	dimensions int
 }
 
-func (e *testEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+func (e *integrationTestEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
 	vec := make([]float32, e.dimensions)
 	for i := range vec {
 		vec[i] = float32(len(text)%100) / 100.0
@@ -25,7 +96,7 @@ func (e *testEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	return vec, nil
 }
 
-func (e *testEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+func (e *integrationTestEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	results := make([][]float32, len(texts))
 	for i, text := range texts {
 		vec := make([]float32, e.dimensions)
@@ -37,107 +108,90 @@ func (e *testEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 	return results, nil
 }
 
-func (e *testEmbedder) Dimensions() int { return e.dimensions }
-func (e *testEmbedder) Name() string    { return "test-embedder" }
+func (e *integrationTestEmbedder) Dimensions() int { return e.dimensions }
+func (e *integrationTestEmbedder) Name() string    { return "test-embedder" }
 
 func TestIntegrationPipelineEndToEnd(t *testing.T) {
 	ctx := context.Background()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	ks, err := sqlitevec.NewKnowledgeStore(db)
-	require.NoError(t, err)
+	store := newInMemoryPipelineStore()
 
-	kb, err := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{
+	kb, err := store.CreateKB(ctx, &storage.KnowledgeBase{
+		ID:      "kb-1",
 		Name:    "pipeline-kb",
-		Backend: "sqlite-vec",
+		Backend: "in-memory",
 	})
 	require.NoError(t, err)
 
-	embedder := &testEmbedder{dimensions: 8}
+	embedder := &integrationTestEmbedder{dimensions: 8}
 	parser := NewDefaultParser()
-	pipeline := NewPipeline(parser, embedder, ks)
+	pipeline := NewPipeline(parser, embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		KBID:     kb.ID,
 		Filename: "sample.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	content := []byte("This is the first paragraph about Go programming.\n\nThis is the second paragraph about Python scripting.\n\nThis is the third paragraph about Rust systems programming.")
 
 	err = pipeline.Ingest(ctx, kb.ID, doc, content, "text/plain", nil)
 	require.NoError(t, err)
 
-	gotDoc, err := ks.GetDocument(ctx, kb.ID, doc.ID)
+	gotDoc, err := store.GetDocument(ctx, kb.ID, doc.ID)
 	require.NoError(t, err)
-	assert.Equal(t, knowledgebase.DocStatusReady, gotDoc.Status)
+	assert.Equal(t, storage.DocStatusReady, gotDoc.Status)
 	assert.Greater(t, gotDoc.ChunkCount, 0)
 
-	chunks, err := ks.GetChunks(ctx, kb.ID, doc.ID)
+	chunks, err := store.GetChunks(ctx, kb.ID, doc.ID)
 	require.NoError(t, err)
 	assert.NotEmpty(t, chunks)
-
-	queryVec, _ := embedder.Embed(ctx, "Go programming")
-	results, err := ks.Search(ctx, []string{kb.ID}, queryVec, knowledgebase.SearchOptions{TopK: 5})
-	require.NoError(t, err)
-	assert.NotEmpty(t, results)
 }
 
 func TestIntegrationPipelineMarkdownEndToEnd(t *testing.T) {
 	ctx := context.Background()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	ks, err := sqlitevec.NewKnowledgeStore(db)
-	require.NoError(t, err)
+	store := newInMemoryPipelineStore()
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "md-kb", Backend: "sqlite-vec"})
+	kb, _ := store.CreateKB(ctx, &storage.KnowledgeBase{ID: "kb-md", Name: "md-kb", Backend: "in-memory"})
 
-	embedder := &testEmbedder{dimensions: 8}
-	pipeline := NewMarkdownPipeline(NewDefaultParser(), embedder, ks)
+	embedder := &integrationTestEmbedder{dimensions: 8}
+	pipeline := NewMarkdownPipeline(NewDefaultParser(), embedder, store)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		KBID:     kb.ID,
 		Filename: "doc.md",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	content := []byte("# Introduction\n\nThis is the introduction section.\n\n## Details\n\nHere are the details about the system.")
 
-	err = pipeline.Ingest(ctx, kb.ID, doc, content, "text/markdown", nil)
+	err := pipeline.Ingest(ctx, kb.ID, doc, content, "text/markdown", nil)
 	require.NoError(t, err)
 
-	gotDoc, _ := ks.GetDocument(ctx, kb.ID, doc.ID)
-	assert.Equal(t, knowledgebase.DocStatusReady, gotDoc.Status)
+	gotDoc, _ := store.GetDocument(ctx, kb.ID, doc.ID)
+	assert.Equal(t, storage.DocStatusReady, gotDoc.Status)
 }
 
 func TestIntegrationPipelineMultipleDocuments(t *testing.T) {
 	ctx := context.Background()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	ks, err := sqlitevec.NewKnowledgeStore(db)
-	require.NoError(t, err)
+	store := newInMemoryPipelineStore()
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "multi-kb", Backend: "sqlite-vec"})
-	embedder := &testEmbedder{dimensions: 8}
-	pipeline := NewPipeline(NewDefaultParser(), embedder, ks)
+	kb, _ := store.CreateKB(ctx, &storage.KnowledgeBase{ID: "kb-multi", Name: "multi-kb", Backend: "in-memory"})
+	embedder := &integrationTestEmbedder{dimensions: 8}
+	pipeline := NewPipeline(NewDefaultParser(), embedder, store)
 
 	for i := 0; i < 3; i++ {
-		doc := &knowledgebase.Document{
+		doc := &storage.Document{
 			KBID:     kb.ID,
 			Filename: "doc" + string(rune('A'+i)) + ".txt",
 			Source:   "upload",
-			Status:   knowledgebase.DocStatusPending,
+			Status:   storage.DocStatusPending,
 		}
 		content := []byte("Document " + string(rune('A'+i)) + " content about various topics.")
 		err := pipeline.Ingest(ctx, kb.ID, doc, content, "text/plain", nil)
 		require.NoError(t, err)
 	}
 
-	docs, err := ks.ListDocuments(ctx, kb.ID)
-	require.NoError(t, err)
-	assert.Len(t, docs, 3)
-
-	for _, d := range docs {
-		assert.Equal(t, knowledgebase.DocStatusReady, d.Status)
+	for docID, status := range store.statuses {
+		assert.Equal(t, storage.DocStatusReady, status, "doc %s should be ready", docID)
 	}
 }

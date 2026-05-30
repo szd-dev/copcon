@@ -63,13 +63,9 @@ type CapabilityDeps struct {
 	SessionStore        storage.SessionStore
 	MessageStore        storage.MessageStore
 	TodoStore           storage.TodoStore
-	MemoryStore         interface{} // was: storage.MemoryStore — moved to plugins/memory-file
-	FileMemoryStore     interface{} // filememory.FileMemoryStore — typed as interface{} to avoid circular imports
 	AgentRegistry       agent.AgentRegistry
 	Engine              interface{} // AgentEngine — typed as interface{} to avoid circular imports
 	Logger              *slog.Logger
-	KnowledgeStore      interface{} // storage.KnowledgeStore — typed as interface{} to avoid circular imports
-	Embedder            interface{} // embedding.Embedder — typed as interface{} to avoid circular imports
 	AgentKnowledgeBases map[string][]string // agentID → KB IDs
 }
 

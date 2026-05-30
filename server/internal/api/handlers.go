@@ -12,38 +12,37 @@ import (
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/iface"
-	"github.com/copcon/plugins/embedding-openai"
-	"github.com/copcon/plugins/rag"
+	"github.com/copcon/core/storage"
 	"github.com/copcon/plugins/knowledge-base"
 	"github.com/copcon/plugins/memory-file"
-	"github.com/copcon/core/storage"
+	"github.com/copcon/plugins/rag"
 	"github.com/copcon/server/internal/config"
 )
 
 type Handler struct {
-	config        *config.Config
-	sessionStore  storage.SessionStore
-	messageStore  storage.MessageStore
-	todoStore     storage.TodoStore
+	config         *config.Config
+	sessionStore   storage.SessionStore
+	messageStore   storage.MessageStore
+	todoStore      storage.TodoStore
 	knowledgeStore knowledgebase.KnowledgeStore
-	memoryStore   memoryfile.MemoryStore
-	embedder      embedding.Embedder
-	ragPipeline   *rag.Pipeline
-	agent         agent.AgentEngine
-	agentRegistry agent.AgentRegistry
-	chatStore     chat.ActiveSessions
+	memoryStore    memoryfile.MemoryStore
+	embedder       storage.Embedder
+	ragPipeline    *rag.Pipeline
+	agent          agent.AgentEngine
+	agentRegistry  agent.AgentRegistry
+	chatStore      chat.ActiveSessions
 }
 
 func NewHandler(cfg *config.Config, h core.APIProvider, opts ...HandlerOption) *Handler {
 	handler := &Handler{
-		config:        cfg,
-		sessionStore:  h.Store().Sessions(),
-		messageStore:  h.Store().Messages(),
-		todoStore:     h.Store().Todos(),
-		knowledgeStore: nil, // populated via HandlerOption if available
-		agent:         h.Engine(),
-		agentRegistry: h.Registry(),
-		chatStore:     h.ActiveSessions(),
+		config:         cfg,
+		sessionStore:   h.Store().Sessions(),
+		messageStore:   h.Store().Messages(),
+		todoStore:      h.Store().Todos(),
+		knowledgeStore: nil,
+		agent:          h.Engine(),
+		agentRegistry:  h.Registry(),
+		chatStore:      h.ActiveSessions(),
 	}
 	for _, opt := range opts {
 		opt(handler)
@@ -57,7 +56,7 @@ func WithMemoryStore(ms memoryfile.MemoryStore) HandlerOption {
 	return func(h *Handler) { h.memoryStore = ms }
 }
 
-func WithEmbedder(e embedding.Embedder) HandlerOption {
+func WithEmbedder(e storage.Embedder) HandlerOption {
 	return func(h *Handler) { h.embedder = e }
 }
 
@@ -75,7 +74,6 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		DefaultAgentID string `json:"default_agent_id"`
 	}
 
-	// Bind JSON body if present, but allow empty body for backward compatibility
 	if c.Request.ContentLength > 0 {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -83,13 +81,11 @@ func (h *Handler) CreateSession(c *gin.Context) {
 		}
 	}
 
-	// Use provided title or default
 	title := req.Title
 	if title == "" {
 		title = "New Chat"
 	}
 
-	// Use provided agent ID or fall back to config default
 	defaultAgentID := req.DefaultAgentID
 	if defaultAgentID == "" {
 		defaultAgentID = h.config.DefaultAgentID
@@ -362,19 +358,17 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider, opts ...
 			sessions.DELETE("/:sessionId/memories/:memoryId", handler.DeleteSessionMemory)
 		}
 
-		if handler.knowledgeStore != nil {
-			kb := api.Group("/kb")
-			{
-				kb.POST("", handler.CreateKB)
-				kb.GET("", handler.ListKBs)
-				kb.GET("/:kbId", handler.GetKB)
-				kb.DELETE("/:kbId", handler.DeleteKB)
-				kb.POST("/:kbId/docs", handler.UploadDocument)
-				kb.GET("/:kbId/docs", handler.ListDocuments)
-				kb.GET("/:kbId/docs/:docId", handler.GetDocument)
-				kb.DELETE("/:kbId/docs/:docId", handler.DeleteDocument)
-				kb.POST("/:kbId/search", handler.SearchKB)
-			}
+		kb := api.Group("/kb")
+		{
+			kb.POST("", handler.CreateKB)
+			kb.GET("", handler.ListKBs)
+			kb.GET("/:kbId", handler.GetKB)
+			kb.DELETE("/:kbId", handler.DeleteKB)
+			kb.POST("/:kbId/docs", handler.UploadDocument)
+			kb.GET("/:kbId/docs", handler.ListDocuments)
+			kb.GET("/:kbId/docs/:docId", handler.GetDocument)
+			kb.DELETE("/:kbId/docs/:docId", handler.DeleteDocument)
+			kb.POST("/:kbId/search", handler.SearchKB)
 		}
 	}
 }

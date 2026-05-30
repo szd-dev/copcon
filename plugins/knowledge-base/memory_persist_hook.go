@@ -9,22 +9,21 @@ import (
 	"unicode"
 
 	"github.com/copcon/core/hook"
-	"github.com/copcon/plugins/embedding-openai"
-	"github.com/copcon/plugins/memory-file"
+	"github.com/copcon/core/storage"
 )
 
 type MemoryPersistHook struct {
-	embedder    embedding.Embedder
+	embedder    storage.Embedder
 	memoryStore MemoryStorePersister
 	logger      *slog.Logger
 }
 
 type MemoryStorePersister interface {
-	Store(ctx context.Context, memory *memoryfile.Memory) error
-	Search(ctx context.Context, query []float32, limit int) ([]*memoryfile.Memory, error)
+	Store(ctx context.Context, memory *storage.Memory) error
+	Search(ctx context.Context, query []float32, limit int) ([]*storage.Memory, error)
 }
 
-func NewMemoryPersistHook(embedder embedding.Embedder, memoryStore MemoryStorePersister) *MemoryPersistHook {
+func NewMemoryPersistHook(embedder storage.Embedder, memoryStore MemoryStorePersister) *MemoryPersistHook {
 	return &MemoryPersistHook{
 		embedder:    embedder,
 		memoryStore: memoryStore,
@@ -82,7 +81,7 @@ func (h *MemoryPersistHook) persistAsync(
 	ctx context.Context,
 	sessionID string,
 	content string,
-	embedder embedding.Embedder,
+	embedder storage.Embedder,
 	store MemoryStorePersister,
 	logger *slog.Logger,
 ) {
@@ -110,11 +109,11 @@ func (h *MemoryPersistHook) persistAsync(
 		return
 	}
 
-	memory := &memoryfile.Memory{
+	memory := &storage.Memory{
 		Content:    content,
 		SessionID:  sessionID,
 		Role:       "assistant",
-		MemoryType: string(memoryfile.MemoryTypeSemantic),
+		MemoryType: string(storage.MemoryTypeSemantic),
 		Metadata:   map[string]any{"keywords": strings.Join(keywords, ",")},
 	}
 

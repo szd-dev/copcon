@@ -18,31 +18,28 @@ import (
 
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/chat"
-	"github.com/copcon/plugins/embedding-openai"
-	"github.com/copcon/plugins/knowledge-base"
-	"github.com/copcon/plugins/memory-file"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/config"
 )
 
 type mockKnowledgeStore struct {
-	kbs  map[string]*knowledgebase.KnowledgeBase
-	docs map[string]map[string]*knowledgebase.Document
+	kbs  map[string]*storage.KnowledgeBase
+	docs map[string]map[string]*storage.Document
 }
 
 func newMockKnowledgeStore() *mockKnowledgeStore {
 	return &mockKnowledgeStore{
-		kbs:  make(map[string]*knowledgebase.KnowledgeBase),
-		docs: make(map[string]map[string]*knowledgebase.Document),
+		kbs:  make(map[string]*storage.KnowledgeBase),
+		docs: make(map[string]map[string]*storage.Document),
 	}
 }
 
-func (m *mockKnowledgeStore) CreateKB(_ context.Context, kb *knowledgebase.KnowledgeBase) (*knowledgebase.KnowledgeBase, error) {
+func (m *mockKnowledgeStore) CreateKB(_ context.Context, kb *storage.KnowledgeBase) (*storage.KnowledgeBase, error) {
 	if kb.ID == "" {
 		kb.ID = uuid.New().String()
 	}
 	m.kbs[kb.ID] = kb
-	m.docs[kb.ID] = make(map[string]*knowledgebase.Document)
+	m.docs[kb.ID] = make(map[string]*storage.Document)
 	return kb, nil
 }
 
@@ -55,15 +52,15 @@ func (m *mockKnowledgeStore) DeleteKB(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *mockKnowledgeStore) ListKBs(_ context.Context) ([]*knowledgebase.KnowledgeBase, error) {
-	var list []*knowledgebase.KnowledgeBase
+func (m *mockKnowledgeStore) ListKBs(_ context.Context) ([]*storage.KnowledgeBase, error) {
+	var list []*storage.KnowledgeBase
 	for _, kb := range m.kbs {
 		list = append(list, kb)
 	}
 	return list, nil
 }
 
-func (m *mockKnowledgeStore) GetKB(_ context.Context, id string) (*knowledgebase.KnowledgeBase, error) {
+func (m *mockKnowledgeStore) GetKB(_ context.Context, id string) (*storage.KnowledgeBase, error) {
 	kb, ok := m.kbs[id]
 	if !ok {
 		return nil, fmt.Errorf("knowledge base not found")
@@ -71,7 +68,7 @@ func (m *mockKnowledgeStore) GetKB(_ context.Context, id string) (*knowledgebase
 	return kb, nil
 }
 
-func (m *mockKnowledgeStore) IngestDocument(_ context.Context, kbID string, doc *knowledgebase.Document, _ []byte) error {
+func (m *mockKnowledgeStore) IngestDocument(_ context.Context, kbID string, doc *storage.Document, _ []byte) error {
 	if _, ok := m.kbs[kbID]; !ok {
 		return fmt.Errorf("knowledge base not found")
 	}
@@ -83,12 +80,12 @@ func (m *mockKnowledgeStore) IngestDocument(_ context.Context, kbID string, doc 
 	return nil
 }
 
-func (m *mockKnowledgeStore) ListDocuments(_ context.Context, kbID string) ([]*knowledgebase.Document, error) {
+func (m *mockKnowledgeStore) ListDocuments(_ context.Context, kbID string) ([]*storage.Document, error) {
 	docs, ok := m.docs[kbID]
 	if !ok {
 		return nil, fmt.Errorf("knowledge base not found")
 	}
-	var list []*knowledgebase.Document
+	var list []*storage.Document
 	for _, doc := range docs {
 		list = append(list, doc)
 	}
@@ -107,7 +104,7 @@ func (m *mockKnowledgeStore) DeleteDocument(_ context.Context, kbID string, docI
 	return nil
 }
 
-func (m *mockKnowledgeStore) GetDocument(_ context.Context, kbID string, docID string) (*knowledgebase.Document, error) {
+func (m *mockKnowledgeStore) GetDocument(_ context.Context, kbID string, docID string) (*storage.Document, error) {
 	docs, ok := m.docs[kbID]
 	if !ok {
 		return nil, fmt.Errorf("knowledge base not found")
@@ -119,29 +116,29 @@ func (m *mockKnowledgeStore) GetDocument(_ context.Context, kbID string, docID s
 	return doc, nil
 }
 
-func (m *mockKnowledgeStore) GetChunks(_ context.Context, kbID string, docID string) ([]*knowledgebase.Chunk, error) {
+func (m *mockKnowledgeStore) GetChunks(_ context.Context, kbID string, docID string) ([]*storage.Chunk, error) {
 	return nil, nil
 }
 
-func (m *mockKnowledgeStore) UpdateChunk(_ context.Context, kbID string, chunk *knowledgebase.Chunk) error {
+func (m *mockKnowledgeStore) UpdateChunk(_ context.Context, kbID string, chunk *storage.Chunk) error {
 	return nil
 }
 
-func (m *mockKnowledgeStore) Search(_ context.Context, kbIDs []string, query []float32, opts knowledgebase.SearchOptions) ([]*knowledgebase.Chunk, error) {
+func (m *mockKnowledgeStore) Search(_ context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error) {
 	return nil, nil
 }
 
 type mockMemoryStore struct {
-	memories map[string]*memoryfile.Memory
+	memories map[string]*storage.Memory
 }
 
 func newMockMemoryStore() *mockMemoryStore {
 	return &mockMemoryStore{
-		memories: make(map[string]*memoryfile.Memory),
+		memories: make(map[string]*storage.Memory),
 	}
 }
 
-func (m *mockMemoryStore) Store(_ context.Context, memory *memoryfile.Memory) error {
+func (m *mockMemoryStore) Store(_ context.Context, memory *storage.Memory) error {
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
 	}
@@ -149,12 +146,12 @@ func (m *mockMemoryStore) Store(_ context.Context, memory *memoryfile.Memory) er
 	return nil
 }
 
-func (m *mockMemoryStore) Search(_ context.Context, query []float32, limit int) ([]*memoryfile.Memory, error) {
+func (m *mockMemoryStore) Search(_ context.Context, query []float32, limit int) ([]*storage.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryStore) GetBySession(_ context.Context, sessionID string, limit int) ([]*memoryfile.Memory, error) {
-	var result []*memoryfile.Memory
+func (m *mockMemoryStore) GetBySession(_ context.Context, sessionID string, limit int) ([]*storage.Memory, error) {
+	var result []*storage.Memory
 	for _, mem := range m.memories {
 		if mem.SessionID == sessionID {
 			result = append(result, mem)
@@ -172,11 +169,11 @@ func (m *mockMemoryStore) DeleteBySession(_ context.Context, sessionID string) e
 	return nil
 }
 
-func (m *mockMemoryStore) List(_ context.Context, filter memoryfile.MemoryFilter) ([]*memoryfile.Memory, error) {
+func (m *mockMemoryStore) List(_ context.Context, filter storage.MemoryFilter) ([]*storage.Memory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryStore) Get(_ context.Context, id string) (*memoryfile.Memory, error) {
+func (m *mockMemoryStore) Get(_ context.Context, id string) (*storage.Memory, error) {
 	mem, ok := m.memories[id]
 	if !ok {
 		return nil, fmt.Errorf("memory not found")
@@ -184,7 +181,7 @@ func (m *mockMemoryStore) Get(_ context.Context, id string) (*memoryfile.Memory,
 	return mem, nil
 }
 
-func (m *mockMemoryStore) Update(_ context.Context, memory *memoryfile.Memory) error {
+func (m *mockMemoryStore) Update(_ context.Context, memory *storage.Memory) error {
 	m.memories[memory.ID] = memory
 	return nil
 }
@@ -224,12 +221,10 @@ func (e *mockEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]float3
 func (e *mockEmbedder) Dimensions() int { return e.dimensions }
 func (e *mockEmbedder) Name() string    { return "mock-embedder" }
 
-var _ embedding.Embedder = (*mockEmbedder)(nil)
-
 type kbTestStoreProvider struct {
-	sessionStore  *mockSessionStore
-	messageStore  *mockMessageStore
-	todoStore     *mockTodoStore
+	sessionStore   *mockSessionStore
+	messageStore   *mockMessageStore
+	todoStore      *mockTodoStore
 	knowledgeStore *mockKnowledgeStore
 }
 
@@ -341,8 +336,8 @@ func TestListKBs(t *testing.T) {
 
 	_, ks, _, _ := setupKBTestHandler(t)
 
-	ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "KB1", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
-	ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "KB2", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "KB1", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "KB2", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	req, _ := http.NewRequest("GET", "/api/kb", nil)
 	w := httptest.NewRecorder()
@@ -354,7 +349,7 @@ func TestListKBs(t *testing.T) {
 func TestGetKB(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Test KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Test KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	req, _ := http.NewRequest("GET", "/api/kb/"+kb.ID, nil)
 	w := httptest.NewRecorder()
@@ -382,7 +377,7 @@ func TestGetKBNotFound(t *testing.T) {
 func TestDeleteKB(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "To Delete", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "To Delete", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	req, _ := http.NewRequest("DELETE", "/api/kb/"+kb.ID, nil)
 	w := httptest.NewRecorder()
@@ -397,8 +392,8 @@ func TestDeleteKB(t *testing.T) {
 func TestDeleteKBCascade(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Cascade KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
-	ks.IngestDocument(context.Background(), kb.ID, &knowledgebase.Document{Filename: "test.txt", Source: "upload", Status: knowledgebase.DocStatusPending, CreatedAt: time.Now(), UpdatedAt: time.Now()}, []byte("content"))
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Cascade KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	ks.IngestDocument(context.Background(), kb.ID, &storage.Document{Filename: "test.txt", Source: "upload", Status: storage.DocStatusPending, CreatedAt: time.Now(), UpdatedAt: time.Now()}, []byte("content"))
 
 	req, _ := http.NewRequest("DELETE", "/api/kb/"+kb.ID, nil)
 	w := httptest.NewRecorder()
@@ -423,7 +418,7 @@ func TestDeleteKBNotFound(t *testing.T) {
 func TestUploadDocument(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Upload KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Upload KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -445,13 +440,13 @@ func TestUploadDocument(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test.txt", resp["filename"])
 	assert.Equal(t, "upload", resp["source"])
-	assert.Equal(t, string(knowledgebase.DocStatusPending), resp["status"])
+	assert.Equal(t, string(storage.DocStatusPending), resp["status"])
 }
 
 func TestUploadDocumentNoFile(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Upload KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Upload KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	req, _ := http.NewRequest("POST", "/api/kb/"+kb.ID+"/docs", nil)
 	w := httptest.NewRecorder()
@@ -480,9 +475,9 @@ func TestUploadDocumentKBNotFound(t *testing.T) {
 func TestListDocuments(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "List Docs KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
-	ks.IngestDocument(context.Background(), kb.ID, &knowledgebase.Document{Filename: "a.txt", Source: "upload", Status: knowledgebase.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil)
-	ks.IngestDocument(context.Background(), kb.ID, &knowledgebase.Document{Filename: "b.txt", Source: "upload", Status: knowledgebase.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil)
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "List Docs KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	ks.IngestDocument(context.Background(), kb.ID, &storage.Document{Filename: "a.txt", Source: "upload", Status: storage.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil)
+	ks.IngestDocument(context.Background(), kb.ID, &storage.Document{Filename: "b.txt", Source: "upload", Status: storage.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil)
 
 	req, _ := http.NewRequest("GET", "/api/kb/"+kb.ID+"/docs", nil)
 	w := httptest.NewRecorder()
@@ -501,8 +496,8 @@ func TestListDocuments(t *testing.T) {
 func TestGetDocument(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Get Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
-	doc := &knowledgebase.Document{ID: uuid.New().String(), Filename: "test.txt", Source: "upload", Status: knowledgebase.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Get Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	doc := &storage.Document{ID: uuid.New().String(), Filename: "test.txt", Source: "upload", Status: storage.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	ks.IngestDocument(context.Background(), kb.ID, doc, nil)
 
 	req, _ := http.NewRequest("GET", "/api/kb/"+kb.ID+"/docs/"+doc.ID, nil)
@@ -520,7 +515,7 @@ func TestGetDocument(t *testing.T) {
 func TestGetDocumentNotFound(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Get Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Get Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	req, _ := http.NewRequest("GET", "/api/kb/"+kb.ID+"/docs/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -532,8 +527,8 @@ func TestGetDocumentNotFound(t *testing.T) {
 func TestDeleteDocument(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Delete Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
-	doc := &knowledgebase.Document{ID: uuid.New().String(), Filename: "del.txt", Source: "upload", Status: knowledgebase.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Delete Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	doc := &storage.Document{ID: uuid.New().String(), Filename: "del.txt", Source: "upload", Status: storage.DocStatusReady, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	ks.IngestDocument(context.Background(), kb.ID, doc, nil)
 
 	req, _ := http.NewRequest("DELETE", "/api/kb/"+kb.ID+"/docs/"+doc.ID, nil)
@@ -549,7 +544,7 @@ func TestDeleteDocument(t *testing.T) {
 func TestDeleteDocumentNotFound(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Delete Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Delete Doc KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	req, _ := http.NewRequest("DELETE", "/api/kb/"+kb.ID+"/docs/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -561,7 +556,7 @@ func TestDeleteDocumentNotFound(t *testing.T) {
 func TestSearchKB(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Search KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Search KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	body := `{"query":"test query","top_k":5}`
 	req, _ := http.NewRequest("POST", "/api/kb/"+kb.ID+"/search", bytes.NewBufferString(body))
@@ -575,7 +570,7 @@ func TestSearchKB(t *testing.T) {
 func TestSearchKBMissingQuery(t *testing.T) {
 	_, ks, _, router := setupKBTestHandler(t)
 
-	kb, _ := ks.CreateKB(context.Background(), &knowledgebase.KnowledgeBase{Name: "Search KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
+	kb, _ := ks.CreateKB(context.Background(), &storage.KnowledgeBase{Name: "Search KB", Backend: "sqlite-vec", CreatedAt: time.Now(), UpdatedAt: time.Now()})
 
 	body := `{"top_k":5}`
 	req, _ := http.NewRequest("POST", "/api/kb/"+kb.ID+"/search", bytes.NewBufferString(body))
@@ -602,8 +597,8 @@ func TestListSessionMemories(t *testing.T) {
 	_, _, ms, router := setupKBTestHandler(t)
 
 	sessionID := uuid.New().String()
-	ms.Store(context.Background(), &memoryfile.Memory{Content: "memory 1", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "episodic"})
-	ms.Store(context.Background(), &memoryfile.Memory{Content: "memory 2", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "semantic"})
+	ms.Store(context.Background(), &storage.Memory{Content: "memory 1", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "episodic"})
+	ms.Store(context.Background(), &storage.Memory{Content: "memory 2", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "semantic"})
 
 	req, _ := http.NewRequest("GET", "/api/sessions/"+sessionID+"/memories", nil)
 	w := httptest.NewRecorder()
@@ -642,7 +637,7 @@ func TestDeleteSessionMemory(t *testing.T) {
 	_, _, ms, router := setupKBTestHandler(t)
 
 	sessionID := uuid.New().String()
-	ms.Store(context.Background(), &memoryfile.Memory{Content: "to delete", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "episodic"})
+	ms.Store(context.Background(), &storage.Memory{Content: "to delete", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "episodic"})
 
 	var memoryID string
 	for id := range ms.memories {
@@ -662,7 +657,7 @@ func TestDeleteSessionMemoryWrongSession(t *testing.T) {
 
 	sessionID := uuid.New().String()
 	otherSessionID := uuid.New().String()
-	ms.Store(context.Background(), &memoryfile.Memory{Content: "owned by session1", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "episodic"})
+	ms.Store(context.Background(), &storage.Memory{Content: "owned by session1", SessionID: sessionID, Timestamp: time.Now(), MemoryType: "episodic"})
 
 	var memoryID string
 	for id := range ms.memories {
@@ -777,7 +772,7 @@ func TestSetupRoutesConditionalKB(t *testing.T) {
 			break
 		}
 	}
-	assert.False(t, hasKBRoutes, "KB routes should not be registered when KnowledgeStore is nil")
+	assert.True(t, hasKBRoutes, "KB routes should always be registered")
 }
 
 func TestSetupRoutesWithKB(t *testing.T) {

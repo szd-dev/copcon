@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/copcon/core/storage"
 )
 
 // FileMemoryStoreInterface extends MemoryStore with file-level operations
@@ -62,7 +64,7 @@ func (s *FileMemoryStore) BasePath() string {
 
 // --- MemoryStore implementation ---
 
-func (s *FileMemoryStore) Store(ctx context.Context, memory *Memory) error {
+func (s *FileMemoryStore) Store(ctx context.Context, memory *storage.Memory) error {
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
 	}
@@ -70,7 +72,7 @@ func (s *FileMemoryStore) Store(ctx context.Context, memory *Memory) error {
 		memory.Timestamp = time.Now()
 	}
 	if memory.MemoryType == "" {
-		memory.MemoryType = string(MemoryTypeConversation)
+		memory.MemoryType = string(storage.MemoryTypeConversation)
 	}
 
 	agentID := memory.SessionID
@@ -122,15 +124,15 @@ func (s *FileMemoryStore) Store(ctx context.Context, memory *Memory) error {
 	return BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes)
 }
 
-func (s *FileMemoryStore) Search(ctx context.Context, query []float32, limit int) ([]*Memory, error) {
+func (s *FileMemoryStore) Search(ctx context.Context, query []float32, limit int) ([]*storage.Memory, error) {
 	return nil, fmt.Errorf("file memory does not support vector search; use keyword recall instead")
 }
 
-func (s *FileMemoryStore) GetBySession(ctx context.Context, sessionID string, limit int) ([]*Memory, error) {
+func (s *FileMemoryStore) GetBySession(ctx context.Context, sessionID string, limit int) ([]*storage.Memory, error) {
 	agentID := sessionID
 	agentDir := AgentDir(s.basePath, agentID)
 
-	var results []*Memory
+	var results []*storage.Memory
 	for _, subdir := range []string{"knowledge", "archive"} {
 		dir := filepath.Join(agentDir, subdir)
 		entries, err := os.ReadDir(dir)
@@ -164,8 +166,8 @@ func (s *FileMemoryStore) DeleteBySession(ctx context.Context, sessionID string)
 	return os.RemoveAll(agentDir)
 }
 
-func (s *FileMemoryStore) List(ctx context.Context, filter MemoryFilter) ([]*Memory, error) {
-	var results []*Memory
+func (s *FileMemoryStore) List(ctx context.Context, filter storage.MemoryFilter) ([]*storage.Memory, error) {
+	var results []*storage.Memory
 
 	agentID := filter.SessionID
 	if agentID == "" {
@@ -209,7 +211,7 @@ func (s *FileMemoryStore) List(ctx context.Context, filter MemoryFilter) ([]*Mem
 	return results, nil
 }
 
-func (s *FileMemoryStore) Get(ctx context.Context, id string) (*Memory, error) {
+func (s *FileMemoryStore) Get(ctx context.Context, id string) (*storage.Memory, error) {
 	agentDir := s.basePath
 
 	for _, subdir := range []string{"knowledge", "archive"} {
@@ -227,7 +229,7 @@ func (s *FileMemoryStore) Get(ctx context.Context, id string) (*Memory, error) {
 	return nil, fmt.Errorf("memory not found: %s", id)
 }
 
-func (s *FileMemoryStore) Update(ctx context.Context, memory *Memory) error {
+func (s *FileMemoryStore) Update(ctx context.Context, memory *storage.Memory) error {
 	agentID := memory.SessionID
 	if agentID == "" {
 		return fmt.Errorf("memory SessionID (used as agentID) must not be empty")
@@ -379,7 +381,7 @@ func (s *FileMemoryStore) fullPath(agentID, relPath string) string {
 	return filepath.Join(s.basePath, agentID, relPath)
 }
 
-func (s *FileMemoryStore) readMemoryFile(path, sessionID string) (*Memory, error) {
+func (s *FileMemoryStore) readMemoryFile(path, sessionID string) (*storage.Memory, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -390,7 +392,7 @@ func (s *FileMemoryStore) readMemoryFile(path, sessionID string) (*Memory, error
 		return nil, err
 	}
 
-	mem := &Memory{
+	mem := &storage.Memory{
 		ID:         strings.TrimSuffix(filepath.Base(path), ".md"),
 		Content:    body,
 		SessionID:  sessionID,
@@ -409,16 +411,16 @@ func (s *FileMemoryStore) readMemoryFile(path, sessionID string) (*Memory, error
 
 func categoryFromType(memType string) string {
 	switch memType {
-	case string(MemoryTypeEpisodic), string(MemoryTypeSemantic):
+	case string(storage.MemoryTypeEpisodic), string(storage.MemoryTypeSemantic):
 		return "knowledge"
-	case string(MemoryTypeProcedural):
+	case string(storage.MemoryTypeProcedural):
 		return "archive"
 	default:
 		return "knowledge"
 	}
 }
 
-func matchesFilter(mem *Memory, filter MemoryFilter) bool {
+func matchesFilter(mem *storage.Memory, filter storage.MemoryFilter) bool {
 	if len(filter.MemoryType) > 0 {
 		found := false
 		for _, mt := range filter.MemoryType {

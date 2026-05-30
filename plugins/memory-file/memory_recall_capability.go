@@ -12,14 +12,5 @@ func (c *memoryRecallCapability) Type() capabilities.CapabilityType { return cap
 func (c *memoryRecallCapability) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
 
 func (c *memoryRecallCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	if deps.FileMemoryStore == nil {
-		return nil, nil
-	}
-
-	store, ok := deps.FileMemoryStore.(MemoryStoreAPI)
-	if !ok {
-		return nil, nil
-	}
-
-	return NewMemoryRecallTool(store), nil
+	return nil, nil
 }

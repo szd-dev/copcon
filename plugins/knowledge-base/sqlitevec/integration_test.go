@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/core/storage"
 )
 
 func TestIntegrationKBLifecycle(t *testing.T) {
@@ -19,23 +19,23 @@ func TestIntegrationKBLifecycle(t *testing.T) {
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)
 
-	kb, err := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{
+	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{
 		Name:    "integration-kb",
 		Backend: "sqlite-vec",
 		Config:  map[string]any{"purpose": "integration test"},
 	})
 	require.NoError(t, err)
 
-	doc := &knowledgebase.Document{
+	doc := &storage.Document{
 		KBID:     kb.ID,
 		Filename: "test.txt",
 		Source:   "upload",
-		Status:   knowledgebase.DocStatusPending,
+		Status:   storage.DocStatusPending,
 	}
 	err = ks.IngestDocument(ctx, kb.ID, doc, []byte("test content"))
 	require.NoError(t, err)
 
-	chunks := []*knowledgebase.Chunk{
+	chunks := []*storage.Chunk{
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "Go is a programming language", Index: 0, TokenCount: 6},
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "Rust is a systems language", Index: 1, TokenCount: 5},
 		{DocumentID: doc.ID, KBID: kb.ID, Content: "Python is a scripting language", Index: 2, TokenCount: 5},
@@ -51,7 +51,7 @@ func TestIntegrationKBLifecycle(t *testing.T) {
 
 	gotDoc, err := ks.GetDocument(ctx, kb.ID, doc.ID)
 	require.NoError(t, err)
-	assert.Equal(t, knowledgebase.DocStatusReady, gotDoc.Status)
+	assert.Equal(t, storage.DocStatusReady, gotDoc.Status)
 	assert.Equal(t, 3, gotDoc.ChunkCount)
 
 	gotChunks, err := ks.GetChunks(ctx, kb.ID, doc.ID)
@@ -59,7 +59,7 @@ func TestIntegrationKBLifecycle(t *testing.T) {
 	assert.Len(t, gotChunks, 3)
 	assert.Equal(t, "Go is a programming language", gotChunks[0].Content)
 
-	results, err := ks.Search(ctx, []string{kb.ID}, []float32{1.0, 0.1, 0.0}, knowledgebase.SearchOptions{TopK: 2})
+	results, err := ks.Search(ctx, []string{kb.ID}, []float32{1.0, 0.1, 0.0}, storage.SearchOptions{TopK: 2})
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
 	assert.Equal(t, "Go is a programming language", results[0].Content)
@@ -86,26 +86,26 @@ func TestIntegrationMultiKBSearch(t *testing.T) {
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)
 
-	kb1, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "kb1", Backend: "sqlite-vec"})
-	kb2, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "kb2", Backend: "sqlite-vec"})
+	kb1, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb1", Backend: "sqlite-vec"})
+	kb2, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb2", Backend: "sqlite-vec"})
 
-	doc1 := &knowledgebase.Document{KBID: kb1.ID, Filename: "doc1.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	doc1 := &storage.Document{KBID: kb1.ID, Filename: "doc1.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb1.ID, doc1, nil)
-	ks.StoreChunks(ctx, kb1.ID, doc1.ID, []*knowledgebase.Chunk{
+	ks.StoreChunks(ctx, kb1.ID, doc1.ID, []*storage.Chunk{
 		{DocumentID: doc1.ID, KBID: kb1.ID, Content: "cats are furry", Index: 0},
 	}, [][]float32{{1.0, 0.0}})
 
-	doc2 := &knowledgebase.Document{KBID: kb2.ID, Filename: "doc2.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	doc2 := &storage.Document{KBID: kb2.ID, Filename: "doc2.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb2.ID, doc2, nil)
-	ks.StoreChunks(ctx, kb2.ID, doc2.ID, []*knowledgebase.Chunk{
+	ks.StoreChunks(ctx, kb2.ID, doc2.ID, []*storage.Chunk{
 		{DocumentID: doc2.ID, KBID: kb2.ID, Content: "dogs are loyal", Index: 0},
 	}, [][]float32{{0.0, 1.0}})
 
-	results, err := ks.Search(ctx, []string{kb1.ID, kb2.ID}, []float32{1.0, 0.5}, knowledgebase.SearchOptions{TopK: 10})
+	results, err := ks.Search(ctx, []string{kb1.ID, kb2.ID}, []float32{1.0, 0.5}, storage.SearchOptions{TopK: 10})
 	require.NoError(t, err)
 	assert.Len(t, results, 2)
 
-	results, err = ks.Search(ctx, []string{kb1.ID}, []float32{1.0, 0.0}, knowledgebase.SearchOptions{TopK: 10})
+	results, err = ks.Search(ctx, []string{kb1.ID}, []float32{1.0, 0.0}, storage.SearchOptions{TopK: 10})
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "cats are furry", results[0].Content)
@@ -118,8 +118,8 @@ func TestIntegrationVectorSearchAccuracy(t *testing.T) {
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)
 
-	kb, _ := ks.CreateKB(ctx, &knowledgebase.KnowledgeBase{Name: "accuracy-kb", Backend: "sqlite-vec"})
-	doc := &knowledgebase.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: knowledgebase.DocStatusPending}
+	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "accuracy-kb", Backend: "sqlite-vec"})
+	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
 	ks.IngestDocument(ctx, kb.ID, doc, nil)
 
 	chunkData := []struct {
@@ -131,10 +131,10 @@ func TestIntegrationVectorSearchAccuracy(t *testing.T) {
 		{"database optimization", []float32{0.0, 0.1, 0.9}},
 	}
 
-	var chunks []*knowledgebase.Chunk
+	var chunks []*storage.Chunk
 	var vectors [][]float32
 	for i, d := range chunkData {
-		chunks = append(chunks, &knowledgebase.Chunk{
+		chunks = append(chunks, &storage.Chunk{
 			DocumentID: doc.ID, KBID: kb.ID, Content: d.content, Index: i,
 		})
 		vectors = append(vectors, d.vector)
@@ -142,7 +142,7 @@ func TestIntegrationVectorSearchAccuracy(t *testing.T) {
 
 	ks.StoreChunks(ctx, kb.ID, doc.ID, chunks, vectors)
 
-	results, err := ks.Search(ctx, []string{kb.ID}, []float32{0.8, 0.2, 0.0}, knowledgebase.SearchOptions{TopK: 3})
+	results, err := ks.Search(ctx, []string{kb.ID}, []float32{0.8, 0.2, 0.0}, storage.SearchOptions{TopK: 3})
 	require.NoError(t, err)
 	assert.Len(t, results, 3)
 	assert.Equal(t, "machine learning algorithms", results[0].Content)

@@ -7,21 +7,21 @@ import (
 
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/plugins/embedding-openai"
+	"github.com/copcon/core/storage"
 )
 
 type KBRecallHook struct {
-	embedder embedding.Embedder
+	embedder storage.Embedder
 	kbStore  KnowledgeStoreReader
 	agentKBs map[string][]string
 	logger   *slog.Logger
 }
 
 type KnowledgeStoreReader interface {
-	Search(ctx context.Context, kbIDs []string, query []float32, opts SearchOptions) ([]*Chunk, error)
+	Search(ctx context.Context, kbIDs []string, query []float32, opts storage.SearchOptions) ([]*storage.Chunk, error)
 }
 
-func NewKBRecallHook(embedder embedding.Embedder, kbStore KnowledgeStoreReader, agentKBs map[string][]string) *KBRecallHook {
+func NewKBRecallHook(embedder storage.Embedder, kbStore KnowledgeStoreReader, agentKBs map[string][]string) *KBRecallHook {
 	return &KBRecallHook{
 		embedder: embedder,
 		kbStore:  kbStore,
@@ -62,7 +62,7 @@ func (h *KBRecallHook) Execute(ctx *hook.HookContext) error {
 		return nil
 	}
 
-	results, err := h.kbStore.Search(ctx.ChatCtx.Context(), kbIDs, queryVec, SearchOptions{
+	results, err := h.kbStore.Search(ctx.ChatCtx.Context(), kbIDs, queryVec, storage.SearchOptions{
 		TopK:                5,
 		SimilarityThreshold: 0.5,
 	})
@@ -96,7 +96,7 @@ func (h *KBRecallHook) findLastUserMessage(messages []entity.MessageForLLM) stri
 	return ""
 }
 
-func formatKBResults(results []*Chunk) string {
+func formatKBResults(results []*storage.Chunk) string {
 	out := "Relevant knowledge base content:\n"
 	for i, r := range results {
 		out += fmt.Sprintf("\n[%d] (score: %.3f) %s", i+1, r.Score, r.Content)
