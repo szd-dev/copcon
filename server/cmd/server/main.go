@@ -9,6 +9,8 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"github.com/copcon/core"
 	"github.com/copcon/core/llm"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/plugins/knowledge-base/sqlitevec"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
 	stor "github.com/copcon/server/internal/store"
@@ -30,8 +32,18 @@ func main() {
 	})
 	chk(log, h.Build())
 
+	// Create knowledge store explicitly if knowledge bases are configured
+	var ks knowledgebase.KnowledgeStore
+	if len(cfg.KnowledgeBases) > 0 {
+		var ksErr error
+		ks, ksErr = sqlitevec.NewKnowledgeStoreFromDSN(":memory:")
+		if ksErr != nil {
+			log.Warn("failed to create knowledge store", "error", ksErr)
+		}
+	}
+
 	var apiOpts []api.HandlerOption
-	apiOpts = append(apiOpts, api.BuildKnowledgeOptions(cfg, storeProvider, llm.NewOpenAIAdapter(&cl, cfg.OpenAI.Model))...)
+	apiOpts = append(apiOpts, api.BuildKnowledgeOptions(cfg, ks, llm.NewOpenAIAdapter(&cl, cfg.OpenAI.Model))...)
 
 	r := gin.Default()
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })

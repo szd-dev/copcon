@@ -98,17 +98,23 @@ func (m *mockMessageStore) DeleteBySession(_ context.Context, _ uuid.UUID) error
 	return nil
 }
 
+type mockMemory struct {
+	ID        string
+	Content   string
+	SessionID string
+}
+
 type mockMemoryManager struct{}
 
-func (m *mockMemoryManager) Store(chatCtx iface.ChatContextInterface, memory *storage.Memory) error {
+func (m *mockMemoryManager) Store(chatCtx iface.ChatContextInterface, memory *mockMemory) error {
 	return nil
 }
 
-func (m *mockMemoryManager) Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*storage.Memory, error) {
+func (m *mockMemoryManager) Search(chatCtx iface.ChatContextInterface, query []float32, limit int) ([]*mockMemory, error) {
 	return nil, nil
 }
 
-func (m *mockMemoryManager) GetBySession(chatCtx iface.ChatContextInterface, limit int) ([]*storage.Memory, error) {
+func (m *mockMemoryManager) GetBySession(chatCtx iface.ChatContextInterface, limit int) ([]*mockMemory, error) {
 	return nil, nil
 }
 

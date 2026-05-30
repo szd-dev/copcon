@@ -19,7 +19,7 @@ import (
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/entity"
-	pgstore "github.com/copcon/core/providers/postgres"
+	pgstore "github.com/copcon/plugins/storage-postgres"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"

@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/copcon/core/storage"
+	"github.com/copcon/plugins/memory-file"
 )
 
 func (h *Handler) ListSessionMemories(c *gin.Context) {
@@ -72,7 +72,7 @@ func (h *Handler) DeleteSessionMemory(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func memoryToJSON(mem *storage.Memory) gin.H {
+func memoryToJSON(mem *memoryfile.Memory) gin.H {
 	return gin.H{
 		"id":          mem.ID,
 		"content":     mem.Content,

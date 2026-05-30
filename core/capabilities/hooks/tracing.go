@@ -105,10 +105,6 @@ func (p *TracingPlugin) Execute(ctx *hook.HookContext) error {
 	return nil
 }
 
-func init() {
-	capabilities.Register(&tracingHookCapability{})
-}
-
 type tracingHookCapability struct{}
 
 func (c *tracingHookCapability) Name() string                         { return capabilities.HookTracing }

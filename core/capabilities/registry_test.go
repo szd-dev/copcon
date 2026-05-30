@@ -7,175 +7,182 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubCap is a minimal Capability implementation for testing.
 type stubCap struct {
-	name      string
-	capType   CapabilityType
-	deps      []string
+	name    string
+	capType CapabilityType
+	deps    []string
 }
 
-func (s *stubCap) Name() string            { return s.name }
-func (s *stubCap) Type() CapabilityType     { return s.capType }
-func (s *stubCap) DependsOn() []string      { return s.deps }
+func (s *stubCap) Name() string        { return s.name }
+func (s *stubCap) Type() CapabilityType { return s.capType }
+func (s *stubCap) DependsOn() []string  { return s.deps }
 
-// resetBuiltins clears the global builtins map between tests.
-func resetBuiltins() {
-	builtins.Range(func(key, _ any) bool {
-		builtins.Delete(key)
-		return true
-	})
+func newTestRegistry() *Registry {
+	return NewRegistry()
 }
 
 func TestRegisterAndGet(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
 	cap := &stubCap{name: "test-tool", capType: CapabilityTypeTool, deps: nil}
-	Register(cap)
+	r.Register(cap)
 
-	got, ok := Get("test-tool")
+	got, ok := r.Get("test-tool")
 	assert.True(t, ok)
 	assert.Equal(t, "test-tool", got.Name())
 	assert.Equal(t, CapabilityTypeTool, got.Type())
 }
 
-func TestGet_NotFound(t *testing.T) {
-	resetBuiltins()
+func TestRegisterDuplicate(t *testing.T) {
+	r := newTestRegistry()
 
-	_, ok := Get("nonexistent")
+	cap := &stubCap{name: "dup", capType: CapabilityTypeTool, deps: nil}
+	err := r.Register(cap)
+	assert.NoError(t, err)
+
+	err = r.Register(cap)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already registered")
+}
+
+func TestGet_NotFound(t *testing.T) {
+	r := newTestRegistry()
+
+	_, ok := r.Get("nonexistent")
 	assert.False(t, ok)
 }
 
 func TestListByType(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "alpha", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "beta", capType: CapabilityTypeHook, deps: nil})
-	Register(&stubCap{name: "gamma", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "delta", capType: CapabilityTypeSkill, deps: nil})
+	r.Register(&stubCap{name: "alpha", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "beta", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "gamma", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "delta", capType: CapabilityTypeSkill, deps: nil})
 
-	tools := ListByType(CapabilityTypeTool)
+	tools := r.ListByType(CapabilityTypeTool)
 	require.Len(t, tools, 2)
 	assert.Equal(t, "alpha", tools[0].Name())
 	assert.Equal(t, "gamma", tools[1].Name())
 
-	hooks := ListByType(CapabilityTypeHook)
+	hooks := r.ListByType(CapabilityTypeHook)
 	require.Len(t, hooks, 1)
 	assert.Equal(t, "beta", hooks[0].Name())
 
-	skills := ListByType(CapabilityTypeSkill)
+	skills := r.ListByType(CapabilityTypeSkill)
 	require.Len(t, skills, 1)
 	assert.Equal(t, "delta", skills[0].Name())
 
-	memories := ListByType(CapabilityTypeMemory)
+	memories := r.ListByType(CapabilityTypeMemory)
 	assert.Len(t, memories, 0)
 }
 
 func TestExpandWildcards_ToolsStar(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 
-	result := ExpandWildcards([]string{WildcardTools})
+	result := r.ExpandWildcards([]string{WildcardTools})
 	assert.Equal(t, []string{"tool-a", "tool-b"}, result)
 }
 
 func TestExpandWildcards_HooksStar(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "hook-x", capType: CapabilityTypeHook, deps: nil})
-	Register(&stubCap{name: "tool-x", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "hook-x", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "tool-x", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{WildcardHooks})
+	result := r.ExpandWildcards([]string{WildcardHooks})
 	assert.Equal(t, []string{"hook-x"}, result)
 }
 
 func TestExpandWildcards_SkillsStar(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "skill-a", capType: CapabilityTypeSkill, deps: nil})
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "skill-a", capType: CapabilityTypeSkill, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{WildcardSkills})
+	result := r.ExpandWildcards([]string{WildcardSkills})
 	assert.Equal(t, []string{"skill-a"}, result)
 }
 
 func TestExpandWildcards_MemoryStar(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "mem-a", capType: CapabilityTypeMemory, deps: nil})
+	r.Register(&stubCap{name: "mem-a", capType: CapabilityTypeMemory, deps: nil})
 
-	result := ExpandWildcards([]string{WildcardMemory})
+	result := r.ExpandWildcards([]string{WildcardMemory})
 	assert.Equal(t, []string{"mem-a"}, result)
 }
 
 func TestExpandWildcards_StarAll(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
-	Register(&stubCap{name: "skill-a", capType: CapabilityTypeSkill, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "skill-a", capType: CapabilityTypeSkill, deps: nil})
 
-	result := ExpandWildcards([]string{WildcardAll})
+	result := r.ExpandWildcards([]string{WildcardAll})
 	assert.Equal(t, []string{"hook-a", "skill-a", "tool-a"}, result)
 }
 
 func TestExpandWildcards_PlainNames(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{"tool-a", "tool-b"})
+	result := r.ExpandWildcards([]string{"tool-a", "tool-b"})
 	assert.Equal(t, []string{"tool-a", "tool-b"}, result)
 }
 
 func TestExpandWildcards_MixedWildcardsAndNames(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 
-	result := ExpandWildcards([]string{WildcardTools, "hook-a"})
+	result := r.ExpandWildcards([]string{WildcardTools, "hook-a"})
 	assert.Equal(t, []string{"hook-a", "tool-a"}, result)
 }
 
 func TestExpandWildcards_Dedup(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
 
-	result := ExpandWildcards([]string{"tool-a", WildcardTools, "tool-a"})
+	result := r.ExpandWildcards([]string{"tool-a", WildcardTools, "tool-a"})
 	assert.Equal(t, []string{"tool-a"}, result)
 }
 
 func TestExpandWildcards_Empty(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	result := ExpandWildcards([]string{})
+	result := r.ExpandWildcards([]string{})
 	assert.Nil(t, result)
 }
 
 func TestResolveDependencies_NoDeps(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "standalone", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "standalone", capType: CapabilityTypeTool, deps: nil})
 
-	result, err := ResolveDependencies([]string{"standalone"})
+	result, err := r.ResolveDependencies([]string{"standalone"})
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Equal(t, "standalone", result[0].Name())
 }
 
 func TestResolveDependencies_Chain(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "base", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "mid", capType: CapabilityTypeTool, deps: []string{"base"}})
-	Register(&stubCap{name: "top", capType: CapabilityTypeTool, deps: []string{"mid"}})
+	r.Register(&stubCap{name: "base", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "mid", capType: CapabilityTypeTool, deps: []string{"base"}})
+	r.Register(&stubCap{name: "top", capType: CapabilityTypeTool, deps: []string{"mid"}})
 
-	result, err := ResolveDependencies([]string{"top"})
+	result, err := r.ResolveDependencies([]string{"top"})
 	require.NoError(t, err)
 	require.Len(t, result, 3)
 
@@ -184,14 +191,14 @@ func TestResolveDependencies_Chain(t *testing.T) {
 }
 
 func TestResolveDependencies_DAG(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: nil})
-	Register(&stubCap{name: "c", capType: CapabilityTypeTool, deps: []string{"a", "b"}})
-	Register(&stubCap{name: "d", capType: CapabilityTypeHook, deps: []string{"c"}})
+	r.Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "c", capType: CapabilityTypeTool, deps: []string{"a", "b"}})
+	r.Register(&stubCap{name: "d", capType: CapabilityTypeHook, deps: []string{"c"}})
 
-	result, err := ResolveDependencies([]string{"d"})
+	result, err := r.ResolveDependencies([]string{"d"})
 	require.NoError(t, err)
 	require.Len(t, result, 4)
 
@@ -204,13 +211,13 @@ func TestResolveDependencies_DAG(t *testing.T) {
 }
 
 func TestResolveDependencies_MultipleRoots(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: nil})
-	Register(&stubCap{name: "c", capType: CapabilityTypeTool, deps: []string{"a", "b"}})
+	r.Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "c", capType: CapabilityTypeTool, deps: []string{"a", "b"}})
 
-	result, err := ResolveDependencies([]string{"c"})
+	result, err := r.ResolveDependencies([]string{"c"})
 	require.NoError(t, err)
 	require.Len(t, result, 3)
 
@@ -220,56 +227,56 @@ func TestResolveDependencies_MultipleRoots(t *testing.T) {
 }
 
 func TestResolveDependencies_Circular(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: []string{"b"}})
-	Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: []string{"a"}})
+	r.Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: []string{"b"}})
+	r.Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: []string{"a"}})
 
-	_, err := ResolveDependencies([]string{"a"})
+	_, err := r.ResolveDependencies([]string{"a"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "circular dependency")
 }
 
 func TestResolveDependencies_SelfCircular(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "self", capType: CapabilityTypeTool, deps: []string{"self"}})
+	r.Register(&stubCap{name: "self", capType: CapabilityTypeTool, deps: []string{"self"}})
 
-	_, err := ResolveDependencies([]string{"self"})
+	_, err := r.ResolveDependencies([]string{"self"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "circular dependency")
 }
 
 func TestResolveDependencies_ThreeWayCircular(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: []string{"c"}})
-	Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: []string{"a"}})
-	Register(&stubCap{name: "c", capType: CapabilityTypeSkill, deps: []string{"b"}})
+	r.Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: []string{"c"}})
+	r.Register(&stubCap{name: "b", capType: CapabilityTypeHook, deps: []string{"a"}})
+	r.Register(&stubCap{name: "c", capType: CapabilityTypeSkill, deps: []string{"b"}})
 
-	_, err := ResolveDependencies([]string{"a"})
+	_, err := r.ResolveDependencies([]string{"a"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "circular dependency")
 }
 
 func TestResolveDependencies_MissingCapability(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: []string{"nonexistent"}})
+	r.Register(&stubCap{name: "a", capType: CapabilityTypeTool, deps: []string{"nonexistent"}})
 
-	_, err := ResolveDependencies([]string{"a"})
+	_, err := r.ResolveDependencies([]string{"a"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not registered")
 }
 
 func TestResolveDependencies_WithWildcards(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: []string{"tool-a"}})
-	Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: []string{"tool-a"}})
+	r.Register(&stubCap{name: "hook-a", capType: CapabilityTypeHook, deps: nil})
 
-	result, err := ResolveDependencies([]string{WildcardTools})
+	result, err := r.ResolveDependencies([]string{WildcardTools})
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 
@@ -278,21 +285,21 @@ func TestResolveDependencies_WithWildcards(t *testing.T) {
 }
 
 func TestResolveDependencies_Empty(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	result, err := ResolveDependencies([]string{})
+	result, err := r.ResolveDependencies([]string{})
 	require.NoError(t, err)
 	assert.Len(t, result, 0)
 }
 
 func TestResolveDependencies_MultipleNamesWithSharedDeps(t *testing.T) {
-	resetBuiltins()
+	r := newTestRegistry()
 
-	Register(&stubCap{name: "base", capType: CapabilityTypeTool, deps: nil})
-	Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: []string{"base"}})
-	Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: []string{"base"}})
+	r.Register(&stubCap{name: "base", capType: CapabilityTypeTool, deps: nil})
+	r.Register(&stubCap{name: "tool-a", capType: CapabilityTypeTool, deps: []string{"base"}})
+	r.Register(&stubCap{name: "tool-b", capType: CapabilityTypeTool, deps: []string{"base"}})
 
-	result, err := ResolveDependencies([]string{"tool-a", "tool-b"})
+	result, err := r.ResolveDependencies([]string{"tool-a", "tool-b"})
 	require.NoError(t, err)
 	require.Len(t, result, 3)
 

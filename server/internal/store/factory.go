@@ -10,8 +10,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	sqlitestore "github.com/copcon/core/providers/sqlite"
-	pgstore "github.com/copcon/core/providers/postgres"
+	sqlitestore "github.com/copcon/plugins/storage-sqlite"
+	pgstore "github.com/copcon/plugins/storage-postgres"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/config"
 )

@@ -9,18 +9,14 @@ import (
 
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/capabilities"
+	"github.com/copcon/core/capabilities/hooks"
+	"github.com/copcon/core/capabilities/tools"
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/llm"
-	"github.com/copcon/core/providers/embedding"
-	"github.com/copcon/core/providers/filememory"
-	"github.com/copcon/core/providers/sqlitevec"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
-
-	_ "github.com/copcon/core/capabilities/hooks"
-	_ "github.com/copcon/core/capabilities/tools"
 )
 
 // AgentQuickConfig is a simplified configuration for single-agent use cases.
@@ -43,7 +39,7 @@ type quickStoreProvider struct {
 func (p quickStoreProvider) Sessions() storage.SessionStore   { return p.sessionStore }
 func (p quickStoreProvider) Messages() storage.MessageStore   { return p.messageStore }
 func (p quickStoreProvider) Todos() storage.TodoStore         { return nil }
-func (p quickStoreProvider) Knowledge() storage.KnowledgeStore { return nil }
+
 
 // NewAgent creates a single-agent Harness from an AgentQuickConfig,
 // calls Build(), and returns the Engine and Registry.
@@ -67,7 +63,7 @@ func NewAgent(cfg AgentQuickConfig) (agent.AgentEngine, agent.AgentRegistry, err
 	return h.Engine(), h.Registry(), nil
 }
 
-var builtInHooks = []string{capabilities.HookTodoInjection, capabilities.HookMemory, capabilities.HookLogging, capabilities.HookTracing}
+var builtInHooks = []string{capabilities.HookTodoInjection, capabilities.HookLogging, capabilities.HookTracing}
 
 var builtInTools = []string{capabilities.ToolConfirmAction, capabilities.ToolAskUser, capabilities.ToolTodo, capabilities.ToolAsync}
 
@@ -80,9 +76,9 @@ var toolNameToCap = map[string]string{
 
 type StoreConfig struct {
 	Provider       storage.StoreProvider
-	Memory         storage.MemoryStore
+	Memory         interface{} // was: storage.MemoryStore — moved to plugins/memory-file
 	FileMemory     interface{} // filememory.FileMemoryStore, typed as interface{} to avoid circular import
-	KnowledgeStore interface{} // storage.KnowledgeStore, typed as interface{} to avoid circular import
+	KnowledgeStore interface{} // was: storage.KnowledgeStore — moved to plugins/knowledge-base
 	Embedder       interface{} // embedding.Embedder, typed as interface{} to avoid circular import
 }
 
@@ -119,13 +115,13 @@ type AgentFactorySpec struct {
 }
 
 type HarnessConfig struct {
-	Store           StoreConfig
-	LLM             llm.LLMProvider
-	Logger          *slog.Logger
-	Agents          []AgentSpec
-	AgentFactories  []AgentFactorySpec
-	AsyncTracker    tool.AsyncToolTracker
-	EmbeddingConfig embedding.EmbeddingConfig
+	Store          StoreConfig
+	LLM            llm.LLMProvider
+	Logger         *slog.Logger
+	Agents         []AgentSpec
+	AgentFactories []AgentFactorySpec
+	AsyncTracker   tool.AsyncToolTracker
+	Registry       *capabilities.Registry
 }
 
 type Harness struct {
@@ -148,6 +144,7 @@ func (h *Harness) AsyncTracker() tool.AsyncToolTracker { return h.asyncTracker }
 func (h *Harness) Store() storage.StoreProvider        { return h.config.Store.Provider }
 func (h *Harness) ActiveSessions() chat.ActiveSessions { return h.sessionStore }
 func (h *Harness) HookRunner() hook.HookRunner         { return h.hookRunner }
+func (h *Harness) CapRegistry() *capabilities.Registry { return h.config.Registry }
 
 // Build executes the full construction sequence:
 //  1. Initialize store pointers (nil → no-op)
@@ -177,8 +174,14 @@ func (h *Harness) Build() error {
 		return err
 	}
 
+	if h.config.Registry == nil {
+		h.config.Registry = capabilities.NewRegistry()
+	}
+	hooks.RegisterAll(h.config.Registry)
+	tools.RegisterAll(h.config.Registry)
+
 	allCapabilityNames := h.collectCapabilityNames()
-	resolved, err := capabilities.ResolveDependencies(allCapabilityNames)
+	resolved, err := h.config.Registry.ResolveDependencies(allCapabilityNames)
 	if err != nil {
 		return fmt.Errorf("resolve capabilities: %w", err)
 	}
@@ -288,8 +291,8 @@ func (h *Harness) Build() error {
 	capDeps.AgentRegistry = agentRegistry
 	capDeps.Engine = h.engine
 
-	registerCrossAgentTool(capabilities.ToolDelegate, capDeps, toolRegistry, logger, capToToolName)
-	registerCrossAgentTool(capabilities.ToolReadSubSession, capDeps, toolRegistry, logger, capToToolName)
+	registerCrossAgentTool(h.config.Registry, capabilities.ToolDelegate, capDeps, toolRegistry, logger, capToToolName)
+	registerCrossAgentTool(h.config.Registry, capabilities.ToolReadSubSession, capDeps, toolRegistry, logger, capToToolName)
 
 	h.registry = agentRegistry
 	h.built = true
@@ -302,8 +305,8 @@ func (h *Harness) Build() error {
 	return nil
 }
 
-func registerCrossAgentTool(capName string, capDeps capabilities.CapabilityDeps, toolRegistry tool.ToolRegistry, logger *slog.Logger, capToToolName map[string]string) {
-	cap, ok := capabilities.Get(capName)
+func registerCrossAgentTool(r *capabilities.Registry, capName string, capDeps capabilities.CapabilityDeps, toolRegistry tool.ToolRegistry, logger *slog.Logger, capToToolName map[string]string) {
+	cap, ok := r.Get(capName)
 	if !ok {
 		return
 	}
@@ -328,74 +331,7 @@ func (h *Harness) initStores() error {
 	if h.config.Store.Provider == nil {
 		return fmt.Errorf("StoreConfig.Provider is required")
 	}
-
-	anyMemoryEnabled := false
-	anyKBReferenced := false
-	for _, spec := range h.config.Agents {
-		if spec.Memory.Enabled {
-			anyMemoryEnabled = true
-		}
-		if len(spec.KnowledgeBases) > 0 {
-			anyKBReferenced = true
-		}
-	}
-
-	if anyMemoryEnabled && h.config.Store.FileMemory == nil {
-		fm, err := filememory.NewFileMemoryStore(
-			h.defaultMemoryBasePath(),
-			h.defaultMaxIndexLines(),
-			h.defaultMaxIndexBytes(),
-		)
-		if err != nil {
-			return fmt.Errorf("create file memory store: %w", err)
-		}
-		h.config.Store.FileMemory = fm
-	}
-
-	if anyKBReferenced && h.config.Store.KnowledgeStore == nil {
-		ks, err := sqlitevec.NewKnowledgeStoreFromDSN(":memory:")
-		if err != nil {
-			return fmt.Errorf("create knowledge store: %w", err)
-		}
-		h.config.Store.KnowledgeStore = ks
-	}
-
-	if anyKBReferenced && h.config.Store.Embedder == nil && h.config.EmbeddingConfig.Backend != "" {
-		emb, err := embedding.NewFromConfig(h.config.EmbeddingConfig, h.config.LLM)
-		if err != nil {
-			return fmt.Errorf("create embedder: %w", err)
-		}
-		h.config.Store.Embedder = emb
-	}
-
 	return nil
-}
-
-func (h *Harness) defaultMemoryBasePath() string {
-	for _, spec := range h.config.Agents {
-		if spec.Memory.Enabled && spec.Memory.BasePath != "" {
-			return spec.Memory.BasePath
-		}
-	}
-	return os.TempDir() + "/copcon-memory"
-}
-
-func (h *Harness) defaultMaxIndexLines() int {
-	for _, spec := range h.config.Agents {
-		if spec.Memory.Enabled && spec.Memory.MaxIndexLines > 0 {
-			return spec.Memory.MaxIndexLines
-		}
-	}
-	return capabilities.DefaultMaxIndexLines
-}
-
-func (h *Harness) defaultMaxIndexBytes() int {
-	for _, spec := range h.config.Agents {
-		if spec.Memory.Enabled && spec.Memory.MaxIndexBytes > 0 {
-			return spec.Memory.MaxIndexBytes
-		}
-	}
-	return capabilities.DefaultMaxIndexBytes
 }
 
 func (h *Harness) collectCapabilityNames() []string {
@@ -464,7 +400,7 @@ func (h *Harness) makeAgentFactory(
 			capNames = append(capNames, capabilities.KnowledgeBaseBundleNames()...)
 		}
 
-		expandedTools := capabilities.ExpandWildcards(capNames)
+		expandedTools := h.config.Registry.ExpandWildcards(capNames)
 		registeredNames := make(map[string]bool)
 
 		for _, capName := range expandedTools {

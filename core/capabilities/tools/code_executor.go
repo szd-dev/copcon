@@ -115,10 +115,6 @@ var allowedShellCommands = map[string]bool{
 	"grep":   true,
 }
 
-func init() {
-	capabilities.Register(&codeExecutorCapability{})
-}
-
 type codeExecutorCapability struct{}
 
 func (c *codeExecutorCapability) Name() string                         { return capabilities.ToolCodeExecutor }
@@ -126,10 +122,6 @@ func (c *codeExecutorCapability) Type() capabilities.CapabilityType    { return 
 func (c *codeExecutorCapability) DependsOn() []string                  { return nil }
 func (c *codeExecutorCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
 	return NewCodeExecutor(), nil
-}
-
-func init() {
-	capabilities.Register(&shellExecutorCapability{})
 }
 
 type shellExecutorCapability struct{}

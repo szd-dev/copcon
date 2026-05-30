@@ -223,10 +223,6 @@ func (t *ListAsyncToolsTool) Execute(chatCtx iface.ChatContextInterface, args ma
 	})
 }
 
-func init() {
-	capabilities.Register(&asyncCapability{})
-}
-
 type asyncCapability struct{}
 
 func (c *asyncCapability) Name() string                         { return capabilities.ToolAsync }

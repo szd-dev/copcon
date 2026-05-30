@@ -33,7 +33,6 @@ type testStoreProvider struct {
 func (p *testStoreProvider) Sessions() storage.SessionStore   { return p.sessionStore }
 func (p *testStoreProvider) Messages() storage.MessageStore   { return p.messageStore }
 func (p *testStoreProvider) Todos() storage.TodoStore         { return p.todoStore }
-func (p *testStoreProvider) Knowledge() storage.KnowledgeStore { return nil }
 
 type testHarness struct {
 	store         *testStoreProvider

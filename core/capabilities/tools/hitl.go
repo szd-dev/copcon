@@ -164,11 +164,6 @@ func (t *AskUserTool) Execute(chatCtx iface.ChatContextInterface, args map[strin
 	return &tool.ToolResult{Success: true, Data: resp.Content}, nil
 }
 
-func init() {
-	capabilities.Register(&confirmActionCapability{})
-	capabilities.Register(&askUserCapability{})
-}
-
 type confirmActionCapability struct{}
 
 func (c *confirmActionCapability) Name() string                      { return capabilities.ToolConfirmAction }

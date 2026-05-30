@@ -20,7 +20,6 @@ type testStoreProvider struct{}
 func (testStoreProvider) Sessions() storage.SessionStore   { return nil }
 func (testStoreProvider) Messages() storage.MessageStore   { return nil }
 func (testStoreProvider) Todos() storage.TodoStore         { return nil }
-func (testStoreProvider) Knowledge() storage.KnowledgeStore { return nil }
 
 func TestNewHarness_BasicBuild(t *testing.T) {
 	h := NewHarness(HarnessConfig{

@@ -12,8 +12,10 @@ import (
 	"github.com/copcon/core/agent"
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/iface"
-	"github.com/copcon/core/providers/embedding"
-	"github.com/copcon/core/rag"
+	"github.com/copcon/plugins/embedding-openai"
+	"github.com/copcon/plugins/rag"
+	"github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/plugins/memory-file"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/server/internal/config"
 )
@@ -23,8 +25,8 @@ type Handler struct {
 	sessionStore  storage.SessionStore
 	messageStore  storage.MessageStore
 	todoStore     storage.TodoStore
-	knowledgeStore storage.KnowledgeStore
-	memoryStore   storage.MemoryStore
+	knowledgeStore knowledgebase.KnowledgeStore
+	memoryStore   memoryfile.MemoryStore
 	embedder      embedding.Embedder
 	ragPipeline   *rag.Pipeline
 	agent         agent.AgentEngine
@@ -38,7 +40,7 @@ func NewHandler(cfg *config.Config, h core.APIProvider, opts ...HandlerOption) *
 		sessionStore:  h.Store().Sessions(),
 		messageStore:  h.Store().Messages(),
 		todoStore:     h.Store().Todos(),
-		knowledgeStore: h.Store().Knowledge(),
+		knowledgeStore: nil, // populated via HandlerOption if available
 		agent:         h.Engine(),
 		agentRegistry: h.Registry(),
 		chatStore:     h.ActiveSessions(),
@@ -51,12 +53,16 @@ func NewHandler(cfg *config.Config, h core.APIProvider, opts ...HandlerOption) *
 
 type HandlerOption func(*Handler)
 
-func WithMemoryStore(ms storage.MemoryStore) HandlerOption {
+func WithMemoryStore(ms memoryfile.MemoryStore) HandlerOption {
 	return func(h *Handler) { h.memoryStore = ms }
 }
 
 func WithEmbedder(e embedding.Embedder) HandlerOption {
 	return func(h *Handler) { h.embedder = e }
+}
+
+func WithKnowledgeStore(ks knowledgebase.KnowledgeStore) HandlerOption {
+	return func(h *Handler) { h.knowledgeStore = ks }
 }
 
 func WithRAGPipeline(p *rag.Pipeline) HandlerOption {

@@ -109,10 +109,6 @@ func formatTodoState(todos []*storage.Todo) string {
 	return "Current todo list: [" + strings.Join(parts, ", ") + "]"
 }
 
-func init() {
-	capabilities.Register(&todoInjectionHookCapability{})
-}
-
 type todoInjectionHookCapability struct{}
 
 func (c *todoInjectionHookCapability) Name() string                         { return capabilities.HookTodoInjection }

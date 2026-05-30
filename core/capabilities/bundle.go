@@ -5,6 +5,7 @@ package capabilities
 // has Memory.Enabled set to true.
 func MemoryBundleNames() []string {
 	return []string{
+		HookMemory,
 		HookFileMemory,
 		ToolMemoryStore,
 		ToolMemoryRecall,

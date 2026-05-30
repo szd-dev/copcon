@@ -185,10 +185,6 @@ func (t *FileOps) listDir(path string) (*tool.ToolResult, error) {
 	}, nil
 }
 
-func init() {
-	capabilities.Register(&fileOpsCapability{})
-}
-
 type fileOpsCapability struct{}
 
 func (c *fileOpsCapability) Name() string                         { return capabilities.ToolFileOps }

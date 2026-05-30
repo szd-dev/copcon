@@ -332,10 +332,6 @@ func storageMsgToLegacy(msg *storage.Message) context_builder.LegacyMessage {
 
 var _ tool.Tool = (*ReadSubSessionTool)(nil)
 
-func init() {
-	capabilities.Register(&delegateCapability{})
-}
-
 type delegateCapability struct{}
 
 func (c *delegateCapability) Name() string                         { return capabilities.ToolDelegate }

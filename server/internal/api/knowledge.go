@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/copcon/core/storage"
+	"github.com/copcon/plugins/knowledge-base"
 )
 
 // --- Knowledge Base Handlers ---
@@ -35,7 +35,7 @@ func (h *Handler) CreateKB(c *gin.Context) {
 		backend = "sqlite-vec"
 	}
 
-	kb, err := h.knowledgeStore.CreateKB(c.Request.Context(), &storage.KnowledgeBase{
+	kb, err := h.knowledgeStore.CreateKB(c.Request.Context(), &knowledgebase.KnowledgeBase{
 		ID:        uuid.New().String(),
 		Name:      req.Name,
 		Backend:   backend,
@@ -151,12 +151,12 @@ func (h *Handler) UploadDocument(c *gin.Context) {
 		mimetype = "application/octet-stream"
 	}
 
-	doc := &storage.Document{
+	doc := &knowledgebase.Document{
 		ID:         uuid.New().String(),
 		KBID:       kbID,
 		Filename:   header.Filename,
 		Source:     "upload",
-		Status:     storage.DocStatusPending,
+		Status:     knowledgebase.DocStatusPending,
 		ChunkCount: 0,
 		TokenCount: 0,
 		CreatedAt:  time.Now(),
@@ -292,7 +292,7 @@ func (h *Handler) SearchKB(c *gin.Context) {
 		topK = 5
 	}
 
-	opts := storage.SearchOptions{
+	opts := knowledgebase.SearchOptions{
 		TopK:                topK,
 		SimilarityThreshold: req.SimilarityThreshold,
 	}
@@ -313,7 +313,7 @@ func (h *Handler) SearchKB(c *gin.Context) {
 
 // --- JSON Serialization Helpers ---
 
-func kbToJSON(kb *storage.KnowledgeBase) gin.H {
+func kbToJSON(kb *knowledgebase.KnowledgeBase) gin.H {
 	return gin.H{
 		"id":         kb.ID,
 		"name":       kb.Name,
@@ -325,7 +325,7 @@ func kbToJSON(kb *storage.KnowledgeBase) gin.H {
 	}
 }
 
-func docToJSON(doc *storage.Document) gin.H {
+func docToJSON(doc *knowledgebase.Document) gin.H {
 	return gin.H{
 		"id":          doc.ID,
 		"kb_id":       doc.KBID,
@@ -340,7 +340,7 @@ func docToJSON(doc *storage.Document) gin.H {
 	}
 }
 
-func chunkToJSON(chunk *storage.Chunk) gin.H {
+func chunkToJSON(chunk *knowledgebase.Chunk) gin.H {
 	return gin.H{
 		"id":          chunk.ID,
 		"document_id": chunk.DocumentID,

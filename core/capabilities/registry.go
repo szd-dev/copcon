@@ -63,7 +63,7 @@ type CapabilityDeps struct {
 	SessionStore        storage.SessionStore
 	MessageStore        storage.MessageStore
 	TodoStore           storage.TodoStore
-	MemoryStore         storage.MemoryStore
+	MemoryStore         interface{} // was: storage.MemoryStore — moved to plugins/memory-file
 	FileMemoryStore     interface{} // filememory.FileMemoryStore — typed as interface{} to avoid circular imports
 	AgentRegistry       agent.AgentRegistry
 	Engine              interface{} // AgentEngine — typed as interface{} to avoid circular imports
@@ -73,35 +73,50 @@ type CapabilityDeps struct {
 	AgentKnowledgeBases map[string][]string // agentID → KB IDs
 }
 
-// builtins is the global registry of capabilities. Keys are capability names.
-var builtins sync.Map
-
-// Register adds a capability to the global registry. It is safe to call
-// from multiple goroutines and from init() functions.
-func Register(c Capability) {
-	builtins.Store(c.Name(), c)
+// Registry is an instance-based capability registry. It replaces the former
+// global sync.Map approach, allowing multiple independent registries and
+// eliminating init()-based side effects.
+type Registry struct {
+	builtins map[string]Capability
+	mu       sync.RWMutex
 }
 
-// Get retrieves a capability by name from the global registry.
-func Get(name string) (Capability, bool) {
-	val, ok := builtins.Load(name)
-	if !ok {
-		return nil, false
+// NewRegistry creates a new empty capability registry.
+func NewRegistry() *Registry {
+	return &Registry{builtins: make(map[string]Capability)}
+}
+
+// Register adds a capability to the registry. Returns an error if a
+// capability with the same name is already registered.
+func (r *Registry) Register(c Capability) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.builtins[c.Name()]; exists {
+		return fmt.Errorf("capability %q already registered", c.Name())
 	}
-	return val.(Capability), true
+	r.builtins[c.Name()] = c
+	return nil
+}
+
+// Get retrieves a capability by name from the registry.
+func (r *Registry) Get(name string) (Capability, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	c, ok := r.builtins[name]
+	return c, ok
 }
 
 // ListByType returns all registered capabilities of a given type.
 // The returned slice is sorted by name for deterministic ordering.
-func ListByType(t CapabilityType) []Capability {
+func (r *Registry) ListByType(t CapabilityType) []Capability {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	var result []Capability
-	builtins.Range(func(key, value any) bool {
-		c := value.(Capability)
+	for _, c := range r.builtins {
 		if c.Type() == t {
 			result = append(result, c)
 		}
-		return true
-	})
+	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Name() < result[j].Name()
 	})
@@ -118,44 +133,44 @@ func ListByType(t CapabilityType) []Capability {
 //
 // Non-wildcard names are passed through unchanged. The result is deduplicated
 // and sorted by name.
-func ExpandWildcards(names []string) []string {
+func (r *Registry) ExpandWildcards(names []string) []string {
 	seen := make(map[string]bool)
 	var result []string
 
 	for _, name := range names {
 		switch {
 		case name == WildcardAll:
-			builtins.Range(func(key, value any) bool {
-				n := key.(string)
+			r.mu.RLock()
+			for n := range r.builtins {
 				if !seen[n] {
 					seen[n] = true
 					result = append(result, n)
 				}
-				return true
-			})
+			}
+			r.mu.RUnlock()
 		case name == WildcardTools:
-			for _, c := range ListByType(CapabilityTypeTool) {
+			for _, c := range r.ListByType(CapabilityTypeTool) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
 				}
 			}
 		case name == WildcardHooks:
-			for _, c := range ListByType(CapabilityTypeHook) {
+			for _, c := range r.ListByType(CapabilityTypeHook) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
 				}
 			}
 		case name == WildcardSkills:
-			for _, c := range ListByType(CapabilityTypeSkill) {
+			for _, c := range r.ListByType(CapabilityTypeSkill) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
 				}
 			}
 		case name == WildcardMemory:
-			for _, c := range ListByType(CapabilityTypeMemory) {
+			for _, c := range r.ListByType(CapabilityTypeMemory) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())
@@ -181,12 +196,12 @@ func ExpandWildcards(names []string) []string {
 // Returns an error if:
 //   - a referenced capability is not registered
 //   - a circular dependency is detected
-func ResolveDependencies(names []string) ([]Capability, error) {
-	expanded := ExpandWildcards(names)
+func (r *Registry) ResolveDependencies(names []string) ([]Capability, error) {
+	expanded := r.ExpandWildcards(names)
 
 	// Collect all required capabilities (including transitive deps).
 	required := make(map[string]Capability)
-	if err := collectTransitive(expanded, required); err != nil {
+	if err := r.collectTransitive(expanded, required); err != nil {
 		return nil, err
 	}
 
@@ -241,19 +256,19 @@ func ResolveDependencies(names []string) ([]Capability, error) {
 
 // collectTransitive walks the dependency graph starting from the given names
 // and populates the required map with every reachable capability.
-func collectTransitive(names []string, required map[string]Capability) error {
+func (r *Registry) collectTransitive(names []string, required map[string]Capability) error {
 	for _, name := range names {
 		if _, already := required[name]; already {
 			continue
 		}
 
-		cap, ok := Get(name)
+		cap, ok := r.Get(name)
 		if !ok {
 			return fmt.Errorf("capability %q not registered", name)
 		}
 		required[name] = cap
 
-		if err := collectTransitive(cap.DependsOn(), required); err != nil {
+		if err := r.collectTransitive(cap.DependsOn(), required); err != nil {
 			return err
 		}
 	}

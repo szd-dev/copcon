@@ -118,10 +118,6 @@ var _ hook.Hook = (*LoggingPlugin)(nil)
 
 var _ = tool.ToolResult{}
 
-func init() {
-	capabilities.Register(&loggingHookCapability{})
-}
-
 type loggingHookCapability struct{}
 
 func (c *loggingHookCapability) Name() string                         { return capabilities.HookLogging }

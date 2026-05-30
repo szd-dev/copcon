@@ -313,10 +313,6 @@ func todoToMap(todoItem *storage.Todo) map[string]any {
 
 var _ tool.Tool = (*TodoTool)(nil)
 
-func init() {
-	capabilities.Register(&todoCapability{})
-}
-
 type todoCapability struct{}
 
 func (c *todoCapability) Name() string                         { return capabilities.ToolTodo }

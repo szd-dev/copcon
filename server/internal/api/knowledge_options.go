@@ -5,19 +5,20 @@ import (
 	"os"
 
 	"github.com/copcon/core/llm"
-	"github.com/copcon/core/providers/embedding"
-	"github.com/copcon/core/rag"
-	"github.com/copcon/core/storage"
+	"github.com/copcon/plugins/embedding-openai"
+	"github.com/copcon/plugins/knowledge-base"
+	"github.com/copcon/plugins/rag"
 	"github.com/copcon/server/internal/config"
 )
 
-func BuildKnowledgeOptions(cfg *config.Config, storeProvider storage.StoreProvider, llmProvider llm.LLMProvider) []HandlerOption {
+func BuildKnowledgeOptions(cfg *config.Config, ks knowledgebase.KnowledgeStore, llmProvider llm.LLMProvider) []HandlerOption {
 	var opts []HandlerOption
 
-	ks := storeProvider.Knowledge()
 	if ks == nil {
 		return opts
 	}
+
+	opts = append(opts, WithKnowledgeStore(ks))
 
 	embCfg := resolveEmbeddingConfig(cfg)
 	var emb embedding.Embedder
