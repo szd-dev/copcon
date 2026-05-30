@@ -67,3 +67,21 @@
   - 第127行: 函数返回类型 `embedding.EmbeddingConfig` → `kbembedding.EmbeddingConfig`
   - 第129-130行: `embedding.EmbeddingConfig{` 和 `embedding.BackendType` → `kbembedding.EmbeddingConfig{` 和 `kbembedding.BackendType`
 - **验证**: `go build ./server/...` 通过，`grep embedding-openai` 无残留
+
+## 迁移 glebarez/sqlite → modernc.org/sqlite (sqlitevec 包)
+
+**日期**: 2026-05-30
+
+**决策**: 不使用 `gorm.io/driver/sqlite` 包（它默认引入 `mattn/go-sqlite3` CGo 依赖），而是在 `sqlitevec/` 包内实现自定义 GORM Dialector (`dialector.go`)。
+
+**理由**:
+- `gorm.io/driver/sqlite` 的 `sqlite.go` 中 import `_ "github.com/mattn/go-sqlite3"`，导致 CGo 编译依赖
+- 任务要求"不引入 CGO 编译依赖"
+- 自定义 Dialector 使用 `modernc.org/sqlite` 注册的 "sqlite" 驱动名（`database/sql.Open("sqlite", dsn)`），完全 CGo-free
+- Dialector 实现从 `gorm.io/driver/sqlite` 的核心逻辑复制，但移除了 CGo import，使用默认 migrator
+
+**影响**:
+- `storage-sqlite` 包仍使用 `glebarez/sqlite`，go.mod 中保留该依赖（不在本任务范围）
+- `modernc.org/sqlite` 从 indirect 升级为 direct 依赖
+- `gorm.io/driver/sqlite` 和 `mattn/go-sqlite3` 从 go.mod 中移除
+- `CGO_ENABLED=0 go build` 编译通过

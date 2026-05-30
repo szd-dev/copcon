@@ -5,7 +5,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -15,7 +14,7 @@ import (
 
 func newTestStore(t *testing.T) *KnowledgeStore {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)
@@ -23,7 +22,7 @@ func newTestStore(t *testing.T) *KnowledgeStore {
 }
 
 func TestNewKnowledgeStore(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)

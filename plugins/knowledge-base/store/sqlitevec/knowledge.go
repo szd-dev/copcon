@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -33,7 +32,7 @@ func NewKnowledgeStore(db *gorm.DB) (*KnowledgeStore, error) {
 }
 
 func NewKnowledgeStoreFromDSN(dsn string) (*KnowledgeStore, error) {
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(openDialector(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}

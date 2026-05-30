@@ -36,6 +36,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-05-30T14:56:51.686Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "迁移 glebarez/sqlite → modernc/sqlite 驱动",
+      "session_id": "ses_186960273ffeBfN2d5NET40Pbx",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-30T15:13:50.990Z"
     }
   }
 }

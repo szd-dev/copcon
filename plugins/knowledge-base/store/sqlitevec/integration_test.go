@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -14,7 +13,7 @@ import (
 
 func TestIntegrationKBLifecycle(t *testing.T) {
 	ctx := context.Background()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := 	gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)
@@ -81,7 +80,7 @@ func TestIntegrationKBLifecycle(t *testing.T) {
 
 func TestIntegrationMultiKBSearch(t *testing.T) {
 	ctx := context.Background()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := 	gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)
@@ -113,7 +112,7 @@ func TestIntegrationMultiKBSearch(t *testing.T) {
 
 func TestIntegrationVectorSearchAccuracy(t *testing.T) {
 	ctx := context.Background()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := 	gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	ks, err := NewKnowledgeStore(db)
 	require.NoError(t, err)

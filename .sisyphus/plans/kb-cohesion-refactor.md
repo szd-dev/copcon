@@ -651,7 +651,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
 
   **Commit**：NO（验证 step）
 
-- [ ] 12. 迁移 glebarez/sqlite → modernc/sqlite 驱动
+- [x] 12. 迁移 glebarez/sqlite → modernc/sqlite 驱动
 
   **What to do**：
   - 在 `plugins/knowledge-base/store/sqlitevec/` 中：
