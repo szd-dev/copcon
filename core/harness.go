@@ -15,12 +15,12 @@ import (
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/providers/embedding"
 	"github.com/copcon/core/providers/filememory"
+	"github.com/copcon/core/providers/sqlitevec"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
 
 	_ "github.com/copcon/core/capabilities/hooks"
 	_ "github.com/copcon/core/capabilities/tools"
-	_ "github.com/copcon/core/providers/sqlitevec"
 )
 
 // AgentQuickConfig is a simplified configuration for single-agent use cases.
@@ -353,11 +353,7 @@ func (h *Harness) initStores() error {
 	}
 
 	if anyKBReferenced && h.config.Store.KnowledgeStore == nil {
-		provider, err := storage.LookupKnowledgeStoreProvider("sqlite-vec")
-		if err != nil {
-			return fmt.Errorf("lookup knowledge store provider: %w", err)
-		}
-		ks, err := provider(map[string]any{"dsn": ":memory:"})
+		ks, err := sqlitevec.NewKnowledgeStoreFromDSN(":memory:")
 		if err != nil {
 			return fmt.Errorf("create knowledge store: %w", err)
 		}

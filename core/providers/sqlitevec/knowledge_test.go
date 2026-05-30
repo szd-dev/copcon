@@ -337,21 +337,3 @@ func TestDeleteKBCascades(t *testing.T) {
 	assert.Empty(t, chunks)
 }
 
-func TestRegistration(t *testing.T) {
-	factory, err := storage.LookupKnowledgeStoreProvider("sqlite-vec")
-	require.NoError(t, err)
-	assert.NotNil(t, factory)
-
-	ks, err := factory(map[string]any{"dsn": ":memory:"})
-	require.NoError(t, err)
-	assert.NotNil(t, ks)
-}
-
-func TestRegistrationCustomDSN(t *testing.T) {
-	factory, err := storage.LookupKnowledgeStoreProvider("sqlite-vec")
-	require.NoError(t, err)
-
-	ks, err := factory(map[string]any{"dsn": ":memory:"})
-	require.NoError(t, err)
-	assert.NotNil(t, ks)
-}

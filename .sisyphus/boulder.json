@@ -2,10 +2,18 @@
   "active_plan": "/data/copcon/.sisyphus/plans/memory-knowledge.md",
   "started_at": "2026-05-29T16:45:41.666Z",
   "session_ids": [
-    "ses_18b5f6a97ffeg8iwfOvNob35WY"
+    "ses_18b5f6a97ffeg8iwfOvNob35WY",
+    "ses_188f2ed6fffe03XHos6mwnJZy0",
+    "ses_188f2c5f1ffe1SVeV62NMTimw6",
+    "ses_188f2a9f8ffeerKLJI6yXZWtNi",
+    "ses_188f27cddffeZewqDVTh0NN1n2"
   ],
   "session_origins": {
-    "ses_18b5f6a97ffeg8iwfOvNob35WY": "direct"
+    "ses_18b5f6a97ffeg8iwfOvNob35WY": "direct",
+    "ses_188f2ed6fffe03XHos6mwnJZy0": "appended",
+    "ses_188f2c5f1ffe1SVeV62NMTimw6": "appended",
+    "ses_188f2a9f8ffeerKLJI6yXZWtNi": "appended",
+    "ses_188f27cddffeZewqDVTh0NN1n2": "appended"
   },
   "plan_name": "memory-knowledge",
   "agent": "atlas",
@@ -14,10 +22,10 @@
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**计划合规审查** — `oracle`",
-      "session_id": "ses_18b07ad2cffebKI7rqAT6st57e",
+      "session_id": "ses_188f27cddffeZewqDVTh0NN1n2",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-05-29T18:35:01.199Z"
+      "updated_at": "2026-05-30T04:03:55.162Z"
     }
   }
 }

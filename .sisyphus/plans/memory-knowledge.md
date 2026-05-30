@@ -3740,7 +3740,7 @@ Max Concurrent: 3 (Wave 5)
 
 ### Wave 5 — W6: Demo UI 生产可用 (3 agents 并行)
 
-- [ ] W6.1 Demo 布局重构 (Tabs: 聊天/知识库/记忆)
+- [x] W6.1 Demo 布局重构 (Tabs: 聊天/知识库/记忆)
 
   **What to do**:
   - 重构 `packages/demo/src/App.tsx`:
@@ -3851,7 +3851,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/App.tsx`, `packages/demo/src/pages/ChatPage.tsx` (新建), `packages/demo/src/pages/KnowledgePage.tsx` (占位), `packages/demo/src/pages/MemoryPage.tsx` (占位), `packages/demo/src/App.css`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.2 知识库列表页 (KBList)
+- [x] W6.2 知识库列表页 (KBList)
 
   **What to do**:
   - 新建 `packages/demo/src/components/kb/KBList.tsx`:
@@ -3952,7 +3952,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/components/kb/KBList.tsx`, `packages/demo/src/components/kb/CreateKBModal.tsx`, `packages/demo/src/pages/KnowledgePage.tsx`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.3 知识库详情页 (KBDetail)
+- [x] W6.3 知识库详情页 (KBDetail)
 
   **What to do**:
   - 新建 `packages/demo/src/components/kb/KBDetail.tsx`:
@@ -4038,7 +4038,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/components/kb/KBDetail.tsx`, `packages/demo/src/components/kb/StatusBadge.tsx`, `packages/demo/src/components/kb/DocumentStats.tsx`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.4 文档上传组件 (KBUpload,drag-drop + 多文件)
+- [x] W6.4 文档上传组件 (KBUpload,drag-drop + 多文件)
 
   **What to do**:
   - 新建 `packages/demo/src/components/kb/KBUpload.tsx`:
@@ -4127,7 +4127,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/components/kb/KBUpload.tsx`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.5 分块预览 (ChunkViewer Drawer)
+- [x] W6.5 分块预览 (ChunkViewer Drawer)
 
   **What to do**:
   - 新建 `packages/demo/src/components/kb/ChunkViewer.tsx`:
@@ -4195,7 +4195,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/components/kb/ChunkViewer.tsx`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.6 检索测试组件 (KBRetrievalTest)
+- [x] W6.6 检索测试组件 (KBRetrievalTest)
 
   **What to do**:
   - 新建 `packages/demo/src/components/kb/KBRetrievalTest.tsx`:
@@ -4277,7 +4277,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/components/kb/KBRetrievalTest.tsx`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.7 记忆管理页 (MemoryPage + MemoryPanel)
+- [x] W6.7 记忆管理页 (MemoryPage + MemoryPanel)
 
   **What to do**:
   - 完善 `packages/demo/src/pages/MemoryPage.tsx`:
@@ -4364,7 +4364,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/pages/MemoryPage.tsx`, `packages/demo/src/components/memory/MemoryPanel.tsx`
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.8 UI polish (统一 Skeleton/Empty/ErrorBoundary/notifications + 主题 token)
+- [x] W6.8 UI polish (统一 Skeleton/Empty/ErrorBoundary/notifications + 主题 token)
 
   **What to do**:
   - 为所有新组件添加统一错误/加载/空状态处理:
@@ -4477,7 +4477,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `packages/demo/src/components/kb/*.tsx` (修改), `packages/demo/src/components/memory/*.tsx` (修改), `packages/demo/src/pages/*.tsx` (修改), `packages/demo/src/ErrorBoundary.tsx` (新建)
   - Pre-commit: `pnpm --filter @copcon/demo build`
 
-- [ ] W6.9 可访问性 (ARIA + 键盘导航 + screen-reader friendly)
+- [x] W6.9 可访问性 (ARIA + 键盘导航 + screen-reader friendly)
 
   **What to do**:
   - 为所有新组件添加可访问性属性:
@@ -4593,7 +4593,7 @@ Max Concurrent: 3 (Wave 5)
 
 ### Wave 3+ — W7: 评估体系(可与 W4 并行启动)
 
-- [ ] W7.1 检索评估框架 (Go-native 指标)
+- [x] W7.1 检索评估框架 (Go-native 指标)
 
   **What to do**:
   - 新建目录 `core/eval/`:
@@ -4718,7 +4718,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `core/eval/retrieval.go`, `core/eval/metrics.go`, `core/eval/reporter.go`, `core/eval/retrieval_test.go`
   - Pre-commit: `cd core && go test ./eval/...`
 
-- [ ] W7.2 黄金测试集 (golden_set.jsonl,50 条)
+- [x] W7.2 黄金测试集 (golden_set.jsonl,50 条)
 
   **What to do**:
   - 新建目录 `eval/testdata/`:
@@ -4808,7 +4808,7 @@ Max Concurrent: 3 (Wave 5)
   - Files: `eval/testdata/golden_set.jsonl`, `eval/testdata/fixtures/*` (多个文档), `eval/testdata/README.md`
   - Pre-commit: 手动 review (无自动化脚本)
 
-- [ ] W7.3 CI 集成 (eval workflow + 质量门禁)
+- [x] W7.3 CI 集成 (eval workflow + 质量门禁)
 
   **What to do**:
   - 新建 `.github/workflows/eval.yml`:

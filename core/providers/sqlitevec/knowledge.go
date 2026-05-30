@@ -1,11 +1,6 @@
 // Package sqlitevec provides a SQLite-backed KnowledgeStore implementation
 // that stores vector embeddings as BLOBs and computes cosine similarity
 // in Go code. It uses the glebarez/sqlite driver (pure Go, no CGO) via GORM.
-//
-// This is the MVP vector search approach — brute-force cosine similarity
-// computed over all chunks. For production workloads with large knowledge
-// bases, consider integrating sqlite-vec virtual tables or an external
-// vector database.
 package sqlitevec
 
 import (
@@ -15,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -38,6 +34,16 @@ func NewKnowledgeStore(db *gorm.DB) (*KnowledgeStore, error) {
 		return nil, fmt.Errorf("auto-migrate knowledge schema: %w", err)
 	}
 	return &KnowledgeStore{db: db}, nil
+}
+
+// NewKnowledgeStoreFromDSN creates a new KnowledgeStore using a DSN string.
+// Use ":memory:" for an in-memory database.
+func NewKnowledgeStoreFromDSN(dsn string) (*KnowledgeStore, error) {
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite database: %w", err)
+	}
+	return NewKnowledgeStore(db)
 }
 
 // Compile-time interface check.
