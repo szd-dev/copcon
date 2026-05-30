@@ -1,0 +1,26 @@
+name: RAG Evaluation
+'on':
+  push:
+    branches: [main, feat/v2]
+  pull_request:
+    branches: [main]
+jobs:
+  retrieval-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build core
+        run: cd core && go build ./...
+      - name: Run retrieval evaluation
+        run: cd core && go test -v -run TestGoldenEval ./eval/...
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: /tmp/retrieval_eval.json
