@@ -154,21 +154,20 @@ If the underlying `context.Context` is cancelled before `Run` is called, the ent
 
 ## Capability Registration
 
-Hooks are registered as capabilities. Each hook has a corresponding capability struct in `core/capabilities/hooks/`:
+Hooks 通过 Capability 系统注册。内置 Hook 在 `core/capabilities/hooks/register.go` 中通过 `RegisterAll()` 函数统一注册：
 
 ```go
-func init() {
-    capabilities.Register(&loggingHookCapability{})
+// core/capabilities/hooks/register.go
+func RegisterAll(r *capabilities.Registry) {
+    r.Register(&loggingHookCapability{})
+    r.Register(&tracingHookCapability{})
+    // ...
 }
 ```
 
-The Harness imports the hooks package with a blank import, which triggers all `init()` functions:
+Harness 在 `Build()` 中自动调用 `hooks.RegisterAll(registry)`，无需手动引入。
 
-```go
-import _ "github.com/copcon/core/capabilities/hooks"
-```
-
-Hook capabilities implement the `HookCapability` interface:
+Hook 能力实现 `HookCapability` 接口：
 
 ```go
 type HookCapability interface {
@@ -177,21 +176,21 @@ type HookCapability interface {
 }
 ```
 
-When the Harness resolves capabilities, it calls `NewHook` with a `CapabilityDeps` struct that provides the dependencies each hook needs:
+`CapabilityDeps` 携带运行依赖：
 
 ```go
 type CapabilityDeps struct {
-    SessionStore  storage.SessionStore
-    MessageStore  storage.MessageStore
-    TodoStore     storage.TodoStore
-    MemoryStore   storage.MemoryStore
-    AgentRegistry agent.AgentRegistry
-    Engine        interface{}
-    Logger        *slog.Logger
+    SessionStore        storage.SessionStore
+    MessageStore        storage.MessageStore
+    TodoStore           storage.TodoStore
+    AgentRegistry       agent.AgentRegistry
+    Engine              interface{}
+    Logger              *slog.Logger
+    AgentKnowledgeBases map[string][]string
 }
 ```
 
-Hooks that don't need a particular dependency simply ignore it. For example, the memory hook checks whether `MemoryStore` is nil and disables itself gracefully.
+Hook 如果 `NewHook` 返回 `ErrDependencyUnavailable`，Harness 会优雅跳过而不报错。
 
 ## Enabling and Disabling Hooks
 

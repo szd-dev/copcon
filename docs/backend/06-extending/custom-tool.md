@@ -335,21 +335,29 @@ func (t *DBQueryTool) Execute(chatCtx iface.ChatContextInterface, args map[strin
 
 有两种注册方式：通过 Capability 系统自动注册，或手动注册到 ToolManager。
 
-### 方式一：Capability 自动注册（推荐）
+### 方式一：Capability 注册（推荐）
 
-创建一个 `ToolCapability` 实现并在 `init()` 中注册。框架启动时会自动发现并初始化。
+创建 `ToolCapability` 实现，通过插件的注册函数接入：
 
 ```go
+// plugins/weather/register.go
+package weather
+
+import "github.com/copcon/core/capabilities"
+
+func RegisterCapabilities(r *capabilities.Registry) {
+    r.Register(&weatherCapability{})
+}
+```
+
+```go
+// plugins/weather/capability.go
 package weather
 
 import (
     "github.com/copcon/core/capabilities"
     "github.com/copcon/core/tool"
 )
-
-func init() {
-    capabilities.Register(&weatherCapability{})
-}
 
 type weatherCapability struct{}
 
@@ -361,14 +369,34 @@ func (c *weatherCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool
 }
 ```
 
-命名约定：`tools.<tool_name>`，例如 `tools.weather`、`tools.db_query`。
+命名约定：`tools.<tool_name>`。
 
-然后在 Harness 所在的包中用空白导入触发 `init()`：
+在 Harness 构建前调用注册函数：
 
 ```go
-import (
-    _ "github.com/yourorg/copcon-weather/weather"
-)
+registry := capabilities.NewRegistry()
+weather.RegisterCapabilities(registry)
+
+harness := core.NewHarness(HarnessConfig{
+    Registry: registry,
+    // ...
+})
+```
+
+如果你需要同时产出 Tool 和 Hook，实现 `ModuleCapability` 接口：
+
+```go
+type MyModule struct{}
+
+func (m *MyModule) Name() string                      { return "modules.my_module" }
+func (m *MyModule) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeModule }
+func (m *MyModule) DependsOn() []string               { return nil }
+func (m *MyModule) NewHooks(deps capabilities.CapabilityDeps) ([]hook.Hook, error) {
+    return []hook.Hook{NewMyHook()}, nil
+}
+func (m *MyModule) NewTools(deps capabilities.CapabilityDeps) ([]tool.Tool, error) {
+    return []tool.Tool{NewMyTool()}, nil
+}
 ```
 
 ### 方式二：手动注册到 ToolManager
@@ -383,16 +411,16 @@ tm.Register(&DBQueryTool{db: myDB})
 
 ### Capability 依赖声明
 
-如果你的 Tool 依赖存储层，通过 `DependsOn()` 声明：
+如果你的 Tool 依赖存储层，通过 `DependsOn()` 声明依赖关系，并通过 `CapabilityDeps` 获取：
 
 ```go
 func (c *dbQueryCapability) DependsOn() []string {
-    return nil // 不依赖其他 capability
+    return []string{"hooks.file_memory"} // 声明依赖
 }
 
-// 但可以通过 deps 获取存储实例
 func (c *dbQueryCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
     // deps.SessionStore, deps.MessageStore, deps.TodoStore 均可用
+    // AgentRegistry 和 Engine 在 Build 的第二阶段注入
     return NewDBQueryTool(myDB), nil
 }
 ```

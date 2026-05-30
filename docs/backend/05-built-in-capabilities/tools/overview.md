@@ -60,22 +60,20 @@ Delegation tools (like `delegate_to`) are excluded from this injection because t
 
 ## Capability Registration
 
-Tools are registered as capabilities. Each tool has a corresponding capability struct in `core/capabilities/tools/`:
+Tools 通过 Capability 系统注册。内置工具在 `core/capabilities/tools/register.go` 中通过 `RegisterAll()` 函数统一注册：
 
 ```go
-// Auto-registered via init()
-func init() {
-    capabilities.Register(&codeExecutorCapability{})
+// core/capabilities/tools/register.go
+func RegisterAll(r *capabilities.Registry) {
+    r.Register(&codeExecutorCapability{})
+    r.Register(&shellExecutorCapability{})
+    // ...
 }
 ```
 
-The Harness imports the tools package with a blank import, which triggers all `init()` functions:
+Harness 在 `Build()` 中自动调用 `tools.RegisterAll(registry)`，无需手动引入。
 
-```go
-import _ "github.com/copcon/core/capabilities/tools"
-```
-
-Some tools have dependencies on other capabilities. For example, the `todolist` tool depends on `hooks.todo_injection`:
+有些工具依赖其他能力。例如 `todolist` 依赖 `hooks.todo_injection`：
 
 ```go
 func (c *todoCapability) DependsOn() []string {
@@ -83,7 +81,7 @@ func (c *todoCapability) DependsOn() []string {
 }
 ```
 
-The capability system resolves these dependencies before creating tool instances.
+能力系统在拓扑排序中自动解析依赖，确保 Hook 先于 Tool 初始化。
 
 ## Adding Custom Tools
 

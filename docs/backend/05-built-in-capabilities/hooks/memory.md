@@ -117,7 +117,7 @@ The `storage.Memory` value type:
 type Memory struct {
     ID         string
     Content    string
-    SessionID  string
+    AgentID    string
     Role       string
     Timestamp  time.Time
     MemoryType string

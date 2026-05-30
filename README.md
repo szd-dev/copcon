@@ -61,6 +61,7 @@ go run cmd/server/main.go
 copcon/
 ├── core/              # Agent 引擎核心库(可独立使用)
 ├── server/            # 参考应用(薄封装层)
+├── plugins/           # 可插拔插件(memory-file, knowledge-base 等)
 ├── packages/ui/       # React 组件库
 ├── packages/demo/     # 演示应用
 └── api/               # OpenAPI 规范

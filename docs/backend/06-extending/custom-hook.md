@@ -348,19 +348,27 @@ func (h *PromptEnhanceHook) Execute(ctx *hook.HookContext) error {
 
 ## 注册自定义 Hook
 
-### 方式一：Capability 自动注册（推荐）
+### 方式一：Capability 注册（推荐）
 
 ```go
+// plugins/audit/register.go
+package audit
+
+import "github.com/copcon/core/capabilities"
+
+func RegisterCapabilities(r *capabilities.Registry) {
+    r.Register(&auditHookCapability{})
+}
+```
+
+```go
+// plugins/audit/capability.go
 package audit
 
 import (
     "github.com/copcon/core/capabilities"
     "github.com/copcon/core/hook"
 )
-
-func init() {
-    capabilities.Register(&auditHookCapability{})
-}
 
 type auditHookCapability struct{}
 
@@ -374,7 +382,38 @@ func (c *auditHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Ho
 
 命名约定：`hooks.<hook_name>`。
 
-### 方式二：直接注册到 HookRunner
+在 Harness 构建前调用注册函数：
+
+```go
+registry := capabilities.NewRegistry()
+audit.RegisterCapabilities(registry)
+```
+
+### 方式二：ModuleCapability（同时产出 Hook + Tool）
+
+如果你的功能模块需要同时提供 Hook 和 Tool，实现 `ModuleCapability` 接口，一次性注册所有产物：
+
+```go
+type MyModule struct {
+    store *MyStore
+}
+
+func (m *MyModule) Name() string                      { return "modules.my_module" }
+func (m *MyModule) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeModule }
+func (m *MyModule) DependsOn() []string               { return nil }
+
+func (m *MyModule) NewHooks(deps capabilities.CapabilityDeps) ([]hook.Hook, error) {
+    return []hook.Hook{NewMyHook(m.store)}, nil
+}
+
+func (m *MyModule) NewTools(deps capabilities.CapabilityDeps) ([]tool.Tool, error) {
+    return []tool.Tool{NewMyTool(m.store)}, nil
+}
+```
+
+`Harness.Build()` 会自动调用 `NewHooks()` 和 `NewTools()`，并将所有产物注册到 HookRunner 和 ToolRegistry 中。
+
+### 方式三：直接注册到 HookRunner
 
 ```go
 runner := hook.NewHookRunner()
