@@ -12,11 +12,11 @@ import (
 	"github.com/copcon/core/storage"
 )
 
-func newTestStore(t *testing.T) *KnowledgeStore {
+func newTestStore(t *testing.T, dim int) *KnowledgeStore {
 	t.Helper()
 	db, err := gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	ks, err := NewKnowledgeStore(db)
+	ks, err := NewKnowledgeStore(db, WithDimension(dim))
 	require.NoError(t, err)
 	return ks
 }
@@ -24,7 +24,7 @@ func newTestStore(t *testing.T) *KnowledgeStore {
 func TestNewKnowledgeStore(t *testing.T) {
 	db, err := gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	ks, err := NewKnowledgeStore(db)
+	ks, err := NewKnowledgeStore(db, WithDimension(3))
 	require.NoError(t, err)
 	assert.NotNil(t, ks)
 }
@@ -70,7 +70,7 @@ func TestCosineSimilarity(t *testing.T) {
 
 func TestKBLifecycle(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 
 	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{
 		Name:    "test-kb",
@@ -99,14 +99,14 @@ func TestKBLifecycle(t *testing.T) {
 
 func TestDeleteKBNotFound(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 	err := ks.DeleteKB(ctx, "nonexistent")
 	assert.Error(t, err)
 }
 
 func TestDocumentCRUD(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 
 	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "docs-kb", Backend: "sqlite-vec"})
 	require.NoError(t, err)
@@ -139,14 +139,14 @@ func TestDocumentCRUD(t *testing.T) {
 
 func TestDeleteDocumentNotFound(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 	err := ks.DeleteDocument(ctx, "nonexistent", "nonexistent")
 	assert.Error(t, err)
 }
 
 func TestChunkCRUD(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 
 	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "chunks-kb", Backend: "sqlite-vec"})
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestChunkCRUD(t *testing.T) {
 
 func TestUpdateChunk(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 2)
 
 	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "update-kb", Backend: "sqlite-vec"})
 	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
@@ -209,7 +209,7 @@ func TestUpdateChunk(t *testing.T) {
 
 func TestUpdateDocumentStatus(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 
 	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "status-kb", Backend: "sqlite-vec"})
 	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
@@ -224,7 +224,7 @@ func TestUpdateDocumentStatus(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 
 	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "search-kb", Backend: "sqlite-vec"})
 	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
@@ -251,7 +251,7 @@ func TestSearch(t *testing.T) {
 
 func TestSearchWithThreshold(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 2)
 
 	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "threshold-kb", Backend: "sqlite-vec"})
 	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}
@@ -278,7 +278,7 @@ func TestSearchWithThreshold(t *testing.T) {
 
 func TestSearchEmptyQuery(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 3)
 	results, err := ks.Search(ctx, []string{"kb1"}, []float32{}, storage.SearchOptions{})
 	require.NoError(t, err)
 	assert.Nil(t, results)
@@ -286,7 +286,7 @@ func TestSearchEmptyQuery(t *testing.T) {
 
 func TestSearchCrossKB(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 2)
 
 	kb1, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb1", Backend: "sqlite-vec"})
 	kb2, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb2", Backend: "sqlite-vec"})
@@ -310,7 +310,7 @@ func TestSearchCrossKB(t *testing.T) {
 
 func TestStoreChunksCountMismatch(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 1)
 
 	err := ks.StoreChunks(ctx, "kb1", "doc1", []*storage.Chunk{{}}, [][]float32{{1.0}, {2.0}})
 	assert.Error(t, err)
@@ -319,7 +319,7 @@ func TestStoreChunksCountMismatch(t *testing.T) {
 
 func TestDeleteKBCascades(t *testing.T) {
 	ctx := context.Background()
-	ks := newTestStore(t)
+	ks := newTestStore(t, 1)
 
 	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "cascade-kb", Backend: "sqlite-vec"})
 	doc := &storage.Document{KBID: kb.ID, Filename: "doc.txt", Source: "upload", Status: storage.DocStatusPending}

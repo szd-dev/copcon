@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite/vec"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/callbacks"

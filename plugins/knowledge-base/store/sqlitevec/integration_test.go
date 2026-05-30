@@ -15,7 +15,7 @@ func TestIntegrationKBLifecycle(t *testing.T) {
 	ctx := context.Background()
 	db, err := 	gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	ks, err := NewKnowledgeStore(db)
+	ks, err := NewKnowledgeStore(db, WithDimension(3))
 	require.NoError(t, err)
 
 	kb, err := ks.CreateKB(ctx, &storage.KnowledgeBase{
@@ -82,7 +82,7 @@ func TestIntegrationMultiKBSearch(t *testing.T) {
 	ctx := context.Background()
 	db, err := 	gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	ks, err := NewKnowledgeStore(db)
+	ks, err := NewKnowledgeStore(db, WithDimension(2))
 	require.NoError(t, err)
 
 	kb1, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "kb1", Backend: "sqlite-vec"})
@@ -114,7 +114,7 @@ func TestIntegrationVectorSearchAccuracy(t *testing.T) {
 	ctx := context.Background()
 	db, err := 	gorm.Open(openDialector(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	ks, err := NewKnowledgeStore(db)
+	ks, err := NewKnowledgeStore(db, WithDimension(3))
 	require.NoError(t, err)
 
 	kb, _ := ks.CreateKB(ctx, &storage.KnowledgeBase{Name: "accuracy-kb", Backend: "sqlite-vec"})

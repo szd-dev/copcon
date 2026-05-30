@@ -85,3 +85,33 @@
 - `modernc.org/sqlite` 从 indirect 升级为 direct 依赖
 - `gorm.io/driver/sqlite` 和 `mattn/go-sqlite3` 从 go.mod 中移除
 - `CGO_ENABLED=0 go build` 编译通过
+
+## Task 13: sqlite-vec 集成决策
+
+### 关键决策1：使用 modernc.org/sqlite 内置 vec 扩展
+- `modernc.org/sqlite` v1.47.0+ (2026-03-17) 内置了 sqlite-vec 的 CGo-free 端口
+- 只需空白导入 `_ "modernc.org/sqlite/vec"` 即可自动注册 vec0 虚拟表
+- 从 v1.23.1 升级到 v1.51.0，无需切换驱动
+- 替代方案 `asg017/sqlite-vec-go-bindings/ncruces` 需要 ncruces/go-sqlite3 WASM 驱动，与现有 modernc.org/sqlite 不兼容
+
+### 关键决策2：vec0 虚拟表使用 L2 距离做 KNN 排序
+- vec0 的 KNN `WHERE embedding MATCH ?` 使用 L2（欧几里得）距离排序
+- `vec_distance_cosine()` 是独立的 SQL 标量函数，可计算 cosine 距离
+- 解决方案：KNN 查询 SELECT 中同时使用 `vec_distance_cosine(embedding, ?)` 获取准确 cosine 距离
+- KNN 用 L2 排序筛选候选，cosine 距离用于精确评分和阈值过滤
+
+### 关键决策3：chunk_id → rowid 映射使用 FNV-1a 哈希
+- vec0 的 rowid 必须是整数，而 chunkModel.ID 是 string UUID
+- 使用 `hash/fnv.New64a()` 将 UUID 映射为 int64，碰撞概率极低
+- 映射是确定性的，可从 chunk ID 反推 rowid 用于删除操作
+
+### 关键决策4：vec0 表增加 metadata 列 chunk_id 和 kb_id
+- `chunk_id TEXT`：用于 KNN 结果与 chunks 表的 JOIN
+- `kb_id TEXT`：用于 KNN 查询中 `WHERE kb_id = ?` 过滤
+- metadata 列支持在 KNN 查询的 WHERE 子句中使用等值约束
+
+### 关键决策5：dimension 作为可配置参数（WithDimension 选项）
+- vec0 虚拟表在 CREATE TABLE 时固定维度
+- 默认 1536（text-embedding-3-small），通过 `WithDimension(d)` 选项可覆盖
+- 测试使用不同维度（1-3维），每个测试创建独立 store
+- 新增 `opts ...Option` 参数向后兼容，不破坏现有调用

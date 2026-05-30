@@ -2,6 +2,7 @@ package sqlitevec
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -15,12 +16,36 @@ import (
 )
 
 // KnowledgeStore implements knowledgebase.KnowledgeStore using SQLite + GORM
-// with brute-force vector search via cosine similarity.
+// with vector search via sqlite-vec vec0 virtual tables.
 type KnowledgeStore struct {
-	db *gorm.DB
+	db        *gorm.DB
+	sqlDB     *sql.DB
+	dimension int
 }
 
-func NewKnowledgeStore(db *gorm.DB) (*KnowledgeStore, error) {
+// Option configures a KnowledgeStore.
+type Option func(*KnowledgeStore)
+
+// WithDimension sets the vector dimension for the vec0 virtual table.
+// Default is 1536 (text-embedding-3-small). Must be set before first use.
+func WithDimension(d int) Option {
+	return func(ks *KnowledgeStore) {
+		ks.dimension = d
+	}
+}
+
+func NewKnowledgeStore(db *gorm.DB, opts ...Option) (*KnowledgeStore, error) {
+	ks := &KnowledgeStore{db: db, dimension: 1536}
+	for _, opt := range opts {
+		opt(ks)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get underlying sql.DB: %w", err)
+	}
+	ks.sqlDB = sqlDB
+
 	if err := db.AutoMigrate(
 		&kbModel{},
 		&docModel{},
@@ -28,15 +53,20 @@ func NewKnowledgeStore(db *gorm.DB) (*KnowledgeStore, error) {
 	); err != nil {
 		return nil, fmt.Errorf("auto-migrate knowledge schema: %w", err)
 	}
-	return &KnowledgeStore{db: db}, nil
+
+	if err := ks.initVectorTable(context.Background()); err != nil {
+		return nil, fmt.Errorf("init vector table: %w", err)
+	}
+
+	return ks, nil
 }
 
-func NewKnowledgeStoreFromDSN(dsn string) (*KnowledgeStore, error) {
+func NewKnowledgeStoreFromDSN(dsn string, opts ...Option) (*KnowledgeStore, error) {
 	db, err := gorm.Open(openDialector(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
-	return NewKnowledgeStore(db)
+	return NewKnowledgeStore(db, opts...)
 }
 
 var _ knowledgebase.KnowledgeStore = (*KnowledgeStore)(nil)
@@ -66,6 +96,21 @@ func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *storage.KnowledgeBase
 }
 
 func (s *KnowledgeStore) DeleteKB(ctx context.Context, id string) error {
+	rows, err := s.sqlDB.QueryContext(ctx, "SELECT rowid FROM chunks_vec WHERE kb_id = ?", id)
+	if err == nil {
+		var rowIDs []int64
+		for rows.Next() {
+			var rid int64
+			if rows.Scan(&rid) == nil {
+				rowIDs = append(rowIDs, rid)
+			}
+		}
+		rows.Close()
+		for _, rid := range rowIDs {
+			s.sqlDB.ExecContext(ctx, "DELETE FROM chunks_vec WHERE rowid = ?", rid)
+		}
+	}
+
 	if err := s.db.WithContext(ctx).Where("kb_id = ?", id).Delete(&chunkModel{}).Error; err != nil {
 		return fmt.Errorf("delete chunks for kb %s: %w", id, err)
 	}
@@ -142,6 +187,14 @@ func (s *KnowledgeStore) ListDocuments(ctx context.Context, kbID string) ([]*sto
 }
 
 func (s *KnowledgeStore) DeleteDocument(ctx context.Context, kbID string, docID string) error {
+	var chunkIDs []string
+	if err := s.db.WithContext(ctx).Model(&chunkModel{}).Where("document_id = ? AND kb_id = ?", docID, kbID).Pluck("id", &chunkIDs).Error; err != nil {
+		return fmt.Errorf("find chunks for document %s: %w", docID, err)
+	}
+	for _, cid := range chunkIDs {
+		s.sqlDB.ExecContext(ctx, "DELETE FROM chunks_vec WHERE rowid = ?", chunkIDToRowID(cid))
+	}
+
 	if err := s.db.WithContext(ctx).Where("document_id = ? AND kb_id = ?", docID, kbID).Delete(&chunkModel{}).Error; err != nil {
 		return fmt.Errorf("delete chunks for document %s: %w", docID, err)
 	}
@@ -206,42 +259,59 @@ func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []flo
 		threshold = 0.0
 	}
 
-	var models []chunkModel
-	if err := s.db.WithContext(ctx).Where("kb_id IN ?", kbIDs).Find(&models).Error; err != nil {
-		return nil, fmt.Errorf("search chunks: %w", err)
-	}
+	queryBlob := toBlob(query)
 
-	type scored struct {
-		chunk *storage.Chunk
-		score float32
+	type vecResult struct {
+		chunkID  string
+		cosineSim float32
 	}
-	var results []scored
+	var allResults []vecResult
 
-	for _, m := range models {
-		vec := fromBlob(m.Vector)
-		if len(vec) == 0 {
-			continue
+	for _, kbID := range kbIDs {
+		rows, err := s.sqlDB.QueryContext(ctx, `
+			SELECT chunk_id, vec_distance_cosine(embedding, ?) as cosine_dist
+			FROM chunks_vec
+			WHERE embedding MATCH ? AND kb_id = ?
+			ORDER BY distance
+			LIMIT ?
+		`, queryBlob, queryBlob, kbID, topK+len(kbIDs))
+		if err != nil {
+			return nil, fmt.Errorf("search chunks: %w", err)
 		}
-		sim := cosineSimilarity(query, vec)
-		if sim >= threshold {
-			c := m.toDomain()
-			c.Score = sim
-			results = append(results, scored{chunk: c, score: sim})
+		for rows.Next() {
+			var r vecResult
+			var cosDist float64
+			if err := rows.Scan(&r.chunkID, &cosDist); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan search result: %w", err)
+			}
+			r.cosineSim = float32(1.0 - cosDist)
+			if r.cosineSim >= threshold {
+				allResults = append(allResults, r)
+			}
 		}
+		rows.Close()
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].score > results[j].score
+	sort.Slice(allResults, func(i, j int) bool {
+		return allResults[i].cosineSim > allResults[j].cosineSim
 	})
 
-	if len(results) > topK {
-		results = results[:topK]
+	if len(allResults) > topK {
+		allResults = allResults[:topK]
 	}
 
-	chunks := make([]*storage.Chunk, len(results))
-	for i, r := range results {
-		chunks[i] = r.chunk
+	chunks := make([]*storage.Chunk, 0, len(allResults))
+	for _, r := range allResults {
+		var m chunkModel
+		if err := s.db.WithContext(ctx).Where("id = ?", r.chunkID).First(&m).Error; err != nil {
+			continue
+		}
+		c := m.toDomain()
+		c.Score = r.cosineSim
+		chunks = append(chunks, c)
 	}
+
 	return chunks, nil
 }
 
@@ -269,6 +339,17 @@ func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID str
 			}
 			if err := tx.Create(m).Error; err != nil {
 				return fmt.Errorf("store chunk %d: %w", i, err)
+			}
+
+			rowID := chunkIDToRowID(chunkID)
+			vecBlob := toBlob(vectors[i])
+			if len(vecBlob) > 0 {
+				if err := tx.Exec(
+					"INSERT INTO chunks_vec(rowid, embedding, chunk_id, kb_id) VALUES (?, ?, ?, ?)",
+					rowID, vecBlob, chunkID, kbID,
+				).Error; err != nil {
+					return fmt.Errorf("store chunk %d in vec: %w", i, err)
+				}
 			}
 		}
 

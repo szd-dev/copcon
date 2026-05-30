@@ -720,7 +720,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: replace glebarez/sqlite with modernc.org/sqlite in knowledge store`
   - Files：`plugins/knowledge-base/store/sqlitevec/knowledge.go`, `plugins/knowledge-base/store/sqlitevec/knowledge_test.go`, `plugins/knowledge-base/store/sqlitevec/integration_test.go`, `plugins/go.mod`, `plugins/go.sum`
 
-- [ ] 13. 集成 sqlite/vec 扩展，改造 Search()
+- [x] 13. 集成 sqlite/vec 扩展，改造 Search()
 
   **What to do**：
   - 在 `plugins/go.mod` 中添加：
