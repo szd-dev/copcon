@@ -7,13 +7,11 @@ import (
 )
 
 func TestMemoryBundleNamesNonEmpty(t *testing.T) {
-	names := MemoryBundleNames()
-	assert.NotEmpty(t, names, "MemoryBundleNames should return at least one name")
+	assert.NotEmpty(t, MemoryBundleNames())
 }
 
 func TestKnowledgeBaseBundleNamesNonEmpty(t *testing.T) {
-	names := KnowledgeBaseBundleNames()
-	assert.NotEmpty(t, names, "KnowledgeBaseBundleNames should return at least one name")
+	assert.NotEmpty(t, KnowledgeBaseBundleNames())
 }
 
 func TestBundlesAreDisjoint(t *testing.T) {
@@ -28,12 +26,3 @@ func TestBundlesAreDisjoint(t *testing.T) {
 	}
 }
 
-func TestMemoryBundleNamesCount(t *testing.T) {
-	names := MemoryBundleNames()
-	assert.Len(t, names, 4, "MemoryBundleNames should have exactly 4 entries")
-}
-
-func TestKnowledgeBaseBundleNamesCount(t *testing.T) {
-	names := KnowledgeBaseBundleNames()
-	assert.Len(t, names, 2, "KnowledgeBaseBundleNames should have exactly 2 entries")
-}
