@@ -6,69 +6,27 @@ import (
 	"github.com/copcon/core/tool"
 )
 
-type fileMemoryHookCapabilityClosure struct {
+// MemoryModule implements capabilities.ModuleCapability, producing
+// one hook (file_memory) and three tools (memory_store, memory_recall,
+// memory_forget) from a single capability registration.
+type MemoryModule struct {
 	store *FileMemoryStore
 }
 
-func (c *fileMemoryHookCapabilityClosure) Name() string                      { return capabilities.HookFileMemory }
-func (c *fileMemoryHookCapabilityClosure) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeHook }
-func (c *fileMemoryHookCapabilityClosure) DependsOn() []string               { return nil }
+func (m *MemoryModule) Name() string                      { return capabilities.CapMemoryFile }
+func (m *MemoryModule) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeModule }
+func (m *MemoryModule) DependsOn() []string               { return nil }
 
-func (c *fileMemoryHookCapabilityClosure) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	return NewFileMemoryHook(c.store), nil
+func (m *MemoryModule) NewHooks(deps capabilities.CapabilityDeps) ([]hook.Hook, error) {
+	return []hook.Hook{NewFileMemoryHook(m.store)}, nil
 }
 
-type memoryHookCapabilityClosure struct {
-	store *FileMemoryStore
+func (m *MemoryModule) NewTools(deps capabilities.CapabilityDeps) ([]tool.Tool, error) {
+	return []tool.Tool{
+		NewMemoryStoreTool(m.store),
+		NewMemoryRecallTool(m.store),
+		NewMemoryForgetTool(m.store),
+	}, nil
 }
 
-func (c *memoryHookCapabilityClosure) Name() string                      { return capabilities.HookMemory }
-func (c *memoryHookCapabilityClosure) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeHook }
-func (c *memoryHookCapabilityClosure) DependsOn() []string               { return nil }
-
-func (c *memoryHookCapabilityClosure) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	return NewMemoryPlugin(newMemoryManagerFromStore(c.store)), nil
-}
-
-func newMemoryManagerFromStore(store *FileMemoryStore) MemoryManager {
-	if store == nil {
-		return nil
-	}
-	return &memoryManagerAdapter{store: store}
-}
-
-type memoryStoreCapabilityClosure struct {
-	store *FileMemoryStore
-}
-
-func (c *memoryStoreCapabilityClosure) Name() string                      { return capabilities.ToolMemoryStore }
-func (c *memoryStoreCapabilityClosure) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *memoryStoreCapabilityClosure) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
-
-func (c *memoryStoreCapabilityClosure) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewMemoryStoreTool(c.store), nil
-}
-
-type memoryRecallCapabilityClosure struct {
-	store *FileMemoryStore
-}
-
-func (c *memoryRecallCapabilityClosure) Name() string                      { return capabilities.ToolMemoryRecall }
-func (c *memoryRecallCapabilityClosure) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *memoryRecallCapabilityClosure) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
-
-func (c *memoryRecallCapabilityClosure) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewMemoryRecallTool(c.store), nil
-}
-
-type memoryForgetCapabilityClosure struct {
-	store *FileMemoryStore
-}
-
-func (c *memoryForgetCapabilityClosure) Name() string                      { return capabilities.ToolMemoryForget }
-func (c *memoryForgetCapabilityClosure) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *memoryForgetCapabilityClosure) DependsOn() []string               { return []string{capabilities.HookFileMemory} }
-
-func (c *memoryForgetCapabilityClosure) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewMemoryForgetTool(c.store), nil
-}
+var _ capabilities.ModuleCapability = (*MemoryModule)(nil)

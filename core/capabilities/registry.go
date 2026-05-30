@@ -27,6 +27,7 @@ const (
 	CapabilityTypeHook   CapabilityType = "hook"
 	CapabilityTypeSkill  CapabilityType = "skill"
 	CapabilityTypeMemory CapabilityType = "memory"
+	CapabilityTypeModule CapabilityType = "module"
 )
 
 // Capability is the base interface that every registrable capability must implement.
@@ -55,6 +56,15 @@ type ToolCapability interface {
 type HookCapability interface {
 	Capability
 	NewHook(deps CapabilityDeps) (hook.Hook, error)
+}
+
+// ModuleCapability extends Capability with the ability to produce multiple
+// Hooks and/or Tools from a single capability. This allows grouping related
+// functionality (e.g., memory store + recall + forget) under one name.
+type ModuleCapability interface {
+	Capability
+	NewHooks(deps CapabilityDeps) ([]hook.Hook, error)
+	NewTools(deps CapabilityDeps) ([]tool.Tool, error)
 }
 
 // CapabilityDeps collects the dependencies that capabilities may request
@@ -124,7 +134,7 @@ func (r *Registry) ListByType(t CapabilityType) []Capability {
 //   - "tools.*"   → all capabilities of type "tool"
 //   - "hooks.*"   → all capabilities of type "hook"
 //   - "skills.*"  → all capabilities of type "skill"
-//   - "memory.*"  → all capabilities of type "memory"
+//   - "modules.*" → all capabilities of type "module"
 //   - "*"         → all registered capabilities
 //
 // Non-wildcard names are passed through unchanged. The result is deduplicated
@@ -167,6 +177,13 @@ func (r *Registry) ExpandWildcards(names []string) []string {
 			}
 		case name == WildcardMemory:
 			for _, c := range r.ListByType(CapabilityTypeMemory) {
+				if !seen[c.Name()] {
+					seen[c.Name()] = true
+					result = append(result, c.Name())
+				}
+			}
+		case name == WildcardModules:
+			for _, c := range r.ListByType(CapabilityTypeModule) {
 				if !seen[c.Name()] {
 					seen[c.Name()] = true
 					result = append(result, c.Name())

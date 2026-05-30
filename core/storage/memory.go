@@ -15,7 +15,7 @@ const (
 // MemoryFilter specifies filtering criteria for listing memories.
 // Zero values mean "no filter" for each field.
 type MemoryFilter struct {
-	SessionID  string
+	AgentID    string
 	MemoryType []MemoryType
 	Limit      int
 	Offset     int
@@ -27,7 +27,7 @@ type MemoryFilter struct {
 type Memory struct {
 	ID         string
 	Content    string
-	SessionID  string
+	AgentID    string
 	Role       string
 	Timestamp  time.Time
 	MemoryType string

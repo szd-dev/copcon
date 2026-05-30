@@ -200,9 +200,37 @@ func (h *Harness) Build() error {
 		Logger:              logger,
 	}
 
-	capToToolName := make(map[string]string)
+	capToToolName := make(map[string][]string)
 
 	for _, cap := range resolved {
+		if module, ok := cap.(capabilities.ModuleCapability); ok {
+			hooks, err := module.NewHooks(capDeps)
+			if err != nil {
+				if errors.Is(err, capabilities.ErrDependencyUnavailable) {
+					logger.Info("harness: skipping module (dependency unavailable)", "capability", cap.Name(), "reason", err.Error())
+					continue
+				}
+				return fmt.Errorf("create hooks from module %q: %w", cap.Name(), err)
+			}
+			for _, hk := range hooks {
+				h.hookRunner.Register(hk)
+				logger.Info("harness: registered hook", "capability", cap.Name(), "hook", hk.Name())
+			}
+
+			tools, err := module.NewTools(capDeps)
+			if err != nil {
+				return fmt.Errorf("create tools from module %q: %w", cap.Name(), err)
+			}
+			for _, t := range tools {
+				if err := toolRegistry.Register(t); err != nil {
+					return fmt.Errorf("register tool %q from module %q: %w", t.Name(), cap.Name(), err)
+				}
+				capToToolName[cap.Name()] = append(capToToolName[cap.Name()], t.Name())
+				logger.Info("harness: registered tool", "capability", cap.Name(), "tool", t.Name())
+			}
+			continue
+		}
+
 		switch cap.Type() {
 		case capabilities.CapabilityTypeTool:
 			if cap.Name() == capabilities.ToolDelegate || cap.Name() == capabilities.ToolReadSubSession {
@@ -219,7 +247,7 @@ func (h *Harness) Build() error {
 			if err := toolRegistry.Register(t); err != nil {
 				return fmt.Errorf("register tool %q: %w", cap.Name(), err)
 			}
-			capToToolName[cap.Name()] = t.Name()
+			capToToolName[cap.Name()] = []string{t.Name()}
 			logger.Info("harness: registered tool", "capability", cap.Name(), "tool", t.Name())
 
 		case capabilities.CapabilityTypeHook:
@@ -297,7 +325,7 @@ func (h *Harness) Build() error {
 	return nil
 }
 
-func registerCrossAgentTool(r *capabilities.Registry, capName string, capDeps capabilities.CapabilityDeps, toolRegistry tool.ToolRegistry, logger *slog.Logger, capToToolName map[string]string) {
+func registerCrossAgentTool(r *capabilities.Registry, capName string, capDeps capabilities.CapabilityDeps, toolRegistry tool.ToolRegistry, logger *slog.Logger, capToToolName map[string][]string) {
 	cap, ok := r.Get(capName)
 	if !ok {
 		return
@@ -315,7 +343,7 @@ func registerCrossAgentTool(r *capabilities.Registry, capName string, capDeps ca
 		logger.Warn("harness: failed to register cross-agent tool", "capability", capName, "error", err)
 		return
 	}
-	capToToolName[capName] = t.Name()
+	capToToolName[capName] = []string{t.Name()}
 	logger.Info("harness: registered cross-agent tool", "tool", t.Name())
 }
 
@@ -371,7 +399,7 @@ func (h *Harness) makeAgentFactory(
 	toolRegistry tool.ToolRegistry,
 	_ hook.HookRunner,
 	_ *slog.Logger,
-	capToToolName map[string]string,
+	capToToolName map[string][]string,
 ) agent.AgentFactory {
 	return func(_ context.Context, params agent.CreateParams) (agent.AgentDefinition, error) {
 		toolMgr := tool.NewToolManager()
@@ -396,16 +424,18 @@ func (h *Harness) makeAgentFactory(
 		registeredNames := make(map[string]bool)
 
 		for _, capName := range expandedTools {
-			toolName, mapped := capToToolName[capName]
+			toolNames, mapped := capToToolName[capName]
 			if !mapped {
-				toolName = capName
+				toolNames = []string{capName}
 			}
-			if registeredNames[toolName] {
-				continue
-			}
-			if t, err := toolRegistry.Get(toolName); err == nil {
-				_ = toolMgr.Register(t)
-				registeredNames[t.Name()] = true
+			for _, toolName := range toolNames {
+				if registeredNames[toolName] {
+					continue
+				}
+				if t, err := toolRegistry.Get(toolName); err == nil {
+					_ = toolMgr.Register(t)
+					registeredNames[toolName] = true
+				}
 			}
 		}
 

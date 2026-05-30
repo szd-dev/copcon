@@ -354,9 +354,10 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider, opts ...
 			sessions.POST("/:sessionId/resume", handler.ResumeSession)
 			sessions.GET("/:sessionId/todos", handler.GetSessionTodos)
 			sessions.GET("/:sessionId/updates", handler.GetSessionUpdates)
-			sessions.GET("/:sessionId/memories", handler.ListSessionMemories)
-			sessions.DELETE("/:sessionId/memories/:memoryId", handler.DeleteSessionMemory)
 		}
+
+		api.GET("/agents/:agentId/memories", handler.ListAgentMemories)
+		api.DELETE("/agents/:agentId/memories/:memoryId", handler.DeleteAgentMemory)
 
 		kb := api.Group("/kb")
 		{

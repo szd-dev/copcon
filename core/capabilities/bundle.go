@@ -6,10 +6,7 @@ package capabilities
 func MemoryBundleNames() []string {
 	return []string{
 		HookMemory,
-		HookFileMemory,
-		ToolMemoryStore,
-		ToolMemoryRecall,
-		ToolMemoryForget,
+		CapMemoryFile,
 	}
 }
 

@@ -9,10 +9,10 @@ import (
 	"github.com/copcon/core/storage"
 )
 
-func (h *Handler) ListSessionMemories(c *gin.Context) {
-	sessionID := c.Param("sessionId")
-	if sessionID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "session id is required"})
+func (h *Handler) ListAgentMemories(c *gin.Context) {
+	agentID := c.Param("agentId")
+	if agentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agent id is required"})
 		return
 	}
 
@@ -26,7 +26,7 @@ func (h *Handler) ListSessionMemories(c *gin.Context) {
 		fmt.Sscanf(l, "%d", &limit)
 	}
 
-	memories, err := h.memoryStore.GetBySession(c.Request.Context(), sessionID, limit)
+	memories, err := h.memoryStore.GetByAgentID(c.Request.Context(), agentID, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -40,11 +40,11 @@ func (h *Handler) ListSessionMemories(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"memories": result})
 }
 
-func (h *Handler) DeleteSessionMemory(c *gin.Context) {
-	sessionID := c.Param("sessionId")
+func (h *Handler) DeleteAgentMemory(c *gin.Context) {
+	agentID := c.Param("agentId")
 	memoryID := c.Param("memoryId")
-	if sessionID == "" || memoryID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "session id and memory id are required"})
+	if agentID == "" || memoryID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agent id and memory id are required"})
 		return
 	}
 
@@ -59,8 +59,8 @@ func (h *Handler) DeleteSessionMemory(c *gin.Context) {
 		return
 	}
 
-	if mem.SessionID != sessionID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "memory not found"})
+	if mem.AgentID != agentID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "memory not found for this agent"})
 		return
 	}
 
@@ -76,7 +76,7 @@ func memoryToJSON(mem *storage.Memory) gin.H {
 	return gin.H{
 		"id":          mem.ID,
 		"content":     mem.Content,
-		"session_id":  mem.SessionID,
+		"agent_id":    mem.AgentID,
 		"role":        mem.Role,
 		"timestamp":   mem.Timestamp,
 		"memory_type": mem.MemoryType,

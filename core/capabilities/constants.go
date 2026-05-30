@@ -12,6 +12,12 @@ const (
 	HookMemoryPersist = "hooks.memory_persist"
 )
 
+// ---- Capability Names: Modules ----
+
+const (
+	CapMemoryFile = "modules.memory_file"
+)
+
 // ---- Capability Names: Tools ----
 
 const (
@@ -24,9 +30,6 @@ const (
 	ToolFileOps        = "tools.file_ops"
 	ToolDelegate       = "tools.delegate"
 	ToolReadSubSession = "tools.read_sub_session"
-	ToolMemoryStore    = "tools.memory_store"
-	ToolMemoryRecall   = "tools.memory_recall"
-	ToolMemoryForget   = "tools.memory_forget"
 )
 
 // ---- Wildcard Patterns ----
@@ -37,6 +40,7 @@ const (
 	WildcardHooks  = "hooks.*"
 	WildcardSkills = "skills.*"
 	WildcardMemory = "memory.*"
+	WildcardModules = "modules.*"
 )
 
 // ---- User-facing Tool Aliases (for toolNameToCap mapping) ----

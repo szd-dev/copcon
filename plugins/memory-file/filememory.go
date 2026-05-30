@@ -75,9 +75,9 @@ func (s *FileMemoryStore) Store(ctx context.Context, memory *storage.Memory) err
 		memory.MemoryType = string(storage.MemoryTypeConversation)
 	}
 
-	agentID := memory.SessionID
+	agentID := memory.AgentID
 	if agentID == "" {
-		return fmt.Errorf("memory SessionID (used as agentID) must not be empty")
+		return fmt.Errorf("memory AgentID must not be empty")
 	}
 
 	category := categoryFromType(memory.MemoryType)
@@ -128,8 +128,7 @@ func (s *FileMemoryStore) Search(ctx context.Context, query []float32, limit int
 	return nil, fmt.Errorf("file memory does not support vector search; use keyword recall instead")
 }
 
-func (s *FileMemoryStore) GetBySession(ctx context.Context, sessionID string, limit int) ([]*storage.Memory, error) {
-	agentID := sessionID
+func (s *FileMemoryStore) GetByAgentID(ctx context.Context, agentID string, limit int) ([]*storage.Memory, error) {
 	agentDir := AgentDir(s.basePath, agentID)
 
 	var results []*storage.Memory
@@ -147,7 +146,7 @@ func (s *FileMemoryStore) GetBySession(ctx context.Context, sessionID string, li
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 				continue
 			}
-			mem, err := s.readMemoryFile(filepath.Join(dir, e.Name()), sessionID)
+			mem, err := s.readMemoryFile(filepath.Join(dir, e.Name()), agentID)
 			if err != nil {
 				continue
 			}
@@ -161,17 +160,17 @@ func (s *FileMemoryStore) GetBySession(ctx context.Context, sessionID string, li
 	return results, nil
 }
 
-func (s *FileMemoryStore) DeleteBySession(ctx context.Context, sessionID string) error {
-	agentDir := AgentDir(s.basePath, sessionID)
+func (s *FileMemoryStore) DeleteByAgentID(ctx context.Context, agentID string) error {
+	agentDir := AgentDir(s.basePath, agentID)
 	return os.RemoveAll(agentDir)
 }
 
 func (s *FileMemoryStore) List(ctx context.Context, filter storage.MemoryFilter) ([]*storage.Memory, error) {
 	var results []*storage.Memory
 
-	agentID := filter.SessionID
+	agentID := filter.AgentID
 	if agentID == "" {
-		return nil, fmt.Errorf("MemoryFilter.SessionID (used as agentID) is required for file memory")
+		return nil, fmt.Errorf("MemoryFilter.AgentID is required for file memory")
 	}
 
 	agentDir := AgentDir(s.basePath, agentID)
@@ -230,9 +229,9 @@ func (s *FileMemoryStore) Get(ctx context.Context, id string) (*storage.Memory, 
 }
 
 func (s *FileMemoryStore) Update(ctx context.Context, memory *storage.Memory) error {
-	agentID := memory.SessionID
+	agentID := memory.AgentID
 	if agentID == "" {
-		return fmt.Errorf("memory SessionID (used as agentID) must not be empty")
+		return fmt.Errorf("memory AgentID must not be empty")
 	}
 
 	category := categoryFromType(memory.MemoryType)
@@ -381,7 +380,7 @@ func (s *FileMemoryStore) fullPath(agentID, relPath string) string {
 	return filepath.Join(s.basePath, agentID, relPath)
 }
 
-func (s *FileMemoryStore) readMemoryFile(path, sessionID string) (*storage.Memory, error) {
+func (s *FileMemoryStore) readMemoryFile(path, agentID string) (*storage.Memory, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -393,10 +392,10 @@ func (s *FileMemoryStore) readMemoryFile(path, sessionID string) (*storage.Memor
 	}
 
 	mem := &storage.Memory{
-		ID:         strings.TrimSuffix(filepath.Base(path), ".md"),
-		Content:    body,
-		SessionID:  sessionID,
-		Timestamp:  fm.CreatedAt,
+		ID:        strings.TrimSuffix(filepath.Base(path), ".md"),
+		Content:   body,
+		AgentID:   agentID,
+		Timestamp: fm.CreatedAt,
 		Importance: fm.Importance,
 	}
 

@@ -32,7 +32,7 @@ func TestNewFileMemoryStore_DefaultLimits(t *testing.T) {
 	assert.Equal(t, defaultMaxIndexBytes, store.maxIndexBytes)
 }
 
-func TestFileMemoryStore_StoreAndGetBySession(t *testing.T) {
+func TestFileMemoryStore_StoreAndGetByAgentID(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := NewFileMemoryStore(tmpDir, 200, 25*1024)
 	require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestFileMemoryStore_StoreAndGetBySession(t *testing.T) {
 	ctx := context.Background()
 	mem := &storage.Memory{
 		Content:    "test content",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		Role:       "assistant",
 		MemoryType: string(storage.MemoryTypeEpisodic),
 	}
@@ -49,7 +49,7 @@ func TestFileMemoryStore_StoreAndGetBySession(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, mem.ID)
 
-	results, err := store.GetBySession(ctx, "agent-1", 10)
+	results, err := store.GetByAgentID(ctx, "agent-1", 10)
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, "test content", results[0].Content)
@@ -64,7 +64,7 @@ func TestFileMemoryStore_Store_NoOverwrite(t *testing.T) {
 	mem := &storage.Memory{
 		ID:         "fixed-id",
 		Content:    "original",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		MemoryType: string(storage.MemoryTypeEpisodic),
 	}
 
@@ -85,7 +85,7 @@ func TestFileMemoryStore_Update(t *testing.T) {
 	ctx := context.Background()
 	mem := &storage.Memory{
 		Content:    "original content",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		Role:       "assistant",
 		MemoryType: string(storage.MemoryTypeEpisodic),
 	}
@@ -97,13 +97,13 @@ func TestFileMemoryStore_Update(t *testing.T) {
 	err = store.Update(ctx, mem)
 	require.NoError(t, err)
 
-	results, err := store.GetBySession(ctx, "agent-1", 10)
+	results, err := store.GetByAgentID(ctx, "agent-1", 10)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	assert.Contains(t, results[0].Content, "updated content")
 }
 
-func TestFileMemoryStore_DeleteBySession(t *testing.T) {
+func TestFileMemoryStore_DeleteByAgentID(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := NewFileMemoryStore(tmpDir, 200, 25*1024)
 	require.NoError(t, err)
@@ -111,14 +111,14 @@ func TestFileMemoryStore_DeleteBySession(t *testing.T) {
 	ctx := context.Background()
 	mem := &storage.Memory{
 		Content:    "to be deleted",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		MemoryType: string(storage.MemoryTypeEpisodic),
 	}
 
 	err = store.Store(ctx, mem)
 	require.NoError(t, err)
 
-	err = store.DeleteBySession(ctx, "agent-1")
+	err = store.DeleteByAgentID(ctx, "agent-1")
 	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(tmpDir, "agent-1"))
@@ -218,7 +218,7 @@ func TestFileMemoryStore_List_WithFilter(t *testing.T) {
 	ctx := context.Background()
 	mem1 := &storage.Memory{
 		Content:    "episodic memory",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		MemoryType: string(storage.MemoryTypeEpisodic),
 	}
 	err = store.Store(ctx, mem1)
@@ -226,14 +226,14 @@ func TestFileMemoryStore_List_WithFilter(t *testing.T) {
 
 	mem2 := &storage.Memory{
 		Content:    "procedural memory",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		MemoryType: string(storage.MemoryTypeProcedural),
 	}
 	err = store.Store(ctx, mem2)
 	require.NoError(t, err)
 
 	filter := storage.MemoryFilter{
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		MemoryType: []storage.MemoryType{storage.MemoryTypeEpisodic},
 	}
 	results, err := store.List(ctx, filter)
@@ -412,7 +412,7 @@ func TestIntegration_StoreViaMemoryInterface_RecallViaFileInterface(t *testing.T
 
 	mem := &storage.Memory{
 		Content:    "The user works in Go",
-		SessionID:  "agent-1",
+		AgentID:    "agent-1",
 		MemoryType: string(storage.MemoryTypeSemantic),
 	}
 	err = store.Store(ctx, mem)

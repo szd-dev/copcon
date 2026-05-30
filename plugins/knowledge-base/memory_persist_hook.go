@@ -53,7 +53,7 @@ func (h *MemoryPersistHook) Execute(ctx *hook.HookContext) error {
 		if msg.Role == "assistant" && msg.Content != "" {
 			content := msg.Content
 			chatCtx := ctx.ChatCtx
-			sessionID := ctx.SessionID
+			agentID := ctx.ChatCtx.AgentID()
 			embedder := h.embedder
 			store := h.memoryStore
 			logger := h.logger
@@ -62,13 +62,13 @@ func (h *MemoryPersistHook) Execute(ctx *hook.HookContext) error {
 				defer func() {
 					if r := recover(); r != nil {
 						logger.Warn("memory_persist: goroutine panic",
-							"session_id", sessionID,
+							"agent_id", agentID,
 							"recover", r,
 						)
 					}
 				}()
 
-				h.persistAsync(chatCtx.Context(), sessionID, content, embedder, store, logger)
+				h.persistAsync(chatCtx.Context(), agentID, content, embedder, store, logger)
 			}()
 			break
 		}
@@ -79,7 +79,7 @@ func (h *MemoryPersistHook) Execute(ctx *hook.HookContext) error {
 
 func (h *MemoryPersistHook) persistAsync(
 	ctx context.Context,
-	sessionID string,
+	agentID string,
 	content string,
 	embedder storage.Embedder,
 	store MemoryStorePersister,
@@ -93,7 +93,7 @@ func (h *MemoryPersistHook) persistAsync(
 	vec, err := embedder.Embed(ctx, content)
 	if err != nil {
 		logger.Warn("memory_persist: embed failed",
-			"session_id", sessionID,
+			"agent_id", agentID,
 			"error", err,
 		)
 		return
@@ -102,7 +102,7 @@ func (h *MemoryPersistHook) persistAsync(
 	existing, err := store.Search(ctx, vec, 1)
 	if err != nil {
 		logger.Warn("memory_persist: similarity search failed",
-			"session_id", sessionID,
+			"agent_id", agentID,
 			"error", err,
 		)
 	} else if len(existing) > 0 && cosineSim(vec, toFloat32Slice(existing[0].Metadata)) > 0.95 {
@@ -111,7 +111,7 @@ func (h *MemoryPersistHook) persistAsync(
 
 	memory := &storage.Memory{
 		Content:    content,
-		SessionID:  sessionID,
+		AgentID:    agentID,
 		Role:       "assistant",
 		MemoryType: string(storage.MemoryTypeSemantic),
 		Metadata:   map[string]any{"keywords": strings.Join(keywords, ",")},
@@ -119,7 +119,7 @@ func (h *MemoryPersistHook) persistAsync(
 
 	if err := store.Store(ctx, memory); err != nil {
 		logger.Warn("memory_persist: store failed",
-			"session_id", sessionID,
+			"agent_id", agentID,
 			"error", err,
 		)
 	}

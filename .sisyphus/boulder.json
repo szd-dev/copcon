@@ -1,31 +1,54 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/memory-knowledge.md",
-  "started_at": "2026-05-29T16:45:41.666Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/core-plugins-split.md",
+  "started_at": "2026-05-30T07:46:13.218Z",
   "session_ids": [
-    "ses_18b5f6a97ffeg8iwfOvNob35WY",
-    "ses_188f2ed6fffe03XHos6mwnJZy0",
-    "ses_188f2c5f1ffe1SVeV62NMTimw6",
-    "ses_188f2a9f8ffeerKLJI6yXZWtNi",
-    "ses_188f27cddffeZewqDVTh0NN1n2"
+    "ses_18826f5c5ffeqXfZ2ZTOVyRZ4P",
+    "ses_18826b4abffeE81l5ZCMUNS4GB",
+    "ses_18826a8d8ffea9Wj2h5HGWHQob"
   ],
   "session_origins": {
-    "ses_18b5f6a97ffeg8iwfOvNob35WY": "direct",
-    "ses_188f2ed6fffe03XHos6mwnJZy0": "appended",
-    "ses_188f2c5f1ffe1SVeV62NMTimw6": "appended",
-    "ses_188f2a9f8ffeerKLJI6yXZWtNi": "appended",
-    "ses_188f27cddffeZewqDVTh0NN1n2": "appended"
+    "ses_18826f5c5ffeqXfZ2ZTOVyRZ4P": "direct",
+    "ses_18826b4abffeE81l5ZCMUNS4GB": "appended",
+    "ses_18826a8d8ffea9Wj2h5HGWHQob": "appended"
   },
-  "plan_name": "memory-knowledge",
+  "plan_name": "core-plugins-split",
   "agent": "atlas",
   "task_sessions": {
-    "final-wave:f1": {
-      "task_key": "final-wave:f1",
-      "task_label": "F1",
-      "task_title": "**计划合规审查** — `oracle`",
-      "session_id": "ses_188f27cddffeZewqDVTh0NN1n2",
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "创建 `plugins/` 顶层目录",
+      "session_id": "ses_18823fb61ffe1GbJ2pNc1X0hhd",
       "agent": "Sisyphus-Junior",
       "category": "deep",
-      "updated_at": "2026-05-30T04:03:55.162Z"
+      "updated_at": "2026-05-30T07:56:20.275Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "将 `core/capabilities/registry.go` 的全局 `sync.Map` 改为实例化 Registry",
+      "session_id": "ses_187ff99edffeCtY4jxUf6En3WO",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-30T08:53:46.954Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "将 `StoreProvider` 简化为三个方法",
+      "session_id": "ses_187e7f530ffeoeMmUimt4MpPhB",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-30T08:59:44.340Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "运行全量测试，修复所有失败",
+      "session_id": "ses_187dde70affeVLxC8tSPZDE2Ep",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-30T09:06:52.865Z"
     }
   }
 }

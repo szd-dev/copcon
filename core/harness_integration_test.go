@@ -63,6 +63,29 @@ func (h *stubHook) Points() []hook.HookPoint { return nil }
 func (h *stubHook) Priority() int    { return 100 }
 func (h *stubHook) Execute(ctx *hook.HookContext) error { return nil }
 
+type stubModuleCap struct {
+	name     string
+	hookName string
+	toolNames []string
+}
+
+func (c *stubModuleCap) Name() string                         { return c.name }
+func (c *stubModuleCap) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeModule }
+func (c *stubModuleCap) DependsOn() []string                  { return nil }
+func (c *stubModuleCap) NewHooks(deps capabilities.CapabilityDeps) ([]hook.Hook, error) {
+	if c.hookName == "" {
+		return nil, nil
+	}
+	return []hook.Hook{&stubHook{name: c.hookName}}, nil
+}
+func (c *stubModuleCap) NewTools(deps capabilities.CapabilityDeps) ([]tool.Tool, error) {
+	var tools []tool.Tool
+	for _, name := range c.toolNames {
+		tools = append(tools, &stubTool{name: name})
+	}
+	return tools, nil
+}
+
 type stubToolCap struct {
 	capName  string
 	toolName string
@@ -92,10 +115,11 @@ func newRegistryWithPlugins() *capabilities.Registry {
 	tools.RegisterAll(r)
 
 	r.Register(&stubHookCap{name: capabilities.HookMemory})
-	r.Register(&stubHookCap{name: capabilities.HookFileMemory})
-	r.Register(&stubToolCap{capName: capabilities.ToolMemoryStore, toolName: "memory_store"})
-	r.Register(&stubToolCap{capName: capabilities.ToolMemoryRecall, toolName: "memory_recall"})
-	r.Register(&stubToolCap{capName: capabilities.ToolMemoryForget, toolName: "memory_forget"})
+	r.Register(&stubModuleCap{
+		name:      capabilities.CapMemoryFile,
+		hookName:  "file_memory",
+		toolNames: []string{"memory_store", "memory_recall", "memory_forget"},
+	})
 	r.Register(&stubHookCap{name: capabilities.HookKBRecall})
 	r.Register(&stubHookCap{name: capabilities.HookMemoryPersist})
 
@@ -192,10 +216,7 @@ func TestHarness_CollectCapabilityNames_MemoryBundle(t *testing.T) {
 	names := h.collectCapabilityNames()
 
 	assert.Contains(t, names, capabilities.HookMemory)
-	assert.Contains(t, names, capabilities.HookFileMemory)
-	assert.Contains(t, names, capabilities.ToolMemoryStore)
-	assert.Contains(t, names, capabilities.ToolMemoryRecall)
-	assert.Contains(t, names, capabilities.ToolMemoryForget)
+	assert.Contains(t, names, capabilities.CapMemoryFile)
 	assert.NotContains(t, names, capabilities.HookKBRecall)
 	assert.NotContains(t, names, capabilities.HookMemoryPersist)
 }
@@ -209,8 +230,7 @@ func TestHarness_CollectCapabilityNames_KBBundle(t *testing.T) {
 
 	assert.Contains(t, names, capabilities.HookKBRecall)
 	assert.Contains(t, names, capabilities.HookMemoryPersist)
-	assert.NotContains(t, names, capabilities.HookFileMemory)
-	assert.NotContains(t, names, capabilities.ToolMemoryStore)
+	assert.NotContains(t, names, capabilities.CapMemoryFile)
 }
 
 func TestHarness_CollectCapabilityNames_BothBundles(t *testing.T) {
@@ -222,10 +242,7 @@ func TestHarness_CollectCapabilityNames_BothBundles(t *testing.T) {
 	names := h.collectCapabilityNames()
 
 	assert.Contains(t, names, capabilities.HookMemory)
-	assert.Contains(t, names, capabilities.HookFileMemory)
-	assert.Contains(t, names, capabilities.ToolMemoryStore)
-	assert.Contains(t, names, capabilities.ToolMemoryRecall)
-	assert.Contains(t, names, capabilities.ToolMemoryForget)
+	assert.Contains(t, names, capabilities.CapMemoryFile)
 	assert.Contains(t, names, capabilities.HookKBRecall)
 	assert.Contains(t, names, capabilities.HookMemoryPersist)
 }

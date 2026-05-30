@@ -4964,7 +4964,7 @@ Max Concurrent: 3 (Wave 5)
 > 4 个审查 agent 并行运行。ALL 必须 APPROVE。汇总结果给用户,获取明确 "okay" 才能完成。
 > **未获得用户明确 okay 前,不得自动完成工作。**
 
-- [ ] F1. **计划合规审查** — `oracle`
+- [x] F1. **计划合规审查** — `oracle`
 
   完整阅读本计划。逐项检查:
   - 每个 "Must Have" 是否在代码中实现(读文件 / 跑命令 / curl 端点)
@@ -4980,7 +4980,7 @@ Max Concurrent: 3 (Wave 5)
   VERDICT: APPROVE | REJECT (附具体原因)
   ```
 
-- [ ] F2. **代码质量审查** — `unspecified-high`
+- [x] F2. **代码质量审查** — `unspecified-high`
 
   依次运行:
   1. `cd core && go vet ./...` + `go build ./...` + `go test ./...`
@@ -5004,7 +5004,7 @@ Max Concurrent: 3 (Wave 5)
   VERDICT: APPROVE | REJECT
   ```
 
-- [ ] F3. **真实手工 QA** — `unspecified-high` + `playwright` skill
+- [x] F3. **真实手工 QA** — `unspecified-high` + `playwright` skill
 
   从 **clean state** 启动 (新容器/新数据库/新 Qdrant 实例):
   1. 启动所有服务: `docker compose up -d` + `cd server && go run cmd/server/main.go` + `cd packages/demo && pnpm dev`
@@ -5027,7 +5027,7 @@ Max Concurrent: 3 (Wave 5)
   VERDICT: APPROVE | REJECT
   ```
 
-- [ ] F4. **范围保真检查** — `deep`
+- [x] F4. **范围保真检查** — `deep`
 
   对每个任务 (W1.1 - W7.3,共 43 个):
   - 读 "What to do" 和实际 git diff (按 commit)
