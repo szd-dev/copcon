@@ -9,25 +9,20 @@ import (
 	"time"
 
 	"github.com/copcon/core/storage"
+	knowledgebase "github.com/copcon/plugins/knowledge-base"
 )
 
 type ProgressFunc func(stage string, current, total int)
-
-type PipelineStore interface {
-	IngestDocument(ctx context.Context, kbID string, doc *storage.Document, content []byte) error
-	StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error
-	UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error
-}
 
 type Pipeline struct {
 	parser  Parser
 	chunker Chunker
 	embedder storage.Embedder
-	store   PipelineStore
+	store   knowledgebase.KnowledgeStore
 	logger  *slog.Logger
 }
 
-func NewPipeline(parser Parser, embedder storage.Embedder, store PipelineStore) *Pipeline {
+func NewPipeline(parser Parser, embedder storage.Embedder, store knowledgebase.KnowledgeStore) *Pipeline {
 	return &Pipeline{
 		parser:   parser,
 		chunker:  NewRecursiveChunker(),
@@ -37,7 +32,7 @@ func NewPipeline(parser Parser, embedder storage.Embedder, store PipelineStore) 
 	}
 }
 
-func NewMarkdownPipeline(parser Parser, embedder storage.Embedder, store PipelineStore) *Pipeline {
+func NewMarkdownPipeline(parser Parser, embedder storage.Embedder, store knowledgebase.KnowledgeStore) *Pipeline {
 	return &Pipeline{
 		parser:   parser,
 		chunker:  NewMarkdownAwareChunker(),

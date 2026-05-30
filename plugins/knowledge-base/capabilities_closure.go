@@ -19,15 +19,4 @@ func (c *kbRecallHookCapabilityClosure) NewHook(deps capabilities.CapabilityDeps
 	return NewKBRecallHook(c.emb, c.ks, deps.AgentKnowledgeBases), nil
 }
 
-type memoryPersistHookCapabilityClosure struct {
-	emb storage.Embedder
-	ms  MemoryStoreDeps
-}
 
-func (c *memoryPersistHookCapabilityClosure) Name() string                      { return capabilities.HookMemoryPersist }
-func (c *memoryPersistHookCapabilityClosure) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeHook }
-func (c *memoryPersistHookCapabilityClosure) DependsOn() []string               { return nil }
-
-func (c *memoryPersistHookCapabilityClosure) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	return NewMemoryPersistHook(c.emb, c.ms), nil
-}

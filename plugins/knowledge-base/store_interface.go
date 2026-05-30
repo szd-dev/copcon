@@ -19,8 +19,10 @@ type KnowledgeStore interface {
 	ListDocuments(ctx context.Context, kbID string) ([]*storage.Document, error)
 	DeleteDocument(ctx context.Context, kbID string, docID string) error
 	GetDocument(ctx context.Context, kbID string, docID string) (*storage.Document, error)
+	UpdateDocumentStatus(ctx context.Context, kbID string, docID string, status storage.DocumentStatus) error
 
 	// Chunk access and mutation
+	StoreChunks(ctx context.Context, kbID string, docID string, chunks []*storage.Chunk, vectors [][]float32) error
 	GetChunks(ctx context.Context, kbID string, docID string) ([]*storage.Chunk, error)
 	UpdateChunk(ctx context.Context, kbID string, chunk *storage.Chunk) error
 

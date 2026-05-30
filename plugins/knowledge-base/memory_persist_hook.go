@@ -2,7 +2,6 @@ package knowledgebase
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"math"
 	"strings"
@@ -260,6 +259,4 @@ func toFloat32Slice(m map[string]any) []float32 {
 	return nil
 }
 
-func FormatKBResultsStub() string {
-	return fmt.Sprintf("stub")
-}
+

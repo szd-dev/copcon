@@ -1,54 +1,23 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/core-plugins-split.md",
-  "started_at": "2026-05-30T07:46:13.218Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/kb-cohesion-refactor.md",
+  "started_at": "2026-05-30T14:34:24.821Z",
   "session_ids": [
-    "ses_18826f5c5ffeqXfZ2ZTOVyRZ4P",
-    "ses_18826b4abffeE81l5ZCMUNS4GB",
-    "ses_18826a8d8ffea9Wj2h5HGWHQob"
+    "ses_186b13f8cffe4ccHro94DrYxhT"
   ],
   "session_origins": {
-    "ses_18826f5c5ffeqXfZ2ZTOVyRZ4P": "direct",
-    "ses_18826b4abffeE81l5ZCMUNS4GB": "appended",
-    "ses_18826a8d8ffea9Wj2h5HGWHQob": "appended"
+    "ses_186b13f8cffe4ccHro94DrYxhT": "direct"
   },
-  "plan_name": "core-plugins-split",
+  "plan_name": "kb-cohesion-refactor",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "创建 `plugins/` 顶层目录",
-      "session_id": "ses_18823fb61ffe1GbJ2pNc1X0hhd",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T07:56:20.275Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "将 `core/capabilities/registry.go` 的全局 `sync.Map` 改为实例化 Registry",
-      "session_id": "ses_187ff99edffeCtY4jxUf6En3WO",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T08:53:46.954Z"
-    },
-    "todo:6": {
-      "task_key": "todo:6",
-      "task_label": "6",
-      "task_title": "将 `StoreProvider` 简化为三个方法",
-      "session_id": "ses_187e7f530ffeoeMmUimt4MpPhB",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T08:59:44.340Z"
-    },
-    "todo:9": {
-      "task_key": "todo:9",
-      "task_label": "9",
-      "task_title": "运行全量测试，修复所有失败",
-      "session_id": "ses_187dde70affeVLxC8tSPZDE2Ep",
+      "task_title": "合并 `rag.PipelineStore` 到 `knowledgebase.KnowledgeStore`",
+      "session_id": "ses_186af754bffe75wqyMixwxtBNE",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-30T09:06:52.865Z"
+      "updated_at": "2026-05-30T14:38:37.391Z"
     }
   }
 }

@@ -16,10 +16,8 @@ func BuildKnowledgeOptions(ks knowledgebase.KnowledgeStore, emb storage.Embedder
 	if emb != nil {
 		opts = append(opts, WithEmbedder(emb))
 
-		if ps, ok := ks.(rag.PipelineStore); ok {
-			pipeline := rag.NewPipeline(rag.NewDefaultParser(), emb, ps)
-			opts = append(opts, WithRAGPipeline(pipeline))
-		}
+		pipeline := rag.NewPipeline(rag.NewDefaultParser(), emb, ks)
+		opts = append(opts, WithRAGPipeline(pipeline))
 	}
 
 	return opts

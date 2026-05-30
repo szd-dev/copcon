@@ -64,7 +64,7 @@ func main() {
 		memoryfile.RegisterCapabilities(reg, fmStore)
 	}
 	if ks != nil {
-		knowledgebase.RegisterCapabilities(reg, ks, emb, fmStore)
+		knowledgebase.RegisterCapabilities(reg, ks, emb)
 	}
 
 	h := core.NewHarness(core.HarnessConfig{

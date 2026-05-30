@@ -132,7 +132,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
 > Implementation + Test = ONE Task. Never separate.
 > EVERY task MUST have: Recommended Agent Profile + Parallelization info + QA Scenarios.
 
-- [ ] 1. 合并 `rag.PipelineStore` 到 `knowledgebase.KnowledgeStore`
+- [x] 1. 合并 `rag.PipelineStore` 到 `knowledgebase.KnowledgeStore`
 
   **What to do**：
   - 在 `plugins/knowledge-base/store_interface.go` 的 `KnowledgeStore` 接口中新增两个方法：
@@ -191,7 +191,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`refactor: merge PipelineStore into KnowledgeStore interface`
   - Files：`plugins/knowledge-base/store_interface.go`, `plugins/rag/pipeline.go`, `server/internal/api/knowledge_options.go`
 
-- [ ] 2. 清理死代码 + 删除 MemoryStoreDeps
+- [x] 2. 清理死代码 + 删除 MemoryStoreDeps
 
   **What to do**：
   - 删除 `plugins/knowledge-base/kb_recall_capability.go`（NewHook 返回 nil, nil）
@@ -247,7 +247,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`chore: remove dead code (stub capabilities, MemoryStoreDeps, FormatKBResultsStub)`
   - Files：`plugins/knowledge-base/kb_recall_capability.go`, `plugins/knowledge-base/memory_persist_capability.go`, `plugins/knowledge-base/register.go`, `plugins/knowledge-base/capabilities_closure.go`, `plugins/knowledge-base/memory_persist_hook.go`
 
-- [ ] 3. 创建 knowledge-base 子目录结构
+- [x] 3. 创建 knowledge-base 子目录结构
 
   **What to do**：
   - 创建 `plugins/knowledge-base/embedding/`
