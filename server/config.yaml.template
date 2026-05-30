@@ -10,7 +10,6 @@ openai:
   base_url: "https://api.360.cn/v1"
   model: "z-ai/glm-5"
 
-# Agent configurations
 default_agent_id: "code-assistant"
 
 agents:
@@ -24,21 +23,17 @@ agents:
     model: "z-ai/glm-5"
     system_prompt: "You are a friendly chat assistant. You engage in natural conversations, answer questions, and provide helpful information. You don't have access to tools, so focus on text-based responses."
     tools: []
-    # memory:
-    #   enabled: true
-    #   base_path: "~/.copcon/memory"
-    #   system_dir: "system"
-    #   index_file: "INDEX.md"
-    #   max_index_lines: 200
-    #   max_index_bytes: 25600
 
-# knowledge_bases:
-#   - id: "my-docs"
-#     name: "My Documentation"
-#     backend: "sqlite_vec"
-#     sqlite_path: "data/knowledge.db"
-#     chunk_size: 1000
-#     chunk_overlap: 200
-#     embedding:
-#       backend: "openai"
-#       openai_model: "text-embedding-3-small"
+# Knowledge module configuration.
+# KB metadata (ID, name, chunk size, etc.) is managed via the API:
+#   POST /api/kb            — create a knowledge base
+#   GET  /api/kb            — list all knowledge bases
+#   ...
+knowledge:
+  # sqlite_path: "data/collab/knowledge.db"   # optional, shown is default
+  embedding:
+    # api_key and base_url inherit from openai config when not specified
+    # api_key: "..."
+    # base_url: "..."
+    model: "text-embedding-3-small"
+    # backend: "openai"                        # optional, auto "openai" when model is set
