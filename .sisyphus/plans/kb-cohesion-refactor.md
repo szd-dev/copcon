@@ -807,7 +807,7 @@ Wave FINAL（所有 task 之后 — 并行审查）：
   - Message：`feat: integrate sqlite/vec extension for native vector search`
   - Files：`plugins/knowledge-base/store/sqlitevec/knowledge.go`, `plugins/knowledge-base/store/sqlitevec/schema.go`, `plugins/go.mod`
 
-- [ ] 14. 使全部现有测试通过
+- [x] 14. 使全部现有测试通过
 
   **What to do**：
   - 运行 `go test ./plugins/...` 验证所有测试通过
