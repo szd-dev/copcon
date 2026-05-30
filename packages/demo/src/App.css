@@ -1,6 +1,14 @@
-/* App Layout Styles */
+.ant-tabs {
+  height: 100vh;
+}
 
-/* Todo Sidebar Responsive Styles */
+.ant-tabs-content {
+  height: 100%;
+}
+
+.ant-tabs-tabpane {
+  height: 100%;
+}
 @media (max-width: 768px) {
   .todo-sidebar {
     position: fixed !important;
