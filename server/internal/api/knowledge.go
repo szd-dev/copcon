@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -142,11 +141,6 @@ func (h *Handler) UploadDocument(c *gin.Context) {
 		return
 	}
 
-	mimetype := header.Header.Get("Content-Type")
-	if mimetype == "" {
-		mimetype = "application/octet-stream"
-	}
-
 	doc := &kbtypes.Document{
 		ID:         uuid.New().String(),
 		KBID:       kbID,
@@ -160,14 +154,56 @@ func (h *Handler) UploadDocument(c *gin.Context) {
 		Metadata:   make(map[string]any),
 	}
 
-	if h.ragPipeline != nil {
-		go func() {
-			bgCtx := c.Request.Context()
-			if err := h.ragPipeline.Ingest(bgCtx, kbID, doc, content, mimetype, nil); err != nil {
-				slog.Default().Error("async document ingestion failed",
-					"kb_id", kbID, "doc_id", doc.ID, "error", err)
-			}
-		}()
+	if err := h.knowledgeStore.IngestDocument(c.Request.Context(), kbID, doc, content); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to store document: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, docToJSON(doc))
+}
+
+func (h *Handler) TextUpload(c *gin.Context) {
+	kbID := c.Param("kbId")
+	if kbID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "kb id is required"})
+		return
+	}
+
+	if h.knowledgeStore == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "knowledge store not configured"})
+		return
+	}
+
+	var req struct {
+		Filename string `json:"filename" binding:"required"`
+		Content  string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "filename and content are required"})
+		return
+	}
+
+	_, err := h.knowledgeStore.GetKB(c.Request.Context(), kbID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "knowledge base not found"})
+		return
+	}
+
+	doc := &kbtypes.Document{
+		ID:        uuid.New().String(),
+		KBID:      kbID,
+		Filename:  req.Filename,
+		Source:    "input",
+		Status:    kbtypes.DocStatusPending,
+		Content:   req.Content,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Metadata:  make(map[string]any),
+	}
+
+	if err := h.knowledgeStore.IngestDocument(c.Request.Context(), kbID, doc, []byte(req.Content)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to store document: %s", err.Error())})
+		return
 	}
 
 	c.JSON(http.StatusAccepted, docToJSON(doc))
@@ -218,7 +254,8 @@ func (h *Handler) GetDocument(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, docToJSON(doc))
+	includeContent := c.Query("include_content") == "true"
+	c.JSON(http.StatusOK, docToJSONExtended(doc, includeContent))
 }
 
 func (h *Handler) DeleteDocument(c *gin.Context) {
@@ -330,6 +367,15 @@ func docToJSON(doc *kbtypes.Document) gin.H {
 		"updated_at":  doc.UpdatedAt,
 		"metadata":    doc.Metadata,
 	}
+}
+
+func docToJSONExtended(doc *kbtypes.Document, includeContent bool) gin.H {
+	result := docToJSON(doc)
+	if includeContent {
+		result["content"] = doc.Content
+		result["error_msg"] = doc.ErrorMsg
+	}
+	return result
 }
 
 func chunkToJSON(chunk *kbtypes.Chunk) gin.H {

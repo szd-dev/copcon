@@ -367,6 +367,7 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider, opts ...
 			kb.GET("/:kbId", handler.GetKB)
 			kb.DELETE("/:kbId", handler.DeleteKB)
 			kb.POST("/:kbId/docs", handler.UploadDocument)
+			kb.POST("/:kbId/docs/text", handler.TextUpload)
 			kb.GET("/:kbId/docs", handler.ListDocuments)
 			kb.GET("/:kbId/docs/:docId", handler.GetDocument)
 			kb.DELETE("/:kbId/docs/:docId", handler.DeleteDocument)
