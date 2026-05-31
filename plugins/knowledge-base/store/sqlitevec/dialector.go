@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"strconv"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 	_ "modernc.org/sqlite/vec"
 
 	"gorm.io/gorm"
@@ -16,6 +16,10 @@ import (
 	"gorm.io/gorm/schema"
 )
 
+func init() {
+	sql.Register("modernc-sqlite", &sqlite.Driver{})
+}
+
 // dialector implements gorm.Dialector using modernc.org/sqlite (pure-Go, CGo-free).
 type dialector struct {
 	DriverName string
@@ -25,16 +29,16 @@ type dialector struct {
 
 // openDialector returns a Dialector that opens a new database connection.
 func openDialector(dsn string) gorm.Dialector {
-	return &dialector{DSN: dsn, DriverName: "sqlite"}
+	return &dialector{DSN: dsn, DriverName: "modernc-sqlite"}
 }
 
 // connDialector returns a Dialector that uses an existing connection pool.
 func connDialector(conn gorm.ConnPool) gorm.Dialector {
-	return &dialector{Conn: conn, DriverName: "sqlite"}
+	return &dialector{Conn: conn, DriverName: "modernc-sqlite"}
 }
 
 func (d *dialector) Name() string {
-	return "sqlite"
+	return "modernc-sqlite"
 }
 
 func (d *dialector) Initialize(db *gorm.DB) (err error) {
