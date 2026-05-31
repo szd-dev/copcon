@@ -115,6 +115,8 @@ func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *k
 		Filename:   doc.Filename,
 		Source:     doc.Source,
 		Status:     string(doc.Status),
+		Content:    string(content),
+		ErrorMsg:   "",
 		ChunkCount: doc.ChunkCount,
 		TokenCount: doc.TokenCount,
 		CreatedAt:  now,
@@ -122,7 +124,7 @@ func (s *KnowledgeStore) IngestDocument(ctx context.Context, kbID string, doc *k
 		Metadata:   toJSONB(doc.Metadata),
 	}
 
-	if err := s.db.WithContext(ctx).Create(m).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id = ?", docID).FirstOrCreate(m).Error; err != nil {
 		return fmt.Errorf("ingest document: %w", err)
 	}
 	doc.ID = m.ID
