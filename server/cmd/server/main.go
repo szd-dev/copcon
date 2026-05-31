@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"gorm.io/gorm"
+
+	_ "modernc.org/sqlite/vec" // enable vec0 extension in modernc SQLite driver
+
 	"github.com/copcon/core"
 	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/capabilities/hooks"
@@ -17,6 +23,7 @@ import (
 	kbembedding "github.com/copcon/plugins/knowledge-base/embedding"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
 	kbtypes "github.com/copcon/plugins/knowledge-base/types"
+	"github.com/copcon/plugins/knowledge-base/store/bruteforce"
 	"github.com/copcon/plugins/knowledge-base/store/sqlitevec"
 	memoryfile "github.com/copcon/plugins/memory-file"
 	"github.com/copcon/server/internal/api"
@@ -146,6 +153,29 @@ func createKnowledgeStore(cfg *config.Config, log *slog.Logger) (*sqlitevec.Know
 	}
 
 	dsn := fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)", path)
-	log.Info("using SQLite for knowledge store", "path", path)
-	return sqlitevec.NewKnowledgeStoreFromDSN(dsn)
+
+	gormDB, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite for knowledge store: %w", err)
+	}
+
+	var vec knowledgebase.VectorStore
+	switch cfg.Knowledge.VectorBackend {
+	case "sqlite-vec":
+		sqlDB, err := gormDB.DB()
+		if err != nil {
+			return nil, fmt.Errorf("get underlying sql.DB: %w", err)
+		}
+		vecStore := sqlitevec.New(sqlDB, 1536)
+		if err := vecStore.InitVectorTable(context.Background()); err != nil {
+			return nil, fmt.Errorf("init vector table: %w", err)
+		}
+		vec = vecStore
+		log.Info("using sqlite-vec vector backend for knowledge store")
+	default:
+		vec = bruteforce.New(gormDB)
+		log.Info("using brute-force vector backend for knowledge store")
+	}
+
+	return sqlitevec.NewKnowledgeStore(gormDB, vec)
 }

@@ -1,94 +1,12 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/kb-cohesion-refactor.md",
-  "started_at": "2026-05-30T14:34:24.821Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/kb-state-machine.md",
+  "started_at": "2026-05-31T12:43:31.082Z",
   "session_ids": [
-    "ses_186b13f8cffe4ccHro94DrYxhT",
-    "ses_1866cbc0bffeju0P3eTlkY5dmm",
-    "ses_1866c91c4ffeONYN7biQzLopc2",
-    "ses_1866c5d96ffeCq3ocY0VmI56J3",
-    "ses_1866c2f33ffevqJZLYyB92FDYQ"
+    "ses_182966ab5ffeAdWx3fDeNF7lz4"
   ],
   "session_origins": {
-    "ses_186b13f8cffe4ccHro94DrYxhT": "direct",
-    "ses_1866cbc0bffeju0P3eTlkY5dmm": "appended",
-    "ses_1866c91c4ffeONYN7biQzLopc2": "appended",
-    "ses_1866c5d96ffeCq3ocY0VmI56J3": "appended",
-    "ses_1866c2f33ffevqJZLYyB92FDYQ": "appended"
+    "ses_182966ab5ffeAdWx3fDeNF7lz4": "direct"
   },
-  "plan_name": "kb-cohesion-refactor",
-  "agent": "atlas",
-  "task_sessions": {
-    "todo:1": {
-      "task_key": "todo:1",
-      "task_label": "1",
-      "task_title": "合并 `rag.PipelineStore` 到 `knowledgebase.KnowledgeStore`",
-      "session_id": "ses_186af754bffe75wqyMixwxtBNE",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-30T14:38:37.391Z"
-    },
-    "todo:4": {
-      "task_key": "todo:4",
-      "task_label": "4",
-      "task_title": "移入 embedding-openai → knowledge-base/embedding",
-      "session_id": "ses_186aa0751ffecXO68TT9CK9EEG",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-30T14:43:46.892Z"
-    },
-    "todo:9": {
-      "task_key": "todo:9",
-      "task_label": "9",
-      "task_title": "更新 server 侧 import 路径",
-      "session_id": "ses_1869d7805ffeGw8htY4h6eqzP3",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-30T14:56:51.686Z"
-    },
-    "todo:12": {
-      "task_key": "todo:12",
-      "task_label": "12",
-      "task_title": "迁移 glebarez/sqlite → modernc/sqlite 驱动",
-      "session_id": "ses_186960273ffeBfN2d5NET40Pbx",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T15:13:50.990Z"
-    },
-    "todo:13": {
-      "task_key": "todo:13",
-      "task_label": "13",
-      "task_title": "集成 sqlite/vec 扩展，改造 Search()",
-      "session_id": "ses_1868b558dffepifYLALfcBBWih",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T15:43:20.958Z"
-    },
-    "final-wave:f1": {
-      "task_key": "final-wave:f1",
-      "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_1866c2f33ffevqJZLYyB92FDYQ",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T15:49:51.054Z"
-    },
-    "final-wave:f2": {
-      "task_key": "final-wave:f2",
-      "task_label": "F2",
-      "task_title": "**Code Quality Review** — `unspecified-high`",
-      "session_id": "ses_1866c91c4ffeONYN7biQzLopc2",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-30T15:51:29.077Z"
-    },
-    "final-wave:f3": {
-      "task_key": "final-wave:f3",
-      "task_label": "F3",
-      "task_title": "**Real Manual QA** — `unspecified-high`",
-      "session_id": "ses_1866c2f33ffevqJZLYyB92FDYQ",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-30T15:57:40.888Z"
-    }
-  }
+  "plan_name": "kb-state-machine",
+  "agent": "atlas"
 }

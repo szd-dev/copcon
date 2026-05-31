@@ -16,6 +16,7 @@ export type { SubagentStreamConfig } from './subagent-stream';
 
 export type {
   Session,
+  Agent,
   ToolCall,
   Todo,
   AsyncToolStartedData,

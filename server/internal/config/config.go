@@ -67,8 +67,9 @@ type MemoryConfig struct {
 // KnowledgeConfig configures the knowledge base module.
 // KB metadata (ID, name, chunk_size, etc.) is managed via the API, not here.
 type KnowledgeConfig struct {
-	SQLitePath string              `yaml:"sqlite_path,omitempty"` // default: "data/collab/knowledge.db"
-	Embedding  KnowledgeEmbedConfig `yaml:"embedding,omitempty"`
+	SQLitePath    string               `yaml:"sqlite_path,omitempty"`    // default: "data/collab/knowledge.db"
+	VectorBackend string               `yaml:"vector_backend,omitempty"` // "brute-force" (default) or "sqlite-vec"
+	Embedding     KnowledgeEmbedConfig `yaml:"embedding,omitempty"`
 }
 
 // KnowledgeEmbedConfig configures the embedding model used by the knowledge module.

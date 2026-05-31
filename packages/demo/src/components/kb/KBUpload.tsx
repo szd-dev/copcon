@@ -44,9 +44,11 @@ export const KBUpload: React.FC<KBUploadProps> = ({ open, kbId, onClose, onSucce
     return null;
   };
 
-  const handleChange = (info: { file: { originFileObj?: File; name: string; size?: number; uid: string } }) => {
-    const rawFile = info.file.originFileObj;
-    if (!rawFile) return;
+  const handleChange = (info: { file: any; fileList: any[] }) => {
+    // 当 beforeUpload 返回 false 时，info.file 是原生 File 对象（clone），没有 originFileObj
+    // 其他场景 info.file 是 UploadFile 对象，有 originFileObj 属性
+    const rawFile = info.file.originFileObj || info.file;
+    if (!(rawFile instanceof File)) return;
 
     const error = validateFile(rawFile);
     if (error) {

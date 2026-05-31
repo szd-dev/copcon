@@ -437,7 +437,11 @@ const ChatPage: React.FC = () => {
             {sidebarTab === 'tasks' ? (
               <TodoList todos={todos} onStatusChange={handleTodoStatusChange} />
             ) : (
-              <MemoryPanel sessionId={activeKey} limit={5} />
+              (() => {
+                const currentSession = sessions.find((s) => s.id === activeKey);
+                const currentAgentId = currentSession?.default_agent_id || '';
+                return <MemoryPanel agentId={currentAgentId} limit={5} />;
+              })()
             )}
           </Flex>
         </Flex>

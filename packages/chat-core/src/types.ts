@@ -4,6 +4,13 @@ export interface Session {
   created_at: string;
   updated_at: string;
   message_count: number;
+  default_agent_id?: string;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  model: string;
 }
 
 export interface ToolCall {
@@ -209,7 +216,7 @@ export interface KnowledgeBase {
   metadata: Record<string, unknown>;
 }
 
-export type DocumentStatus = 'pending' | 'parsing' | 'ready' | 'error';
+export type DocumentStatus = 'pending' | 'parsing' | 'indexing' | 'ready' | 'error';
 
 export interface Document {
   id: string;
@@ -217,6 +224,8 @@ export interface Document {
   filename: string;
   source: string;
   status: DocumentStatus;
+  content: string;
+  error_msg: string;
   chunk_count: number;
   token_count: number;
   created_at: string;
@@ -245,7 +254,7 @@ export type MemoryType = 'episodic' | 'semantic' | 'procedural';
 export interface Memory {
   id: string;
   content: string;
-  session_id: string;
+  agent_id: string;
   role: string;
   timestamp: string;
   memory_type: string;

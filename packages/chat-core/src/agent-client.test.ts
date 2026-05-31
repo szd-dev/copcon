@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentClient } from './agent-client';
-import type { KnowledgeBase, Document, SearchResult, Memory } from './types';
+import type { KnowledgeBase, Document, SearchResult, Memory, Agent } from './types';
 
 function mockFetch(response: unknown, status = 200, statusText = 'OK') {
   return vi.fn().mockResolvedValue({
@@ -162,39 +162,50 @@ describe('AgentClient — Knowledge Base Methods', () => {
     });
   });
 
-  describe('getSessionMemories', () => {
-    it('calls GET /api/sessions/:sessionId/memories', async () => {
+  describe('getAgents', () => {
+    it('calls GET /api/agents', async () => {
+      const agents: Agent[] = [{ id: 'a1', name: 'Agent One', model: 'gpt-4o' }];
+      globalThis.fetch = mockFetch({ agents });
+
+      const result = await client.getAgents();
+      expect(result.agents).toHaveLength(1);
+      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/agents');
+    });
+  });
+
+  describe('getAgentMemories', () => {
+    it('calls GET /api/agents/:agentId/memories', async () => {
       const memories: Memory[] = [
-        { id: 'm1', content: 'memory 1', session_id: 's1', role: 'assistant', timestamp: '2026-01-01T00:00:00Z', memory_type: 'episodic', metadata: {}, score: 0, importance: 0.5 },
+        { id: 'm1', content: 'memory 1', agent_id: 'agent-1', role: 'assistant', timestamp: '2026-01-01T00:00:00Z', memory_type: 'episodic', metadata: {}, score: 0, importance: 0.5 },
       ];
       globalThis.fetch = mockFetch({ memories });
 
-      const result = await client.getSessionMemories('s1');
+      const result = await client.getAgentMemories('agent-1');
       expect(result.memories).toHaveLength(1);
-      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/sessions/s1/memories');
+      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/agents/agent-1/memories');
     });
 
     it('includes limit query parameter when provided', async () => {
       globalThis.fetch = mockFetch({ memories: [] });
 
-      await client.getSessionMemories('s1', 10);
-      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/sessions/s1/memories?limit=10');
+      await client.getAgentMemories('agent-1', 10);
+      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/agents/agent-1/memories?limit=10');
     });
   });
 
-  describe('deleteSessionMemory', () => {
-    it('calls DELETE /api/sessions/:sessionId/memories/:memoryId', async () => {
+  describe('deleteAgentMemory', () => {
+    it('calls DELETE /api/agents/:agentId/memories/:memoryId', async () => {
       globalThis.fetch = mockFetch(null, 204);
 
-      await client.deleteSessionMemory('s1', 'm1');
-      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/sessions/s1/memories/m1', expect.objectContaining({
+      await client.deleteAgentMemory('agent-1', 'm1');
+      expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8080/api/agents/agent-1/memories/m1', expect.objectContaining({
         method: 'DELETE',
       }));
     });
 
     it('throws on 404', async () => {
       globalThis.fetch = mockFetch(null, 404, 'Not Found');
-      await expect(client.deleteSessionMemory('s1', 'nonexistent')).rejects.toThrow('Failed to delete session memory');
+      await expect(client.deleteAgentMemory('agent-1', 'nonexistent')).rejects.toThrow('Failed to delete agent memory');
     });
   });
 });

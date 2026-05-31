@@ -1,11 +1,8 @@
 package sqlitevec
 
 import (
-	"context"
 	"database/sql/driver"
 	"encoding/json"
-	"fmt"
-	"hash/fnv"
 	"time"
 
 	kbtypes "github.com/copcon/plugins/knowledge-base/types"
@@ -113,18 +110,4 @@ func (m *chunkModel) toDomain() *kbtypes.Chunk {
 		TokenCount: m.TokenCount,
 		Metadata:   map[string]any(m.Metadata),
 	}
-}
-
-func (s *KnowledgeStore) initVectorTable(ctx context.Context) error {
-	_, err := s.sqlDB.ExecContext(ctx, fmt.Sprintf(
-		"CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(embedding float[%d], chunk_id TEXT, kb_id TEXT)",
-		s.dimension,
-	))
-	return err
-}
-
-func chunkIDToRowID(id string) int64 {
-	h := fnv.New64a()
-	h.Write([]byte(id))
-	return int64(h.Sum64() >> 1)
 }

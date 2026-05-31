@@ -1,4 +1,4 @@
-import type { Session, CopConMessage, Todo, KnowledgeBase, Document, Chunk, SearchResult, Memory } from './types';
+import type { Session, Agent, CopConMessage, Todo, KnowledgeBase, Document, Chunk, SearchResult, Memory } from './types';
 
 export interface AgentClientConfig {
   baseUrl: string;
@@ -27,6 +27,12 @@ export class AgentClient {
   async getSessions(): Promise<{ sessions: Session[]; total: number }> {
     const response = await fetch(`${this.baseUrl}/api/sessions`);
     if (!response.ok) throw new Error(`Failed to get sessions: ${response.statusText}`);
+    return response.json();
+  }
+
+  async getAgents(): Promise<{ agents: Agent[] }> {
+    const response = await fetch(`${this.baseUrl}/api/agents`);
+    if (!response.ok) throw new Error(`Failed to get agents: ${response.statusText}`);
     return response.json();
   }
 
@@ -224,19 +230,19 @@ export class AgentClient {
     return response.json();
   }
 
-  async getSessionMemories(sessionId: string, limit?: number): Promise<{ memories: Memory[] }> {
+  async getAgentMemories(agentId: string, limit?: number): Promise<{ memories: Memory[] }> {
     const url = limit
-      ? `${this.baseUrl}/api/sessions/${sessionId}/memories?limit=${limit}`
-      : `${this.baseUrl}/api/sessions/${sessionId}/memories`;
+      ? `${this.baseUrl}/api/agents/${agentId}/memories?limit=${limit}`
+      : `${this.baseUrl}/api/agents/${agentId}/memories`;
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Failed to get session memories: ${response.statusText}`);
+    if (!response.ok) throw new Error(`Failed to get agent memories: ${response.statusText}`);
     return response.json();
   }
 
-  async deleteSessionMemory(sessionId: string, memoryId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/memories/${memoryId}`, {
+  async deleteAgentMemory(agentId: string, memoryId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/agents/${agentId}/memories/${memoryId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error(`Failed to delete session memory: ${response.statusText}`);
+    if (!response.ok) throw new Error(`Failed to delete agent memory: ${response.statusText}`);
   }
 }

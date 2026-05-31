@@ -16,7 +16,7 @@ import {
 import { DatabaseOutlined, DeleteOutlined } from '@ant-design/icons';
 import { XMarkdown } from '@ant-design/x-markdown';
 import { useClient } from '../context/ClientContext';
-import type { Session, Memory } from '@copcon/chat-core';
+import type { Agent, Memory } from '@copcon/chat-core';
 
 const { useToken } = theme;
 const { Text } = Typography;
@@ -30,44 +30,44 @@ const MEMORY_TYPE_COLORS: Record<string, string> = {
 const MemoryPage: React.FC = () => {
   const { token } = useToken();
   const client = useClient();
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loadingAgents, setLoadingAgents] = useState(true);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loadingMemories, setLoadingMemories] = useState(false);
 
-  const loadSessions = useCallback(async () => {
-    setLoadingSessions(true);
+  const loadAgents = useCallback(async () => {
+    setLoadingAgents(true);
     try {
-      const result = await client.getSessions();
-      const list = result.sessions || [];
-      setSessions(list);
-      if (list.length > 0 && !selectedSessionId) {
-        setSelectedSessionId(list[0].id);
+      const result = await client.getAgents();
+      const list = result.agents || [];
+      setAgents(list);
+      if (list.length > 0 && !selectedAgentId) {
+        setSelectedAgentId(list[0].id);
       }
     } catch {
-      message.error('Failed to load sessions');
+      message.error('Failed to load agents');
     } finally {
-      setLoadingSessions(false);
+      setLoadingAgents(false);
     }
-  }, [client, selectedSessionId]);
+  }, [client, selectedAgentId]);
 
   const loadMemories = useCallback(async () => {
-    if (!selectedSessionId) return;
+    if (!selectedAgentId) return;
     setLoadingMemories(true);
     try {
-      const result = await client.getSessionMemories(selectedSessionId);
+      const result = await client.getAgentMemories(selectedAgentId);
       setMemories(result.memories || []);
     } catch {
       setMemories([]);
     } finally {
       setLoadingMemories(false);
     }
-  }, [client, selectedSessionId]);
+  }, [client, selectedAgentId]);
 
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    loadAgents();
+  }, [loadAgents]);
 
   useEffect(() => {
     loadMemories();
@@ -75,7 +75,7 @@ const MemoryPage: React.FC = () => {
 
   const handleDelete = async (memoryId: string) => {
     try {
-      await client.deleteSessionMemory(selectedSessionId, memoryId);
+      await client.deleteAgentMemory(selectedAgentId, memoryId);
       setMemories((prev) => prev.filter((m) => m.id !== memoryId));
       message.success('Memory deleted');
     } catch {
@@ -83,9 +83,9 @@ const MemoryPage: React.FC = () => {
     }
   };
 
-  const sessionOptions = sessions.map((s) => ({
-    value: s.id,
-    label: s.title || 'New Chat',
+  const agentOptions = agents.map((a) => ({
+    value: a.id,
+    label: a.name,
   }));
 
   return (
@@ -95,13 +95,13 @@ const MemoryPage: React.FC = () => {
           Memory Management
         </Text>
         <Select
-          value={selectedSessionId || undefined}
-          onChange={setSelectedSessionId}
-          placeholder="Select a session"
-          options={sessionOptions}
-          loading={loadingSessions}
+          value={selectedAgentId || undefined}
+          onChange={setSelectedAgentId}
+          placeholder="Select an agent"
+          options={agentOptions}
+          loading={loadingAgents}
           style={{ width: 280 }}
-          aria-label="Select session"
+          aria-label="Select agent"
         />
       </Flex>
 
@@ -169,7 +169,7 @@ const MemoryPage: React.FC = () => {
             image={<DatabaseOutlined style={{ fontSize: 48, color: token.colorTextDisabled }} />}
             description={
               <Flex vertical gap="small" align="center">
-                <Text type="secondary">No memories for this session</Text>
+                <Text type="secondary">No memories for this agent</Text>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   Memories are created automatically during conversations
                 </Text>

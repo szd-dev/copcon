@@ -6,10 +6,11 @@ import "time"
 type DocumentStatus string
 
 const (
-	DocStatusPending  DocumentStatus = "pending"
-	DocStatusParsing  DocumentStatus = "parsing"
-	DocStatusReady    DocumentStatus = "ready"
-	DocStatusError    DocumentStatus = "error"
+	DocStatusPending   DocumentStatus = "pending"
+	DocStatusParsing   DocumentStatus = "parsing"
+	DocStatusIndexing  DocumentStatus = "indexing"
+	DocStatusReady     DocumentStatus = "ready"
+	DocStatusError     DocumentStatus = "error"
 )
 
 // KnowledgeBase is a pure value type representing a collection of documents
@@ -31,6 +32,8 @@ type Document struct {
 	Filename   string
 	Source     string // "upload", "api", "sync"
 	Status     DocumentStatus
+	Content    string
+	ErrorMsg   string
 	ChunkCount int
 	TokenCount int
 	CreatedAt  time.Time

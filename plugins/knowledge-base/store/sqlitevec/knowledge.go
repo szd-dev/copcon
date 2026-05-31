@@ -2,49 +2,27 @@ package sqlitevec
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"math"
-	"sort"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
+	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 )
 
-// KnowledgeStore implements knowledgebase.KnowledgeStore using SQLite + GORM
-// with vector search via sqlite-vec vec0 virtual tables.
+// KnowledgeStore implements knowledgebase.KnowledgeStore using SQLite + GORM.
 type KnowledgeStore struct {
-	db        *gorm.DB
-	sqlDB     *sql.DB
-	dimension int
+	db  *gorm.DB
+	vec knowledgebase.VectorStore
 }
 
-// Option configures a KnowledgeStore.
-type Option func(*KnowledgeStore)
+var _ knowledgebase.KnowledgeStore = (*KnowledgeStore)(nil)
 
-// WithDimension sets the vector dimension for the vec0 virtual table.
-// Default is 1536 (text-embedding-3-small). Must be set before first use.
-func WithDimension(d int) Option {
-	return func(ks *KnowledgeStore) {
-		ks.dimension = d
-	}
-}
-
-func NewKnowledgeStore(db *gorm.DB, opts ...Option) (*KnowledgeStore, error) {
-	ks := &KnowledgeStore{db: db, dimension: 1536}
-	for _, opt := range opts {
-		opt(ks)
-	}
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("get underlying sql.DB: %w", err)
-	}
-	ks.sqlDB = sqlDB
+func NewKnowledgeStore(db *gorm.DB, vec knowledgebase.VectorStore) (*KnowledgeStore, error) {
+	ks := &KnowledgeStore{db: db, vec: vec}
 
 	if err := db.AutoMigrate(
 		&kbModel{},
@@ -54,22 +32,10 @@ func NewKnowledgeStore(db *gorm.DB, opts ...Option) (*KnowledgeStore, error) {
 		return nil, fmt.Errorf("auto-migrate knowledge schema: %w", err)
 	}
 
-	if err := ks.initVectorTable(context.Background()); err != nil {
-		return nil, fmt.Errorf("init vector table: %w", err)
-	}
+	ks.verifyConsistency(context.Background())
 
 	return ks, nil
 }
-
-func NewKnowledgeStoreFromDSN(dsn string, opts ...Option) (*KnowledgeStore, error) {
-	db, err := gorm.Open(openDialector(dsn), &gorm.Config{})
-	if err != nil {
-		return nil, fmt.Errorf("open sqlite database: %w", err)
-	}
-	return NewKnowledgeStore(db, opts...)
-}
-
-var _ knowledgebase.KnowledgeStore = (*KnowledgeStore)(nil)
 
 func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *kbtypes.KnowledgeBase) (*kbtypes.KnowledgeBase, error) {
 	id := kb.ID
@@ -96,19 +62,8 @@ func (s *KnowledgeStore) CreateKB(ctx context.Context, kb *kbtypes.KnowledgeBase
 }
 
 func (s *KnowledgeStore) DeleteKB(ctx context.Context, id string) error {
-	rows, err := s.sqlDB.QueryContext(ctx, "SELECT rowid FROM chunks_vec WHERE kb_id = ?", id)
-	if err == nil {
-		var rowIDs []int64
-		for rows.Next() {
-			var rid int64
-			if rows.Scan(&rid) == nil {
-				rowIDs = append(rowIDs, rid)
-			}
-		}
-		rows.Close()
-		for _, rid := range rowIDs {
-			s.sqlDB.ExecContext(ctx, "DELETE FROM chunks_vec WHERE rowid = ?", rid)
-		}
+	if err := s.vec.DeleteByKB(ctx, id); err != nil {
+		return fmt.Errorf("delete vector data for kb %s: %w", id, err)
 	}
 
 	if err := s.db.WithContext(ctx).Where("kb_id = ?", id).Delete(&chunkModel{}).Error; err != nil {
@@ -187,12 +142,8 @@ func (s *KnowledgeStore) ListDocuments(ctx context.Context, kbID string) ([]*kbt
 }
 
 func (s *KnowledgeStore) DeleteDocument(ctx context.Context, kbID string, docID string) error {
-	var chunkIDs []string
-	if err := s.db.WithContext(ctx).Model(&chunkModel{}).Where("document_id = ? AND kb_id = ?", docID, kbID).Pluck("id", &chunkIDs).Error; err != nil {
-		return fmt.Errorf("find chunks for document %s: %w", docID, err)
-	}
-	for _, cid := range chunkIDs {
-		s.sqlDB.ExecContext(ctx, "DELETE FROM chunks_vec WHERE rowid = ?", chunkIDToRowID(cid))
+	if err := s.vec.DeleteByDocument(ctx, kbID, docID); err != nil {
+		return fmt.Errorf("delete vector data for document %s: %w", docID, err)
 	}
 
 	if err := s.db.WithContext(ctx).Where("document_id = ? AND kb_id = ?", docID, kbID).Delete(&chunkModel{}).Error; err != nil {
@@ -245,82 +196,13 @@ func (s *KnowledgeStore) UpdateChunk(ctx context.Context, kbID string, chunk *kb
 	return nil
 }
 
-func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []float32, opts kbtypes.SearchOptions) ([]*kbtypes.Chunk, error) {
-	if len(query) == 0 {
-		return nil, nil
-	}
-
-	topK := opts.TopK
-	if topK <= 0 {
-		topK = 10
-	}
-	threshold := opts.SimilarityThreshold
-	if threshold <= 0 {
-		threshold = 0.0
-	}
-
-	queryBlob := toBlob(query)
-
-	type vecResult struct {
-		chunkID  string
-		cosineSim float32
-	}
-	var allResults []vecResult
-
-	for _, kbID := range kbIDs {
-		rows, err := s.sqlDB.QueryContext(ctx, `
-			SELECT chunk_id, vec_distance_cosine(embedding, ?) as cosine_dist
-			FROM chunks_vec
-			WHERE embedding MATCH ? AND kb_id = ?
-			ORDER BY distance
-			LIMIT ?
-		`, queryBlob, queryBlob, kbID, topK+len(kbIDs))
-		if err != nil {
-			return nil, fmt.Errorf("search chunks: %w", err)
-		}
-		for rows.Next() {
-			var r vecResult
-			var cosDist float64
-			if err := rows.Scan(&r.chunkID, &cosDist); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("scan search result: %w", err)
-			}
-			r.cosineSim = float32(1.0 - cosDist)
-			if r.cosineSim >= threshold {
-				allResults = append(allResults, r)
-			}
-		}
-		rows.Close()
-	}
-
-	sort.Slice(allResults, func(i, j int) bool {
-		return allResults[i].cosineSim > allResults[j].cosineSim
-	})
-
-	if len(allResults) > topK {
-		allResults = allResults[:topK]
-	}
-
-	chunks := make([]*kbtypes.Chunk, 0, len(allResults))
-	for _, r := range allResults {
-		var m chunkModel
-		if err := s.db.WithContext(ctx).Where("id = ?", r.chunkID).First(&m).Error; err != nil {
-			continue
-		}
-		c := m.toDomain()
-		c.Score = r.cosineSim
-		chunks = append(chunks, c)
-	}
-
-	return chunks, nil
-}
-
 func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID string, chunks []*kbtypes.Chunk, vectors [][]float32) error {
 	if len(chunks) != len(vectors) {
 		return fmt.Errorf("chunks count (%d) != vectors count (%d)", len(chunks), len(vectors))
 	}
 
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		vecChunks := make([]knowledgebase.VectorChunk, len(chunks))
 		for i, c := range chunks {
 			chunkID := c.ID
 			if chunkID == "" {
@@ -340,17 +222,14 @@ func (s *KnowledgeStore) StoreChunks(ctx context.Context, kbID string, docID str
 			if err := tx.Create(m).Error; err != nil {
 				return fmt.Errorf("store chunk %d: %w", i, err)
 			}
-
-			rowID := chunkIDToRowID(chunkID)
-			vecBlob := toBlob(vectors[i])
-			if len(vecBlob) > 0 {
-				if err := tx.Exec(
-					"INSERT INTO chunks_vec(rowid, embedding, chunk_id, kb_id) VALUES (?, ?, ?, ?)",
-					rowID, vecBlob, chunkID, kbID,
-				).Error; err != nil {
-					return fmt.Errorf("store chunk %d in vec: %w", i, err)
-				}
+			vecChunks[i] = knowledgebase.VectorChunk{
+				ID: chunkID, DocumentID: docID, KBID: kbID,
+				Content: c.Content, Index: c.Index,
 			}
+		}
+
+		if err := s.vec.Store(ctx, kbID, docID, vecChunks, vectors); err != nil {
+			return fmt.Errorf("store vectors: %w", err)
 		}
 
 		now := time.Now().UTC()
@@ -378,23 +257,87 @@ func (s *KnowledgeStore) UpdateDocumentStatus(ctx context.Context, kbID string, 
 	return nil
 }
 
-func cosineSimilarity(a, b []float32) float32 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
+func (s *KnowledgeStore) Search(ctx context.Context, kbIDs []string, query []float32, opts kbtypes.SearchOptions) ([]*kbtypes.Chunk, error) {
+	results, err := s.vec.Search(ctx, kbIDs, query, opts)
+	if err != nil {
+		return nil, fmt.Errorf("vector search: %w", err)
 	}
 
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
+	chunks := make([]*kbtypes.Chunk, 0, len(results))
+	for _, r := range results {
+		var m chunkModel
+		if err := s.db.WithContext(ctx).Where("id = ?", r.ChunkID).First(&m).Error; err != nil {
+			continue
+		}
+		c := m.toDomain()
+		c.Score = r.Score
+		chunks = append(chunks, c)
+	}
+	return chunks, nil
+}
+
+// verifyConsistency checks each KB's metadata against actual vector store counts.
+// KBs with mismatched counts are marked unavailable.
+// This does NOT block startup — it only updates Config flags.
+func (s *KnowledgeStore) verifyConsistency(ctx context.Context) {
+	verify, err := s.vec.Verify(ctx)
+	if err != nil {
+		slog.Warn("consistency check: vector verify failed", "error", err)
+		return
 	}
 
-	if normA == 0 || normB == 0 {
-		return 0
+	kbs, err := s.ListKBs(ctx)
+	if err != nil {
+		slog.Warn("consistency check: list KBs failed", "error", err)
+		return
 	}
 
-	return float32(dot / (math.Sqrt(normA) * math.Sqrt(normB)))
+	for _, kb := range kbs {
+		docs, err := s.ListDocuments(ctx, kb.ID)
+		if err != nil {
+			continue
+		}
+
+		var expectedChunks int
+		for _, doc := range docs {
+			if doc.Status == kbtypes.DocStatusReady {
+				expectedChunks += doc.ChunkCount
+			}
+		}
+
+		actualChunks := verify[kb.ID]
+
+		if expectedChunks != actualChunks {
+			config := kb.Config
+			if config == nil {
+				config = make(map[string]any)
+			}
+			config["available"] = false
+			config["unavailable_reason"] = fmt.Sprintf(
+				"vector count mismatch: expected %d chunks, vector store has %d",
+				expectedChunks, actualChunks,
+			)
+
+			s.db.WithContext(ctx).Model(&kbModel{}).Where("id = ?", kb.ID).
+				Update("config", toJSONB(config))
+
+			slog.Warn("consistency check: KB marked unavailable",
+				"kb_id", kb.ID,
+				"expected", expectedChunks,
+				"actual", actualChunks,
+			)
+		} else {
+			config := kb.Config
+			if config == nil {
+				config = make(map[string]any)
+			}
+			config["available"] = true
+			delete(config, "unavailable_reason")
+
+			s.db.WithContext(ctx).Model(&kbModel{}).Where("id = ?", kb.ID).
+				Update("config", toJSONB(config))
+		}
+	}
 }
 
 func toJSONB(m map[string]any) jsonb {

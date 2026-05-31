@@ -9,7 +9,7 @@ const { useToken } = theme;
 const { Text } = Typography;
 
 interface MemoryPanelProps {
-  sessionId: string;
+  agentId: string;
   limit?: number;
 }
 
@@ -19,24 +19,24 @@ const MEMORY_TYPE_COLORS: Record<string, string> = {
   procedural: 'purple',
 };
 
-export const MemoryPanel: React.FC<MemoryPanelProps> = ({ sessionId, limit = 5 }) => {
+export const MemoryPanel: React.FC<MemoryPanelProps> = ({ agentId, limit = 5 }) => {
   const { token } = useToken();
   const client = useClient();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadMemories = useCallback(async () => {
-    if (!sessionId) return;
+    if (!agentId) return;
     setLoading(true);
     try {
-      const result = await client.getSessionMemories(sessionId, limit);
+      const result = await client.getAgentMemories(agentId, limit);
       setMemories(result.memories || []);
     } catch {
       setMemories([]);
     } finally {
       setLoading(false);
     }
-  }, [client, sessionId, limit]);
+  }, [client, agentId, limit]);
 
   useEffect(() => {
     loadMemories();
@@ -44,7 +44,7 @@ export const MemoryPanel: React.FC<MemoryPanelProps> = ({ sessionId, limit = 5 }
 
   const handleDelete = async (memoryId: string) => {
     try {
-      await client.deleteSessionMemory(sessionId, memoryId);
+      await client.deleteAgentMemory(agentId, memoryId);
       setMemories((prev) => prev.filter((m) => m.id !== memoryId));
       message.success('Memory deleted');
     } catch {
