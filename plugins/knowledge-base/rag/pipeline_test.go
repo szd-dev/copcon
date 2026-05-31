@@ -134,6 +134,18 @@ func (s *mockPipelineStore) Search(ctx context.Context, kbIDs []string, query []
 	return nil, nil
 }
 
+func (s *mockPipelineStore) UpdateDocumentErrorMsg(ctx context.Context, kbID string, docID string, msg string) error {
+	return nil
+}
+
+func (s *mockPipelineStore) ListDocumentsByStatus(ctx context.Context, statuses []string) ([]*kbtypes.Document, error) {
+	return nil, nil
+}
+
+func (s *mockPipelineStore) ClaimDocumentStatus(ctx context.Context, docID string, newStatus string, expectedStatus string) (bool, error) {
+	return false, nil
+}
+
 func TestPipelineIngest(t *testing.T) {
 	parser := NewDefaultParser()
 	embedder := &mockEmbedder{dimensions: 3}

@@ -140,6 +140,18 @@ func (s *inMemoryPipelineStore) Search(ctx context.Context, kbIDs []string, quer
 	return nil, nil
 }
 
+func (s *inMemoryPipelineStore) UpdateDocumentErrorMsg(ctx context.Context, kbID string, docID string, msg string) error {
+	return nil
+}
+
+func (s *inMemoryPipelineStore) ListDocumentsByStatus(ctx context.Context, statuses []string) ([]*kbtypes.Document, error) {
+	return nil, nil
+}
+
+func (s *inMemoryPipelineStore) ClaimDocumentStatus(ctx context.Context, docID string, newStatus string, expectedStatus string) (bool, error) {
+	return false, nil
+}
+
 // Compile-time check that inMemoryPipelineStore implements KnowledgeStore
 var _ knowledgebase.KnowledgeStore = (*inMemoryPipelineStore)(nil)
 

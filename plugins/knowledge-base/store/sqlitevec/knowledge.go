@@ -348,3 +348,39 @@ func toJSONB(m map[string]any) jsonb {
 	}
 	return jsonb(m)
 }
+
+func (s *KnowledgeStore) ListDocumentsByStatus(ctx context.Context, statuses []string) ([]*kbtypes.Document, error) {
+	var models []docModel
+	if err := s.db.WithContext(ctx).Where("status IN ?", statuses).Order("created_at ASC").Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list documents by status: %w", err)
+	}
+	result := make([]*kbtypes.Document, len(models))
+	for i, m := range models {
+		result[i] = m.toDomain()
+	}
+	return result, nil
+}
+
+func (s *KnowledgeStore) ClaimDocumentStatus(ctx context.Context, docID string, newStatus string, expectedStatus string) (bool, error) {
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&docModel{}).Where("id = ? AND status = ?", docID, expectedStatus).Updates(map[string]any{
+		"status":     newStatus,
+		"updated_at": now,
+	})
+	if result.Error != nil {
+		return false, fmt.Errorf("claim document status: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
+}
+
+func (s *KnowledgeStore) UpdateDocumentErrorMsg(ctx context.Context, kbID string, docID string, msg string) error {
+	now := time.Now().UTC()
+	result := s.db.WithContext(ctx).Model(&docModel{}).Where("id = ? AND kb_id = ?", docID, kbID).Updates(map[string]any{
+		"error_msg":  msg,
+		"updated_at": now,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("update document error msg: %w", result.Error)
+	}
+	return nil
+}

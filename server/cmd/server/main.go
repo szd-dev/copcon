@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -28,6 +29,7 @@ import (
 	memoryfile "github.com/copcon/plugins/memory-file"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
+	"github.com/copcon/server/internal/kbworker"
 	stor "github.com/copcon/server/internal/store"
 )
 
@@ -61,6 +63,12 @@ func main() {
 		if err != nil {
 			log.Warn("failed to create embedder", "error", err)
 		}
+	}
+
+	if ks != nil && emb != nil {
+		worker := kbworker.New(ks, emb, 10*time.Second)
+		worker.Start()
+		defer worker.Stop()
 	}
 
 	reg := capabilities.NewRegistry()
