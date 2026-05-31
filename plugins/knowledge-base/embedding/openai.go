@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -23,6 +26,9 @@ type openAIEmbedder struct {
 	apiKey     string
 	httpClient *http.Client
 }
+
+const embedBatchSize = 100
+const embedMaxRetries = 3
 
 var _ Embedder = (*openAIEmbedder)(nil)
 
@@ -111,12 +117,64 @@ func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 		}
 	}
 
+	totalBatches := (len(texts) + embedBatchSize - 1) / embedBatchSize
+	slog.Debug("embedding request (batched)", "model", e.model, "base_url", e.baseURL, "texts_count", len(texts), "batch_size", embedBatchSize, "total_batches", totalBatches)
+
+	allEmbeddings := make([][]float32, 0, len(texts))
+
+	for batchIdx := 0; batchIdx < totalBatches; batchIdx++ {
+		start := batchIdx * embedBatchSize
+		end := start + embedBatchSize
+		if end > len(texts) {
+			end = len(texts)
+		}
+		batchTexts := texts[start:end]
+
+		slog.Debug("embedding batch", "batch", fmt.Sprintf("%d/%d", batchIdx+1, totalBatches), "count", len(batchTexts))
+
+		embeddings, err := e.embedSingleBatch(ctx, batchTexts)
+		if err != nil {
+			return nil, fmt.Errorf("batch %d/%d: %w", batchIdx+1, totalBatches, err)
+		}
+
+		allEmbeddings = append(allEmbeddings, embeddings...)
+	}
+
+	return allEmbeddings, nil
+}
+
+func (e *openAIEmbedder) embedSingleBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	var lastErr error
+	for attempt := 0; attempt < embedMaxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			slog.Warn("embedding retry", "attempt", attempt+1, "max_retries", embedMaxRetries, "backoff", backoff, "count", len(texts))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+
+		vectors, err := e.doEmbedRequest(ctx, texts)
+		if err == nil {
+			return vectors, nil
+		}
+		lastErr = err
+
+		if !isRetryable(err) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("after %d attempts: %w", embedMaxRetries, lastErr)
+}
+
+func (e *openAIEmbedder) doEmbedRequest(ctx context.Context, texts []string) ([][]float32, error) {
 	reqBody := openAIEmbedRequest{
 		Input: texts,
 		Model: e.model,
 	}
 
-	// text-embedding-ada-002 does not support the dimensions parameter.
 	if e.model != "text-embedding-ada-002" {
 		dims := e.dimensions
 		reqBody.Dimensions = &dims
@@ -147,14 +205,13 @@ func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if e.parseAPIError(respBody) {
-			var errResp struct {
-				Error openAIErrorBody `json:"error"`
-			}
-			_ = json.Unmarshal(respBody, &errResp)
-			return nil, fmt.Errorf("openai API error (status %d): %s", resp.StatusCode, errResp.Error.Message)
+		apiMsg := e.extractAPIError(respBody)
+		errMsg := fmt.Sprintf("openai API error (status %d)", resp.StatusCode)
+		if apiMsg != "" {
+			errMsg += ": " + apiMsg
 		}
-		return nil, fmt.Errorf("openai API error: status %d, body: %s", resp.StatusCode, string(respBody))
+		slog.Error("embedding API error", "status", resp.StatusCode, "body", string(respBody))
+		return nil, &embedHTTPError{StatusCode: resp.StatusCode, Message: errMsg}
 	}
 
 	var result openAIEmbedResponse
@@ -166,7 +223,10 @@ func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 		return nil, fmt.Errorf("openai API error: %s", result.Error.Message)
 	}
 
-	// Sort embeddings by index into the correct order.
+	if len(result.Data) == 0 {
+		return nil, fmt.Errorf("embedding returned empty data: %d texts requested, model=%s, status=%d", len(texts), e.model, resp.StatusCode)
+	}
+
 	embeddings := make([][]float32, len(result.Data))
 	for _, d := range result.Data {
 		if d.Index >= 0 && d.Index < len(embeddings) {
@@ -174,7 +234,6 @@ func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 		}
 	}
 
-	// Validate dimensions.
 	for i, emb := range embeddings {
 		if len(emb) != e.dimensions {
 			return nil, fmt.Errorf("%w: index %d got %d dimensions, expected %d",
@@ -193,13 +252,33 @@ func (e *openAIEmbedder) Name() string {
 	return "openai:" + e.model
 }
 
-// parseAPIError checks whether the response body contains a structured OpenAI error.
-func (e *openAIEmbedder) parseAPIError(body []byte) bool {
+type embedHTTPError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *embedHTTPError) Error() string {
+	return e.Message
+}
+
+func isRetryable(err error) bool {
+	var httpErr *embedHTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode >= 500
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "http request:") || strings.Contains(msg, "connection refused") || strings.Contains(msg, "timeout")
+}
+
+func (e *openAIEmbedder) extractAPIError(body []byte) string {
 	var errResp struct {
 		Error *openAIErrorBody `json:"error"`
 	}
 	if err := json.Unmarshal(body, &errResp); err != nil {
-		return false
+		return ""
 	}
-	return errResp.Error != nil && errResp.Error.Message != ""
+	if errResp.Error != nil && errResp.Error.Message != "" {
+		return errResp.Error.Message
+	}
+	return ""
 }

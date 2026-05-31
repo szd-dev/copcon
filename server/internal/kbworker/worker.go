@@ -150,6 +150,12 @@ func (w *DocumentWorker) indexChunks(ctx context.Context, doc *kbtypes.Document,
 		return
 	}
 
+	if len(vectors) == 0 {
+		w.logger.Warn("embedder returned zero vectors without error", "doc", doc.ID, "texts_count", len(texts))
+		w.markError(ctx, doc, "embed failed", fmt.Errorf("embedder returned zero vectors for %d texts", len(texts)))
+		return
+	}
+
 	kbChunks := make([]*kbtypes.Chunk, len(chunks))
 	for i, c := range chunks {
 		kbChunks[i] = &kbtypes.Chunk{
