@@ -137,7 +137,7 @@ Max Concurrent: 3 (Wave 2)
 
 ## TODOs
 
-- [ ] 1. **类型层：DocStatus + Document + chat-core types**
+- [x] 1. **类型层：DocStatus + Document + chat-core types** ✅
 
   **What to do**:
   - `plugins/knowledge-base/types/knowledge.go`:
@@ -188,7 +188,7 @@ Max Concurrent: 3 (Wave 2)
   - Message: `feat(kb-types): add indexing status and content/error_msg fields to Document`
   - Files: `plugins/knowledge-base/types/knowledge.go`, `packages/chat-core/src/types.ts`
 
-- [ ] 2. **数据库 Schema — docModel 加列**
+- [x] 2. **数据库 Schema — docModel 加列** ✅
 
   **What to do**:
   - `plugins/knowledge-base/store/sqlitevec/schema.go`:

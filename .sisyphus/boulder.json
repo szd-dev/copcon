@@ -8,5 +8,16 @@
     "ses_182966ab5ffeAdWx3fDeNF7lz4": "direct"
   },
   "plan_name": "kb-state-machine",
-  "agent": "atlas"
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "**数据库 Schema — docModel 加列**",
+      "session_id": "ses_181ed6433ffeGFbClscvA6ld0S",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-31T12:48:14.121Z"
+    }
+  }
 }

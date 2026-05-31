@@ -61,6 +61,8 @@ type docModel struct {
 	Filename   string    `gorm:"size:512"`
 	Source     string    `gorm:"size:64"`
 	Status     string    `gorm:"size:32;not null;default:'pending'"`
+	Content    string    `gorm:"column:content;type:text"`
+	ErrorMsg   string    `gorm:"column:error_msg;type:text"`
 	ChunkCount int
 	TokenCount int
 	CreatedAt  time.Time `gorm:"autoCreateTime"`
@@ -77,6 +79,8 @@ func (m *docModel) toDomain() *kbtypes.Document {
 		Filename:   m.Filename,
 		Source:     m.Source,
 		Status:     kbtypes.DocumentStatus(m.Status),
+		Content:    m.Content,
+		ErrorMsg:   m.ErrorMsg,
 		ChunkCount: m.ChunkCount,
 		TokenCount: m.TokenCount,
 		CreatedAt:  m.CreatedAt,
