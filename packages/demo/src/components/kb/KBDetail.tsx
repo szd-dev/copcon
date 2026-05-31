@@ -13,6 +13,10 @@ import {
   Select,
   Statistic,
   Card,
+  Modal,
+  Tooltip,
+  message,
+  Spin,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -22,6 +26,7 @@ import {
   ExperimentOutlined,
 } from '@ant-design/icons';
 import type { KnowledgeBase, Document, DocumentStatus } from '@copcon/chat-core';
+import { useClient } from '../../context/ClientContext';
 
 const { useToken } = theme;
 const { Text } = Typography;
@@ -39,6 +44,7 @@ interface KBDetailProps {
 const STATUS_COLORS: Record<DocumentStatus, string> = {
   pending: 'default',
   parsing: 'processing',
+  indexing: 'processing',
   ready: 'success',
   error: 'error',
 };
@@ -46,6 +52,7 @@ const STATUS_COLORS: Record<DocumentStatus, string> = {
 const STATUS_LABELS: Record<DocumentStatus, string> = {
   pending: 'Pending',
   parsing: 'Parsing',
+  indexing: 'Indexing',
   ready: 'Ready',
   error: 'Error',
 };
@@ -60,8 +67,12 @@ export const KBDetail: React.FC<KBDetailProps> = ({
   onTestRetrieval,
 }) => {
   const { token } = useToken();
+  const client = useClient();
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | 'all'>('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest');
+  const [contentModal, setContentModal] = useState<{ docId: string; filename: string } | null>(null);
+  const [content, setContent] = useState<string>('');
+  const [contentLoading, setContentLoading] = useState(false);
 
   if (!knowledgeBase) {
     return (
@@ -96,26 +107,49 @@ export const KBDetail: React.FC<KBDetailProps> = ({
     }
   });
 
+  const pendingCount = documents.filter((d) => d.status === 'pending').length;
+  const parsingCount = documents.filter((d) => d.status === 'parsing').length;
+  const indexingCount = documents.filter((d) => d.status === 'indexing').length;
   const readyCount = documents.filter((d) => d.status === 'ready').length;
-  const pendingCount = documents.filter((d) => d.status === 'pending' || d.status === 'parsing').length;
   const errorCount = documents.filter((d) => d.status === 'error').length;
-  const totalChunks = documents.reduce((sum, d) => sum + d.chunk_count, 0);
-  const totalTokens = documents.reduce((sum, d) => sum + d.token_count, 0);
+
+  const handleViewContent = async (docId: string, filename: string) => {
+    if (!knowledgeBase) return;
+    setContentModal({ docId, filename });
+    setContentLoading(true);
+    try {
+      const doc = await client.getDocumentContent(knowledgeBase.id, docId);
+      setContent(doc.content || '');
+    } catch (error) {
+      message.error('Failed to load content');
+      setContent('Failed to load content');
+    } finally {
+      setContentLoading(false);
+    }
+  };
 
   const columns = [
     {
       title: 'Filename',
       dataIndex: 'filename',
       key: 'filename',
-      render: (text: string) => <Text strong>{text}</Text>,
+      render: (text: string, record: Document) => (
+        <Typography.Link onClick={() => handleViewContent(record.id, record.filename)}>
+          {text}
+        </Typography.Link>
+      ),
     },
     {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      render: (status: DocumentStatus) => (
-        <Tag color={STATUS_COLORS[status] || 'default'}>{STATUS_LABELS[status] || status}</Tag>
-      ),
+      render: (status: DocumentStatus, record: Document) => {
+        const badge = <Tag color={STATUS_COLORS[status] || 'default'}>{STATUS_LABELS[status] || status}</Tag>;
+        if (status === 'error' && record.error_msg) {
+          return <Tooltip title={record.error_msg}>{badge}</Tooltip>;
+        }
+        return badge;
+      },
     },
     {
       title: 'Chunks',
@@ -192,25 +226,37 @@ export const KBDetail: React.FC<KBDetailProps> = ({
           </Space>
         </Flex>
 
-        <Flex gap="large">
-          <Card size="small" style={{ flex: 1 }}>
-            <Statistic title="Documents" value={documents.length} />
-          </Card>
-          <Card size="small" style={{ flex: 1 }}>
-            <Statistic title="Ready" value={readyCount} valueStyle={{ color: token.colorSuccess }} />
-          </Card>
-          <Card size="small" style={{ flex: 1 }}>
-            <Statistic title="Pending" value={pendingCount} valueStyle={{ color: token.colorWarning }} />
-          </Card>
-          <Card size="small" style={{ flex: 1 }}>
-            <Statistic title="Errors" value={errorCount} valueStyle={{ color: token.colorError }} />
-          </Card>
-          <Card size="small" style={{ flex: 1 }}>
-            <Statistic title="Total Chunks" value={totalChunks} />
-          </Card>
-          <Card size="small" style={{ flex: 1 }}>
-            <Statistic title="Total Tokens" value={totalTokens} />
-          </Card>
+        <Flex gap="middle" style={{ marginBottom: 16 }}>
+          <Flex flex={1}>
+            <Card size="small" style={{ width: '100%' }}>
+              <Statistic title="Documents" value={documents.length} />
+            </Card>
+          </Flex>
+          <Flex flex={1}>
+            <Card size="small" style={{ width: '100%' }}>
+              <Statistic title="Pending" value={pendingCount} valueStyle={{ color: token.colorTextQuaternary }} />
+            </Card>
+          </Flex>
+          <Flex flex={1}>
+            <Card size="small" style={{ width: '100%' }}>
+              <Statistic title="Parsing" value={parsingCount} valueStyle={{ color: token.colorPrimary }} />
+            </Card>
+          </Flex>
+          <Flex flex={1}>
+            <Card size="small" style={{ width: '100%' }}>
+              <Statistic title="Indexing" value={indexingCount} valueStyle={{ color: token.colorPrimary }} />
+            </Card>
+          </Flex>
+          <Flex flex={1}>
+            <Card size="small" style={{ width: '100%' }}>
+              <Statistic title="Ready" value={readyCount} valueStyle={{ color: token.colorSuccess }} />
+            </Card>
+          </Flex>
+          <Flex flex={1}>
+            <Card size="small" style={{ width: '100%' }}>
+              <Statistic title="Errors" value={errorCount} valueStyle={{ color: token.colorError }} />
+            </Card>
+          </Flex>
         </Flex>
 
         <Flex gap="middle" align="center">
@@ -222,6 +268,7 @@ export const KBDetail: React.FC<KBDetailProps> = ({
               { value: 'all', label: 'All Statuses' },
               { value: 'pending', label: 'Pending' },
               { value: 'parsing', label: 'Parsing' },
+              { value: 'indexing', label: 'Indexing' },
               { value: 'ready', label: 'Ready' },
               { value: 'error', label: 'Error' },
             ]}
@@ -269,6 +316,22 @@ export const KBDetail: React.FC<KBDetailProps> = ({
           />
         )}
       </Flex>
+
+      <Modal
+        title={`Content: ${contentModal?.filename}`}
+        open={!!contentModal}
+        onCancel={() => setContentModal(null)}
+        footer={null}
+        width={800}
+      >
+        {contentLoading ? (
+          <Spin />
+        ) : (
+          <Typography.Paragraph style={{ maxHeight: 500, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+            {content || '(No content)'}
+          </Typography.Paragraph>
+        )}
+      </Modal>
     </Flex>
   );
 };
