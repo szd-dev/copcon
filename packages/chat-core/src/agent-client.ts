@@ -204,6 +204,16 @@ export class AgentClient {
     return response.json();
   }
 
+  async uploadText(kbId: string, filename: string, content: string): Promise<Document> {
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs/text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, content }),
+    });
+    if (!response.ok) throw new Error(`Failed to upload text: ${response.statusText}`);
+    return response.json();
+  }
+
   async deleteDocument(kbId: string, docId: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs/${docId}`, {
       method: 'DELETE',
@@ -214,6 +224,12 @@ export class AgentClient {
   async getDocumentChunks(kbId: string, docId: string): Promise<{ chunks: Chunk[] }> {
     const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs/${docId}/chunks`);
     if (!response.ok) throw new Error(`Failed to get document chunks: ${response.statusText}`);
+    return response.json();
+  }
+
+  async getDocumentContent(kbId: string, docId: string): Promise<Document> {
+    const response = await fetch(`${this.baseUrl}/api/kb/${kbId}/docs/${docId}?include_content=true`);
+    if (!response.ok) throw new Error(`Failed to get document content: ${response.statusText}`);
     return response.json();
   }
 
