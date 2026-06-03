@@ -12,6 +12,7 @@ import (
 
 type MemoryForgetTool struct {
 	basePath string
+	store    MemoryStoreAPI
 }
 
 func NewMemoryForgetTool(store MemoryStoreAPI) *MemoryForgetTool {
@@ -19,7 +20,7 @@ func NewMemoryForgetTool(store MemoryStoreAPI) *MemoryForgetTool {
 	if bp, ok := store.(interface{ BasePath() string }); ok {
 		basePath = bp.BasePath()
 	}
-	return &MemoryForgetTool{basePath: basePath}
+	return &MemoryForgetTool{basePath: basePath, store: store}
 }
 
 func (t *MemoryForgetTool) Name() string {
@@ -78,6 +79,14 @@ func (t *MemoryForgetTool) Execute(chatCtx iface.ChatContextInterface, args map[
 		return errorResult(fmt.Sprintf("failed to delete memory: %v", err))
 	}
 
+	// Rebuild INDEX.md and FACTS.md after deletion
+	if fms, ok := t.store.(*FileMemoryStore); ok {
+		fms.mu.Lock()
+		_ = BuildIndex(t.basePath, agentIDStr, fms.maxIndexLines, fms.maxIndexBytes)
+		_ = BuildFacts(t.basePath, agentIDStr)
+		fms.mu.Unlock()
+	}
+
 	return successResult(map[string]any{
 		"path":    relPath,
 		"message": "Memory forgotten successfully",
@@ -95,9 +104,6 @@ func (t *MemoryForgetTool) findFileByName(agentID, name string) (string, error) 
 		dir := filepath.Join(agentDir, subdir)
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
 			continue
 		}
 

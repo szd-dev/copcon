@@ -89,7 +89,7 @@ func TestMemoryStoreTool_Execute_MissingContent(t *testing.T) {
 
 func TestMemoryRecallTool_Name(t *testing.T) {
 	store := setupTestStore(t)
-	tool := NewMemoryRecallTool(store)
+	tool := NewMemoryRecallTool(store, nil)
 	assert.Equal(t, "memory_recall", tool.Name())
 }
 
@@ -100,7 +100,7 @@ func TestMemoryRecallTool_Execute(t *testing.T) {
 	err := store.WriteFile(ctx, "agent-1", "knowledge/go-pref.md", "User prefers Go programming language", nil)
 	require.NoError(t, err)
 
-	tool := NewMemoryRecallTool(store)
+	tool := NewMemoryRecallTool(store, nil)
 	chatCtx := &mockChatContext{
 		ctx:     ctx,
 		agentID: "agent-1",
@@ -125,7 +125,7 @@ func TestMemoryRecallTool_Execute_NoMatch(t *testing.T) {
 	err := store.WriteFile(ctx, "agent-1", "knowledge/go-pref.md", "User prefers Go", nil)
 	require.NoError(t, err)
 
-	tool := NewMemoryRecallTool(store)
+	tool := NewMemoryRecallTool(store, nil)
 	chatCtx := &mockChatContext{
 		ctx:     ctx,
 		agentID: "agent-1",
@@ -144,7 +144,7 @@ func TestMemoryRecallTool_Execute_NoMatch(t *testing.T) {
 
 func TestMemoryRecallTool_Execute_MissingQuery(t *testing.T) {
 	store := setupTestStore(t)
-	tool := NewMemoryRecallTool(store)
+	tool := NewMemoryRecallTool(store, nil)
 
 	chatCtx := &mockChatContext{
 		ctx:     context.Background(),
@@ -237,7 +237,7 @@ func TestMemoryToolIntegration_StoreRecallForget(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 
-	recallTool := NewMemoryRecallTool(store)
+	recallTool := NewMemoryRecallTool(store, nil)
 	result, err = recallTool.Execute(chatCtx, map[string]any{
 		"query": "dark mode",
 	})

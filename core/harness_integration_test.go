@@ -114,14 +114,12 @@ func newRegistryWithPlugins() *capabilities.Registry {
 	hooks.RegisterAll(r)
 	tools.RegisterAll(r)
 
-	r.Register(&stubHookCap{name: capabilities.HookMemory})
 	r.Register(&stubModuleCap{
 		name:      capabilities.CapMemoryFile,
 		hookName:  "file_memory",
 		toolNames: []string{"memory_store", "memory_recall", "memory_forget"},
 	})
 	r.Register(&stubHookCap{name: capabilities.HookKBRecall})
-	r.Register(&stubHookCap{name: capabilities.HookMemoryPersist})
 
 	return r
 }
@@ -143,16 +141,9 @@ func TestHarness_NoneEnabled(t *testing.T) {
 }
 
 func TestHarness_MemoryOnly(t *testing.T) {
-	tmpDir := t.TempDir()
-
 	cfg := baseHarnessConfig()
 	cfg.Registry = newRegistryWithPlugins()
-	cfg.Agents[0].Memory = MemorySpec{
-		Enabled:       true,
-		BasePath:      tmpDir,
-		MaxIndexLines: 100,
-		MaxIndexBytes: 10240,
-	}
+	cfg.Agents[0].Tools = append(cfg.Agents[0].Tools, capabilities.CapMemoryFile)
 
 	h := NewHarness(cfg)
 	require.NoError(t, h.Build())
@@ -184,16 +175,9 @@ func TestHarness_KBOnly(t *testing.T) {
 }
 
 func TestHarness_BothEnabled(t *testing.T) {
-	tmpDir := t.TempDir()
-
 	cfg := baseHarnessConfig()
 	cfg.Registry = newRegistryWithPlugins()
-	cfg.Agents[0].Memory = MemorySpec{
-		Enabled:       true,
-		BasePath:      tmpDir,
-		MaxIndexLines: 100,
-		MaxIndexBytes: 10240,
-	}
+	cfg.Agents[0].Tools = append(cfg.Agents[0].Tools, capabilities.CapMemoryFile, capabilities.HookKBRecall)
 	cfg.Agents[0].KnowledgeBases = []string{"kb-1"}
 
 	h := NewHarness(cfg)
@@ -208,57 +192,16 @@ func TestHarness_BothEnabled(t *testing.T) {
 	assert.Contains(t, toolNames, "memory_forget")
 }
 
-func TestHarness_CollectCapabilityNames_MemoryBundle(t *testing.T) {
-	cfg := baseHarnessConfig()
-	cfg.Agents[0].Memory = MemorySpec{Enabled: true}
-
-	h := NewHarness(cfg)
-	names := h.collectCapabilityNames()
-
-	assert.Contains(t, names, capabilities.HookMemory)
-	assert.Contains(t, names, capabilities.CapMemoryFile)
-	assert.NotContains(t, names, capabilities.HookKBRecall)
-	assert.NotContains(t, names, capabilities.HookMemoryPersist)
-}
-
-func TestHarness_CollectCapabilityNames_KBBundle(t *testing.T) {
-	cfg := baseHarnessConfig()
-	cfg.Agents[0].KnowledgeBases = []string{"kb-1"}
-
-	h := NewHarness(cfg)
-	names := h.collectCapabilityNames()
-
-	assert.Contains(t, names, capabilities.HookKBRecall)
-	assert.Contains(t, names, capabilities.HookMemoryPersist)
-	assert.NotContains(t, names, capabilities.CapMemoryFile)
-}
-
-func TestHarness_CollectCapabilityNames_BothBundles(t *testing.T) {
-	cfg := baseHarnessConfig()
-	cfg.Agents[0].Memory = MemorySpec{Enabled: true}
-	cfg.Agents[0].KnowledgeBases = []string{"kb-1"}
-
-	h := NewHarness(cfg)
-	names := h.collectCapabilityNames()
-
-	assert.Contains(t, names, capabilities.HookMemory)
-	assert.Contains(t, names, capabilities.CapMemoryFile)
-	assert.Contains(t, names, capabilities.HookKBRecall)
-	assert.Contains(t, names, capabilities.HookMemoryPersist)
-}
-
 func TestHarness_CollectCapabilityNames_Deduplication(t *testing.T) {
 	cfg := baseHarnessConfig()
 	cfg.Agents = append(cfg.Agents, AgentSpec{
-		ID:             "agent-2",
-		Name:           "Agent 2",
-		Model:          "gpt-4o",
-		SystemPrompt:   "second agent",
-		Memory:         MemorySpec{Enabled: true},
-		KnowledgeBases: []string{"kb-2"},
+		ID:           "agent-2",
+		Name:         "Agent 2",
+		Model:        "gpt-4o",
+		SystemPrompt: "second agent",
+		Tools:        []string{capabilities.CapMemoryFile},
 	})
-	cfg.Agents[0].Memory = MemorySpec{Enabled: true}
-	cfg.Agents[0].KnowledgeBases = []string{"kb-1"}
+	cfg.Agents[0].Tools = append(cfg.Agents[0].Tools, capabilities.CapMemoryFile)
 
 	h := NewHarness(cfg)
 	names := h.collectCapabilityNames()
@@ -268,12 +211,7 @@ func TestHarness_CollectCapabilityNames_Deduplication(t *testing.T) {
 		counts[n]++
 	}
 
-	for _, bundleName := range capabilities.MemoryBundleNames() {
-		assert.Equal(t, 1, counts[bundleName], "bundle name %q should appear exactly once", bundleName)
-	}
-	for _, bundleName := range capabilities.KnowledgeBaseBundleNames() {
-		assert.Equal(t, 1, counts[bundleName], "bundle name %q should appear exactly once", bundleName)
-	}
+	assert.Equal(t, 1, counts[capabilities.CapMemoryFile], "capability name should appear exactly once")
 }
 
 func TestHarness_AgentKBsMap(t *testing.T) {

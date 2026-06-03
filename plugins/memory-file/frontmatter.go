@@ -11,13 +11,18 @@ import (
 
 // Frontmatter holds the YAML metadata at the top of a memory MD file.
 type Frontmatter struct {
-	Name      string            `yaml:"name"`
-	Category  string            `yaml:"category"`
-	Importance float64          `yaml:"importance,omitempty"`
-	CreatedAt time.Time         `yaml:"created_at"`
-	UpdatedAt time.Time         `yaml:"updated_at"`
-	Tags      []string          `yaml:"tags,omitempty"`
-	Metadata  map[string]string `yaml:"metadata,omitempty"`
+	Name        string            `yaml:"name"`
+	Category    string            `yaml:"category"`
+	Importance  float64           `yaml:"importance,omitempty"`
+	CreatedAt   time.Time         `yaml:"created_at"`
+	UpdatedAt   time.Time         `yaml:"updated_at"`
+	Tags        []string          `yaml:"tags,omitempty"`
+	Metadata    map[string]string `yaml:"metadata,omitempty"`
+	SessionID   string            `yaml:"session_id,omitempty"`
+	MessageIDs  []string          `yaml:"message_ids,omitempty"`
+	Description string            `yaml:"description,omitempty"`
+	Type        string            `yaml:"type,omitempty"`
+	SourceFiles []string          `yaml:"source_files,omitempty"`
 }
 
 // ParseFrontmatter extracts the YAML frontmatter from a markdown file.

@@ -4,12 +4,9 @@ package capabilities
 
 const (
 	HookTodoInjection = "hooks.todo_injection"
-	HookMemory        = "hooks.memory"
 	HookLogging       = "hooks.logging"
 	HookTracing       = "hooks.tracing"
-	HookFileMemory    = "hooks.file_memory"
 	HookKBRecall      = "hooks.kb_recall"
-	HookMemoryPersist = "hooks.memory_persist"
 )
 
 // ---- Capability Names: Modules ----

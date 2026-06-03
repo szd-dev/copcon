@@ -17,10 +17,11 @@ const (
 
 // IndexEntry represents a single entry in the memory INDEX.md file.
 type IndexEntry struct {
-	RelPath   string
-	Name      string
-	Category  string
-	UpdatedAt string
+	RelPath     string
+	Name        string
+	Category    string
+	UpdatedAt   string
+	Description string
 }
 
 // BuildIndex scans the knowledge/ and archive/ directories for an agent
@@ -81,10 +82,11 @@ func collectEntries(agentDir string) ([]IndexEntry, error) {
 			}
 			relPath := filepath.Join(subdir, f)
 			entries = append(entries, IndexEntry{
-				RelPath:   relPath,
-				Name:      fm.Name,
-				Category:  fm.Category,
-				UpdatedAt: fm.UpdatedAt.Format("2006-01-02"),
+				RelPath:     relPath,
+				Name:        fm.Name,
+				Category:    fm.Category,
+				UpdatedAt:   fm.UpdatedAt.Format("2006-01-02"),
+				Description: fm.Description,
 			})
 		}
 	}
@@ -136,6 +138,11 @@ func formatIndex(entries []IndexEntry, maxLines, maxIndexBytes int) string {
 	for _, e := range entries {
 		line := fmt.Sprintf("- **%s** (`%s`) — %s [%s]\n", e.Name, e.RelPath, e.Category, e.UpdatedAt)
 		buf.WriteString(line)
+		desc := e.Description
+		if desc == "" {
+			desc = "(no description)"
+		}
+		buf.WriteString(fmt.Sprintf("  > %s\n", desc))
 	}
 
 	return truncateIndex(buf.String(), maxLines, maxIndexBytes)

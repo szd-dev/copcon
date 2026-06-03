@@ -25,15 +25,19 @@ type MemoryFilter struct {
 
 // Memory is a pure value type with no storage backend dependencies.
 type Memory struct {
-	ID         string
-	Content    string
-	AgentID    string
-	Role       string
-	Timestamp  time.Time
-	MemoryType string
-	Metadata   map[string]any
-	Score      float32
-	ValidAt    *time.Time
-	InvalidAt  *time.Time
-	Importance float64
+	ID          string
+	Content     string
+	AgentID     string
+	Role        string
+	Timestamp   time.Time
+	MemoryType  string
+	Metadata    map[string]any
+	Score       float32
+	ValidAt     *time.Time
+	InvalidAt   *time.Time
+	Importance  float64
+	SessionID   string    // Session that originated this memory
+	MessageIDs  []string  // Messages that contributed to this memory
+	Description string    // Brief description of the memory
+	Type        string    // 4-type classification: user/feedback/project/reference
 }

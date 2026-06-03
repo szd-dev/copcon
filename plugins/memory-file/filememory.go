@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,14 +25,18 @@ type FileMemoryStoreInterface interface {
 	GetIndex(ctx context.Context, agentID string) (string, error)
 	UpdateIndex(ctx context.Context, agentID string, entry IndexEntry) error
 	RemoveFromIndex(ctx context.Context, agentID, relPath string) error
+	GetFacts(ctx context.Context, agentID string) (string, error)
+	UpdateFacts(ctx context.Context, agentID string) error
+	RemoveFromFacts(ctx context.Context, agentID string) error
 }
 
 // FileMemoryStore implements both MemoryStore and FileMemoryStoreInterface
 // using a filesystem-based storage with YAML frontmatter and INDEX.md.
 type FileMemoryStore struct {
-	basePath     string
+	basePath      string
 	maxIndexLines int
 	maxIndexBytes int
+	mu            sync.Mutex
 }
 
 var _ FileMemoryStoreInterface = (*FileMemoryStore)(nil)
@@ -121,7 +126,12 @@ func (s *FileMemoryStore) Store(ctx context.Context, memory *memtypes.Memory) er
 		return err
 	}
 
-	return BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes); err != nil {
+		return err
+	}
+	return BuildFacts(s.basePath, agentID)
 }
 
 func (s *FileMemoryStore) Search(ctx context.Context, query []float32, limit int) ([]*memtypes.Memory, error) {
@@ -266,7 +276,12 @@ func (s *FileMemoryStore) Update(ctx context.Context, memory *memtypes.Memory) e
 		return err
 	}
 
-	return BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes); err != nil {
+		return err
+	}
+	return BuildFacts(s.basePath, agentID)
 }
 
 func (s *FileMemoryStore) Delete(ctx context.Context, id string) error {
@@ -329,7 +344,12 @@ func (s *FileMemoryStore) WriteFile(ctx context.Context, agentID, relPath, conte
 		return err
 	}
 
-	return BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes); err != nil {
+		return err
+	}
+	return BuildFacts(s.basePath, agentID)
 }
 
 func (s *FileMemoryStore) DeleteFile(ctx context.Context, agentID, relPath string) error {
@@ -342,7 +362,12 @@ func (s *FileMemoryStore) DeleteFile(ctx context.Context, agentID, relPath strin
 		return fmt.Errorf("failed to delete file: %w", err)
 	}
 
-	return BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := BuildIndex(s.basePath, agentID, s.maxIndexLines, s.maxIndexBytes); err != nil {
+		return err
+	}
+	return BuildFacts(s.basePath, agentID)
 }
 
 func (s *FileMemoryStore) ListFiles(ctx context.Context, agentID, relPath string) ([]string, error) {
@@ -372,6 +397,18 @@ func (s *FileMemoryStore) UpdateIndex(ctx context.Context, agentID string, entry
 
 func (s *FileMemoryStore) RemoveFromIndex(ctx context.Context, agentID, relPath string) error {
 	return RemoveFromIndex(s.basePath, agentID, relPath)
+}
+
+func (s *FileMemoryStore) GetFacts(ctx context.Context, agentID string) (string, error) {
+	return ReadFacts(s.basePath, agentID)
+}
+
+func (s *FileMemoryStore) UpdateFacts(ctx context.Context, agentID string) error {
+	return AddToFacts(s.basePath, agentID)
+}
+
+func (s *FileMemoryStore) RemoveFromFacts(ctx context.Context, agentID string) error {
+	return RemoveFromFacts(s.basePath, agentID)
 }
 
 // --- internal helpers ---

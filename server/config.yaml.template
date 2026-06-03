@@ -12,12 +12,31 @@ openai:
 
 default_agent_id: "code-assistant"
 
+# Memory configuration (global, applies to all agents)
+memory:
+  enabled: true
+  # base_path: "~/.copcon/memory"  # optional
+  # max_index_lines: 200
+  # max_index_bytes: 25600
+  summarization:
+    enabled: true
+    model: "z-ai/glm-5"
+    # api_key: "..."     # inherits from openai if not set
+    # base_url: "..."    # inherits from openai if not set
+    # max_tokens: 4096
+    # temperature: 0.3
+    trigger:
+      # max_memories: 50       # trigger when count exceeds (default: 50)
+      # max_age_hours: 24      # trigger when oldest file exceeds (default: 24)
+      # cooldown_minutes: 60   # minimum interval between summaries (default: 60)
+
 agents:
   - id: "code-assistant"
     name: "Code Assistant"
     model: "z-ai/glm-5"
     system_prompt: "You are a helpful coding assistant. You can write, analyze, and debug code. You have access to code execution, shell commands, and file operations. Always provide clear explanations and best practices."
     tools: ["code_executor", "shell_executor", "file_ops", "todolist"]
+
   - id: "chat-assistant"
     name: "Chat Assistant"
     model: "z-ai/glm-5"

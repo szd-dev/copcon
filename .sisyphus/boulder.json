@@ -1,23 +1,77 @@
 {
-  "active_plan": "/data/copcon/.sisyphus/plans/kb-state-machine.md",
-  "started_at": "2026-05-31T12:43:31.082Z",
+  "active_plan": "/data/copcon/.sisyphus/plans/memory-system.md",
+  "started_at": "2026-06-01T16:08:33.999Z",
   "session_ids": [
-    "ses_182966ab5ffeAdWx3fDeNF7lz4"
+    "ses_17c0e546fffej4S1GT2mtROfdT"
   ],
   "session_origins": {
-    "ses_182966ab5ffeAdWx3fDeNF7lz4": "direct"
+    "ses_17c0e546fffej4S1GT2mtROfdT": "direct"
   },
-  "plan_name": "kb-state-machine",
+  "plan_name": "memory-system",
   "agent": "atlas",
   "task_sessions": {
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "**数据库 Schema — docModel 加列**",
-      "session_id": "ses_181ed6433ffeGFbClscvA6ld0S",
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Complete() 工具函数",
+      "session_id": "ses_17c0cd521ffeWc1EhcHalNiHnj",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-31T12:48:14.121Z"
+      "updated_at": "2026-06-01T16:11:43.071Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "FACTS.md 基础设施",
+      "session_id": "ses_17c09ca62ffetDg9bG4W4h1hiu",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-01T16:17:54.343Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "MemoryRecallHook",
+      "session_id": "ses_17c03f01cffeBrKusI1V7S3rpI",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-01T16:25:23.427Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "MemoryModule.NewHooks() 扩展",
+      "session_id": "ses_17bfbfdeeffe6F5Guh283Y2xm1",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-01T16:29:17.394Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "FileSummarizer + 冷却持久化",
+      "session_id": "ses_17bfac3adffe2l5LI3vLFnGn48",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-01T16:32:32.442Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "MemorySummaryHook",
+      "session_id": "ses_17bf7baf7ffeK75KoHfY1dr0mQ",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-low",
+      "updated_at": "2026-06-01T16:34:30.837Z"
+    },
+    "final-wave:f2": {
+      "task_key": "final-wave:f2",
+      "task_label": "F2",
+      "task_title": "测试验证: `go test ./...` 全部通过",
+      "session_id": "ses_17bf60525ffeNmkrT9UFvu9GpP",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-01T16:41:17.638Z"
     }
   }
 }

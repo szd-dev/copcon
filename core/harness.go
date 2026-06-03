@@ -80,26 +80,16 @@ type StoreConfig struct {
 
 // AgentSpec declares a static agent to be auto-converted to an AgentFactory during Build().
 type AgentSpec struct {
-	ID            string
-	Name          string
-	Model         string
-	SystemPrompt  string
-	Tools         []string
-	AllowDelegate bool
-	Memory        MemorySpec
+	ID             string
+	Name           string
+	Model          string
+	SystemPrompt   string
+	Tools          []string
+	AllowDelegate  bool
 	KnowledgeBases []string
 }
 
-// MemorySpec defines file-based memory configuration for an agent.
-// This is the core-internal equivalent of the server's MemoryConfig.
-type MemorySpec struct {
-	Enabled       bool
-	BasePath      string
-	SystemDir     string
-	IndexFile     string
-	MaxIndexLines int
-	MaxIndexBytes int
-}
+
 
 // AgentFactorySpec declares a dynamic agent factory to be registered directly.
 type AgentFactorySpec struct {
@@ -379,16 +369,6 @@ func (h *Harness) collectCapabilityNames() []string {
 				add(t)
 			}
 		}
-		if spec.Memory.Enabled {
-			for _, n := range capabilities.MemoryBundleNames() {
-				add(n)
-			}
-		}
-		if len(spec.KnowledgeBases) > 0 {
-			for _, n := range capabilities.KnowledgeBaseBundleNames() {
-				add(n)
-			}
-		}
 	}
 
 	return names
@@ -412,12 +392,6 @@ func (h *Harness) makeAgentFactory(
 			} else {
 				capNames = append(capNames, t)
 			}
-		}
-		if spec.Memory.Enabled {
-			capNames = append(capNames, capabilities.MemoryBundleNames()...)
-		}
-		if len(spec.KnowledgeBases) > 0 {
-			capNames = append(capNames, capabilities.KnowledgeBaseBundleNames()...)
 		}
 
 		expandedTools := h.config.Registry.ExpandWildcards(capNames)

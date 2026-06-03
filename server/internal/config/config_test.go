@@ -340,16 +340,9 @@ func TestValidateKnowledgeEmbeddingBackendEmpty(t *testing.T) {
 
 func TestValidateMemoryBasePathNotAbsolute(t *testing.T) {
 	cfg := &Config{
-		Agents: []AgentConfig{
-			{
-				ID:   "agent-1",
-				Name: "Agent One",
-				Model: "gpt-4",
-				Memory: MemoryConfig{
-					Enabled:  true,
-					BasePath: "relative/path",
-				},
-			},
+		Memory: MemoryConfig{
+			Enabled:  true,
+			BasePath: "relative/path",
 		},
 	}
 
@@ -360,16 +353,9 @@ func TestValidateMemoryBasePathNotAbsolute(t *testing.T) {
 
 func TestValidateMemoryBasePathTildePrefix(t *testing.T) {
 	cfg := &Config{
-		Agents: []AgentConfig{
-			{
-				ID:   "agent-1",
-				Name: "Agent One",
-				Model: "gpt-4",
-				Memory: MemoryConfig{
-					Enabled:  true,
-					BasePath: "~/.copcon/memory",
-				},
-			},
+		Memory: MemoryConfig{
+			Enabled:  true,
+			BasePath: "~/.copcon/memory",
 		},
 	}
 
@@ -379,16 +365,9 @@ func TestValidateMemoryBasePathTildePrefix(t *testing.T) {
 
 func TestValidateMemoryBasePathAbsolute(t *testing.T) {
 	cfg := &Config{
-		Agents: []AgentConfig{
-			{
-				ID:   "agent-1",
-				Name: "Agent One",
-				Model: "gpt-4",
-				Memory: MemoryConfig{
-					Enabled:  true,
-					BasePath: "/data/copcon/memory",
-				},
-			},
+		Memory: MemoryConfig{
+			Enabled:  true,
+			BasePath: "/data/copcon/memory",
 		},
 	}
 
@@ -398,15 +377,8 @@ func TestValidateMemoryBasePathAbsolute(t *testing.T) {
 
 func TestValidateEmptyMemoryBasePathIsValid(t *testing.T) {
 	cfg := &Config{
-		Agents: []AgentConfig{
-			{
-				ID:   "agent-1",
-				Name: "Agent One",
-				Model: "gpt-4",
-				Memory: MemoryConfig{
-					Enabled: true,
-				},
-			},
+		Memory: MemoryConfig{
+			Enabled: true,
 		},
 	}
 

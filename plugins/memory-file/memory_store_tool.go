@@ -59,6 +59,23 @@ func (t *MemoryStoreTool) InputSchema() map[string]any {
 				"type":        "number",
 				"description": "Importance score 0-1 (optional, default 0.5)",
 			},
+			"type": map[string]any{
+				"type":        "string",
+				"description": "Memory type classification: user, feedback, project, reference (optional)",
+			},
+			"description": map[string]any{
+				"type":        "string",
+				"description": "Brief description of the memory content (optional)",
+			},
+			"session_id": map[string]any{
+				"type":        "string",
+				"description": "Session ID this memory originates from (auto-filled if not provided)",
+			},
+			"message_ids": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Message IDs that contributed to this memory (optional)",
+			},
 		},
 		"required": []string{"content"},
 	}
@@ -85,29 +102,80 @@ func (t *MemoryStoreTool) Execute(chatCtx iface.ChatContextInterface, args map[s
 		importance = imp
 	}
 
-	agentIDStr := chatCtx.AgentID()
+	memType, _ := args["type"].(string)
+	description, _ := args["description"].(string)
 
-	subdir := categoryToSubdir(category)
-	relPath := filepath.Join(subdir, name+".md")
+	agentIDStr := chatCtx.AgentID()
+	sessionID := chatCtx.SessionID()
+	if sessionIDArg, ok := args["session_id"].(string); ok && sessionIDArg != "" {
+		sessionID = sessionIDArg
+	}
+
+	var messageIDs []string
+	if mids, ok := args["message_ids"].([]any); ok {
+		for _, mid := range mids {
+			if s, ok := mid.(string); ok {
+				messageIDs = append(messageIDs, s)
+			}
+		}
+	}
+
+	SetManualStoreFlag(sessionID)
 
 	metadata := map[string]string{
 		"category":   category,
 		"importance": fmt.Sprintf("%.2f", importance),
 	}
 
-	ctx := chatCtx.Context()
+	now := time.Now()
+	subdir := categoryToSubdir(category)
+	relPath := filepath.Join(subdir, name+".md")
 
-	err := t.store.WriteFile(ctx, agentIDStr, relPath, content, metadata)
-	if err != nil {
-		return errorResult(fmt.Sprintf("failed to store memory: %v", err))
+	fm := Frontmatter{
+		Name:        name,
+		Category:    category,
+		Importance:  importance,
+		Description: description,
+		Type:        memType,
+		SessionID:   sessionID,
+		MessageIDs:  messageIDs,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Metadata:    metadata,
+	}
+
+	data := SerializeFrontmatter(fm, content)
+
+	basePath := ""
+	if bp, ok := t.store.(interface{ BasePath() string }); ok {
+		basePath = bp.BasePath()
+	}
+
+	fullPath := filepath.Join(basePath, agentIDStr, relPath)
+	if err := EnsureAgentDirs(basePath, agentIDStr); err != nil {
+		return errorResult(fmt.Sprintf("failed to create dirs: %v", err))
+	}
+	if err := WriteFileWithPerms(fullPath, data); err != nil {
+		return errorResult(fmt.Sprintf("failed to write: %v", err))
+	}
+
+	if fms, ok := t.store.(*FileMemoryStore); ok {
+		fms.mu.Lock()
+		_ = BuildIndex(basePath, agentIDStr, fms.maxIndexLines, fms.maxIndexBytes)
+		_ = BuildFacts(basePath, agentIDStr)
+		fms.mu.Unlock()
 	}
 
 	return successResult(map[string]any{
-		"path":       relPath,
-		"name":       name,
-		"category":   category,
-		"importance": importance,
-		"message":    "Memory stored successfully",
+		"path":        relPath,
+		"name":        name,
+		"category":    category,
+		"importance":  importance,
+		"type":        memType,
+		"description": description,
+		"session_id":  sessionID,
+		"message_ids": messageIDs,
+		"message":     "Memory stored successfully",
 	})
 }
 

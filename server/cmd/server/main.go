@@ -75,8 +75,20 @@ func main() {
 	hooks.RegisterAll(reg)
 	tools.RegisterAll(reg)
 
+	var summaryLLM llm.LLMProvider
+	if cfg.Memory.Summarization.Enabled {
+		summaryCL := openai.NewClient(
+			option.WithAPIKey(cfg.Memory.Summarization.APIKey),
+			option.WithBaseURL(cfg.Memory.Summarization.BaseURL),
+		)
+		summaryLLM = llm.NewOpenAIAdapter(&summaryCL, cfg.Memory.Summarization.Model)
+	}
+	if summaryLLM == nil {
+		summaryLLM = llmAdapter
+	}
+
 	if fmStore != nil {
-		memoryfile.RegisterCapabilities(reg, fmStore, emb)
+		memoryfile.RegisterCapabilities(reg, fmStore, llmAdapter, summaryLLM)
 	}
 	if ks != nil {
 		knowledgebase.RegisterCapabilities(reg, ks, emb)
@@ -87,7 +99,7 @@ func main() {
 		Store:    core.StoreConfig{Provider: storeProvider},
 		LLM:      llmAdapter,
 		Logger:   log,
-		Agents:   agentSpecs(cfg),
+		Agents:   agentSpecs(cfg, fmStore, ks),
 	})
 	chk(log, h.Build())
 
@@ -111,21 +123,23 @@ func chk(l *slog.Logger, err error) {
 	}
 }
 
-func agentSpecs(cfg *config.Config) []core.AgentSpec {
+func agentSpecs(cfg *config.Config, fmStore *memoryfile.FileMemoryStore, ks *sqlitevec.KnowledgeStore) []core.AgentSpec {
 	out := make([]core.AgentSpec, 0, len(cfg.Agents))
 	for _, a := range cfg.Agents {
+		tools := make([]string, len(a.Tools))
+		copy(tools, a.Tools)
+
+		if fmStore != nil && cfg.Memory.Enabled {
+			tools = append(tools, capabilities.CapMemoryFile)
+		}
+		if ks != nil {
+			tools = append(tools, capabilities.HookKBRecall)
+		}
+
 		out = append(out, core.AgentSpec{
 			ID: a.ID, Name: a.Name, Model: a.Model, SystemPrompt: a.SystemPrompt,
-			Tools:         a.Tools,
+			Tools:         tools,
 			AllowDelegate: a.ID == "code-assistant",
-			Memory: core.MemorySpec{
-				Enabled:       a.Memory.Enabled,
-				BasePath:      a.Memory.BasePath,
-				SystemDir:     a.Memory.SystemDir,
-				IndexFile:     a.Memory.IndexFile,
-				MaxIndexLines: a.Memory.MaxIndexLines,
-				MaxIndexBytes: a.Memory.MaxIndexBytes,
-			},
 		})
 	}
 	return out
