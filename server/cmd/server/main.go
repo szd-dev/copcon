@@ -17,10 +17,8 @@ import (
 	_ "modernc.org/sqlite/vec" // enable vec0 extension in modernc SQLite driver
 
 	"github.com/copcon/core"
-	"github.com/copcon/core/capabilities"
-	"github.com/copcon/core/capabilities/hooks"
-	"github.com/copcon/core/capabilities/tools"
 	"github.com/copcon/core/llm"
+	"github.com/copcon/core/plugin"
 	kbembedding "github.com/copcon/plugins/knowledge-base/embedding"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
 	kbtypes "github.com/copcon/plugins/knowledge-base/types"
@@ -73,9 +71,14 @@ func main() {
 		defer worker.Stop()
 	}
 
-	reg := capabilities.NewRegistry()
-	hooks.RegisterAll(reg)
-	tools.RegisterAll(reg)
+	h := core.NewHarness(core.HarnessConfig{
+		Store:  core.StoreConfig{Provider: storeProvider},
+		LLM:    llmAdapter,
+		Logger: log,
+		Agents: agentSpecs(cfg),
+	})
+
+	h.Register(plugin.NewBuiltin())
 
 	var summaryLLM llm.LLMProvider
 	if cfg.Memory.Summarization.Enabled {
@@ -90,31 +93,24 @@ func main() {
 	}
 
 	if fmStore != nil {
-		memoryfile.RegisterCapabilities(reg, fmStore, llmAdapter, summaryLLM)
+		h.Register(memoryfile.NewPlugin(fmStore, llmAdapter, summaryLLM))
 	}
 	if ks != nil {
-		knowledgebase.RegisterCapabilities(reg, ks, emb)
+		h.Register(knowledgebase.NewPlugin(ks, emb))
 	}
 
 	if cfg.Skills.Enabled {
-		skill.RegisterCapabilities(reg, skill.Config{
+		h.Register(skill.NewPlugin(skill.Config{
 			ProjectRoot: projectRoot(),
 			ExtraPaths:  cfg.Skills.ExtraPaths,
-		})
+		}))
 	}
 
 	if cfg.MCP.Enabled && len(cfg.MCP.Servers) > 0 {
 		mcpConfigs := convertMCPServerConfigs(cfg.MCP.Servers)
-		mcp.RegisterCapabilities(reg, mcpConfigs)
+		h.Register(mcp.NewPlugin(mcpConfigs))
 	}
 
-	h := core.NewHarness(core.HarnessConfig{
-		Registry: reg,
-		Store:    core.StoreConfig{Provider: storeProvider},
-		LLM:      llmAdapter,
-		Logger:   log,
-		Agents:   agentSpecs(cfg, fmStore, ks),
-	})
 	chk(log, h.Build())
 
 	var apiOpts []api.HandlerOption
@@ -137,29 +133,17 @@ func chk(l *slog.Logger, err error) {
 	}
 }
 
-func agentSpecs(cfg *config.Config, fmStore *memoryfile.FileMemoryStore, ks *sqlitevec.KnowledgeStore) []core.AgentSpec {
+func agentSpecs(cfg *config.Config) []core.AgentSpec {
 	out := make([]core.AgentSpec, 0, len(cfg.Agents))
 	for _, a := range cfg.Agents {
-		tools := make([]string, len(a.Tools))
-		copy(tools, a.Tools)
-
-		if fmStore != nil && cfg.Memory.Enabled {
-			tools = append(tools, capabilities.CapMemoryFile)
-		}
-		if ks != nil {
-			tools = append(tools, capabilities.HookKBRecall)
-		}
-		if cfg.Skills.Enabled {
-			tools = append(tools, capabilities.CapSkillsModule)
-		}
-		if cfg.MCP.Enabled && len(cfg.MCP.Servers) > 0 {
-			tools = append(tools, mcp.CapabilityName)
-		}
-
 		out = append(out, core.AgentSpec{
-			ID: a.ID, Name: a.Name, Model: a.Model, SystemPrompt: a.SystemPrompt,
-			Tools:         tools,
-			AllowDelegate: a.ID == "code-assistant",
+			ID:             a.ID,
+			Name:           a.Name,
+			Model:          a.Model,
+			SystemPrompt:   a.SystemPrompt,
+			Tools:          a.Tools,
+			AllowDelegate:  a.AllowDelegate,
+			KnowledgeBases: a.KnowledgeBases,
 		})
 	}
 	return out
