@@ -15,6 +15,7 @@ import (
 	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/llm"
+	"github.com/copcon/core/plugin"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
 )
@@ -108,6 +109,7 @@ type HarnessConfig struct {
 	AgentFactories []AgentFactorySpec
 	AsyncTracker   tool.AsyncToolTracker
 	Registry       *capabilities.Registry
+	Plugins        []plugin.Plugin // new: plugins registered via Harness.Register()
 }
 
 type Harness struct {
@@ -118,10 +120,20 @@ type Harness struct {
 	sessionStore chat.ActiveSessions
 	hookRunner   hook.HookRunner
 	built        bool
+	plugins      []plugin.Plugin
+	toolPool     *plugin.ToolPool
+	hookPool     *plugin.HookPool
 }
 
 func NewHarness(cfg HarnessConfig) *Harness {
-	return &Harness{config: cfg}
+	return &Harness{
+		config:  cfg,
+		plugins: cfg.Plugins,
+	}
+}
+
+func (h *Harness) Register(p plugin.Plugin) {
+	h.plugins = append(h.plugins, p)
 }
 
 func (h *Harness) Engine() agent.AgentEngine           { return h.engine }
@@ -131,23 +143,27 @@ func (h *Harness) Store() storage.StoreProvider        { return h.config.Store.P
 func (h *Harness) ActiveSessions() chat.ActiveSessions { return h.sessionStore }
 func (h *Harness) HookRunner() hook.HookRunner         { return h.hookRunner }
 func (h *Harness) CapRegistry() *capabilities.Registry { return h.config.Registry }
+func (h *Harness) ToolPool() *plugin.ToolPool          { return h.toolPool }
+func (h *Harness) HookPool() *plugin.HookPool          { return h.hookPool }
 
-// Build executes the full construction sequence:
-//  1. Initialize store pointers (nil → no-op)
-//  2. Resolve capabilities: expand wildcards + dependency sort
-//  3. Create global ToolRegistry + register tools from resolved capabilities
-//  4. Create global HookRunner + register hooks from resolved capabilities
-//  5. Create AgentRegistry
-//  6. Register AgentSpecs as factories (auto-convert)
-//  7. Register AgentFactorySpecs as factories (direct)
-//  8. Create AgentEngine with registry + session/message stores
-//  9. Register cross-agent tools (delegate_to, read_sub_session)
-//
-// 10. Return Harness with engine + registry references
+// Build executes the full construction sequence.
+// When plugins have been registered (via Register or HarnessConfig.Plugins),
+// it uses the new plugin-based flow; otherwise it falls back to the legacy
+// capability-based flow.
 func (h *Harness) Build() error {
 	if h.built {
 		return fmt.Errorf("harness already built")
 	}
+
+	if len(h.plugins) > 0 {
+		return h.buildFromPlugins()
+	}
+	return h.buildFromCapabilities()
+}
+
+// buildFromCapabilities is the legacy Build flow using the capabilities system.
+// It is preserved for backward compatibility until Task 10 removes it.
+func (h *Harness) buildFromCapabilities() error {
 
 	h.sessionStore = chat.NewActiveSessions()
 
@@ -411,6 +427,140 @@ func (h *Harness) makeAgentFactory(
 					registeredNames[toolName] = true
 				}
 			}
+		}
+
+		model := spec.Model
+		if params.ModelOverride != "" {
+			model = params.ModelOverride
+		}
+
+		systemPrompt := spec.SystemPrompt
+		if params.Task != "" {
+			systemPrompt = systemPrompt + "\n\nCurrent Task: " + params.Task
+		}
+
+		return agent.AgentDefinition{
+			ID:           spec.ID,
+			Name:         spec.Name,
+			Model:        model,
+			SystemPrompt: systemPrompt,
+			ToolManager:  toolMgr,
+			LLMProvider:  h.config.LLM,
+		}, nil
+	}
+}
+
+func (h *Harness) buildFromPlugins() error {
+	h.sessionStore = chat.NewActiveSessions()
+
+	logger := h.config.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+
+	if err := h.initStores(); err != nil {
+		return err
+	}
+
+	h.toolPool = plugin.NewToolPool()
+	h.hookPool = plugin.NewHookPool()
+
+	for _, p := range h.plugins {
+		for _, t := range p.Tools() {
+			h.toolPool.Register(t)
+			logger.Info("harness: registered plugin tool", "plugin", p.Name(), "tool", t.Name())
+		}
+		for _, hk := range p.Hooks() {
+			h.hookPool.Register(hk)
+			logger.Info("harness: registered plugin hook", "plugin", p.Name(), "hook", hk.Name())
+		}
+	}
+
+	agentKBs := make(map[string][]string)
+	for _, spec := range h.config.Agents {
+		if len(spec.KnowledgeBases) > 0 {
+			agentKBs[spec.ID] = spec.KnowledgeBases
+		}
+	}
+
+	defaultAgentID := ""
+	if len(h.config.Agents) > 0 {
+		defaultAgentID = h.config.Agents[0].ID
+	} else if len(h.config.AgentFactories) > 0 {
+		defaultAgentID = h.config.AgentFactories[0].ID
+	}
+	agentRegistry := agent.NewAgentRegistry(defaultAgentID)
+
+	for i := range h.config.Agents {
+		spec := h.config.Agents[i]
+		agentRegistry.RegisterFactory(spec.ID, spec.Name, spec.Model, spec.AllowDelegate,
+			h.makePluginAgentFactory(spec),
+		)
+		logger.Info("harness: registered agent spec (plugin)", "id", spec.ID, "name", spec.Name, "model", spec.Model)
+	}
+
+	for _, spec := range h.config.AgentFactories {
+		agentRegistry.RegisterFactory(spec.ID, spec.Name, spec.Model, spec.AllowDelegate, spec.Factory)
+		logger.Info("harness: registered agent factory", "id", spec.ID, "name", spec.Name, "model", spec.Model)
+	}
+
+	h.hookRunner = hook.NewHookRunner()
+	for _, hk := range h.hookPool.All() {
+		h.hookRunner.Register(hk)
+	}
+
+	var asyncTracker tool.AsyncToolTracker = tool.NewAsyncToolRegistry()
+	if h.config.AsyncTracker != nil {
+		asyncTracker = h.config.AsyncTracker
+	}
+
+	engineOpts := []agent.EngineOption{
+		agent.WithHookRunner(h.hookRunner),
+		agent.WithLogger(logger),
+	}
+	if h.config.LLM != nil {
+		engineOpts = append(engineOpts, agent.WithLLMProvider(h.config.LLM))
+	}
+
+	ctxBuilder := context_builder.New()
+
+	h.engine = agent.NewAgentEngine(agentRegistry, h.config.Store.Provider.Sessions(), h.config.Store.Provider.Messages(), ctxBuilder, asyncTracker, engineOpts...)
+	h.asyncTracker = asyncTracker
+
+	for _, p := range h.plugins {
+		deps := plugin.PluginDeps{
+			SessionStore:        h.config.Store.Provider.Sessions(),
+			MessageStore:        h.config.Store.Provider.Messages(),
+			TodoStore:           h.config.Store.Provider.Todos(),
+			AgentRegistry:       agentRegistry,
+			Engine:              h.engine,
+			Logger:              logger,
+			AgentKnowledgeBases: agentKBs,
+		}
+		if err := p.Init(deps); err != nil {
+			return fmt.Errorf("init plugin %s: %w", p.Name(), err)
+		}
+		logger.Info("harness: initialized plugin", "plugin", p.Name())
+	}
+
+	h.registry = agentRegistry
+	h.built = true
+
+	logger.Info("harness: build complete (plugin mode)",
+		"agents", len(agentRegistry.List()),
+		"tools", len(h.toolPool.Select([]string{"*"})),
+	)
+
+	return nil
+}
+
+func (h *Harness) makePluginAgentFactory(spec AgentSpec) agent.AgentFactory {
+	return func(_ context.Context, params agent.CreateParams) (agent.AgentDefinition, error) {
+		toolMgr := tool.NewToolManager()
+
+		selectedTools := h.toolPool.Select(spec.Tools)
+		for _, t := range selectedTools {
+			_ = toolMgr.Register(t)
 		}
 
 		model := spec.Model
