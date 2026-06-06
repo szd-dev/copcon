@@ -24,12 +24,14 @@ type Config struct {
 }
 
 type AgentConfig struct {
-	ID           string   `yaml:"id"`
-	Name         string   `yaml:"name"`
-	Model        string   `yaml:"model"`
-	SystemPrompt string   `yaml:"system_prompt"`
-	Tools        []string `yaml:"tools"`
-	BaseURL      string   `yaml:"base_url"`
+	ID             string   `yaml:"id"`
+	Name           string   `yaml:"name"`
+	Model          string   `yaml:"model"`
+	SystemPrompt   string   `yaml:"system_prompt"`
+	Tools          []string `yaml:"tools"`
+	BaseURL        string   `yaml:"base_url"`
+	AllowDelegate  bool     `yaml:"allow_delegate,omitempty"`
+	KnowledgeBases []string `yaml:"knowledge_bases,omitempty"`
 }
 
 type ServerConfig struct {
