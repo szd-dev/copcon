@@ -19,6 +19,7 @@ type Config struct {
 	DefaultAgentID string          `yaml:"default_agent_id"`
 	Knowledge      KnowledgeConfig `yaml:"knowledge,omitempty"`
 	Memory         MemoryConfig    `yaml:"memory,omitempty"`
+	Skills         SkillConfig     `yaml:"skills,omitempty"`
 }
 
 type AgentConfig struct {
@@ -63,6 +64,11 @@ type MemoryConfig struct {
 	MaxIndexLines int                       `yaml:"max_index_lines,omitempty"`
 	MaxIndexBytes int                       `yaml:"max_index_bytes,omitempty"`
 	Summarization MemorySummarizationConfig `yaml:"summarization,omitempty"`
+}
+
+type SkillConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	ExtraPaths []string `yaml:"extra_paths,omitempty"`
 }
 
 type MemorySummarizationConfig struct {

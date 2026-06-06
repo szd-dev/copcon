@@ -27,6 +27,7 @@ import (
 	"github.com/copcon/plugins/knowledge-base/store/bruteforce"
 	"github.com/copcon/plugins/knowledge-base/store/sqlitevec"
 	memoryfile "github.com/copcon/plugins/memory-file"
+	"github.com/copcon/plugins/skill"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/kbworker"
@@ -94,6 +95,13 @@ func main() {
 		knowledgebase.RegisterCapabilities(reg, ks, emb)
 	}
 
+	if cfg.Skills.Enabled {
+		skill.RegisterCapabilities(reg, skill.Config{
+			ProjectRoot: projectRoot(),
+			ExtraPaths:  cfg.Skills.ExtraPaths,
+		})
+	}
+
 	h := core.NewHarness(core.HarnessConfig{
 		Registry: reg,
 		Store:    core.StoreConfig{Provider: storeProvider},
@@ -135,6 +143,9 @@ func agentSpecs(cfg *config.Config, fmStore *memoryfile.FileMemoryStore, ks *sql
 		if ks != nil {
 			tools = append(tools, capabilities.HookKBRecall)
 		}
+		if cfg.Skills.Enabled {
+			tools = append(tools, capabilities.CapSkillsModule)
+		}
 
 		out = append(out, core.AgentSpec{
 			ID: a.ID, Name: a.Name, Model: a.Model, SystemPrompt: a.SystemPrompt,
@@ -143,6 +154,14 @@ func agentSpecs(cfg *config.Config, fmStore *memoryfile.FileMemoryStore, ks *sql
 		})
 	}
 	return out
+}
+
+func projectRoot() string {
+	root, err := filepath.Abs(".")
+	if err != nil {
+		return "."
+	}
+	return root
 }
 
 func defaultMemoryBasePath() string {
