@@ -12,7 +12,8 @@ const (
 // ---- Capability Names: Modules ----
 
 const (
-	CapMemoryFile = "modules.memory_file"
+	CapMemoryFile   = "modules.memory_file"
+	CapSkillsModule = "modules.skills"
 )
 
 // ---- Capability Names: Tools ----
