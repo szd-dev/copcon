@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/copcon/core/agent"
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/llm"
@@ -15,9 +14,6 @@ import (
 	"github.com/copcon/core/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	_ "github.com/copcon/core/capabilities/hooks"
-	_ "github.com/copcon/core/capabilities/tools"
 )
 
 type testStoreProvider struct{}
@@ -27,6 +23,16 @@ func (testStoreProvider) Messages() storage.MessageStore   { return nil }
 func (testStoreProvider) Todos() storage.TodoStore         { return nil }
 
 func TestNewHarness_BasicBuild(t *testing.T) {
+	p := &mockPlugin{
+		name: "test-plugin",
+		tools: []tool.Tool{
+			&mockPluginTool{name: "test.tool.alpha"},
+		},
+		hooks: []hook.Hook{
+			&mockPluginHook{name: "test.hook.beta"},
+		},
+	}
+
 	h := NewHarness(HarnessConfig{
 		LLM:   llm.NewMockProvider(),
 		Store: StoreConfig{Provider: testStoreProvider{}},
@@ -36,11 +42,12 @@ func TestNewHarness_BasicBuild(t *testing.T) {
 				Name:          "Test Agent",
 				Model:         "gpt-4o",
 				SystemPrompt:  "You are a test agent.",
-				Tools:         []string{capabilities.ToolCodeExecutor},
+				Tools:         []string{"test.*"},
 				AllowDelegate: false,
 			},
 		},
 	})
+	h.Register(p)
 
 	err := h.Build()
 	require.NoError(t, err)
@@ -51,6 +58,11 @@ func TestNewHarness_BasicBuild(t *testing.T) {
 }
 
 func TestNewHarness_DoubleBuild(t *testing.T) {
+	p := &mockPlugin{
+		name:  "test-plugin",
+		tools: []tool.Tool{&mockPluginTool{name: "test.tool"}},
+	}
+
 	h := NewHarness(HarnessConfig{
 		LLM:   llm.NewMockProvider(),
 		Store: StoreConfig{Provider: testStoreProvider{}},
@@ -63,6 +75,7 @@ func TestNewHarness_DoubleBuild(t *testing.T) {
 			},
 		},
 	})
+	h.Register(p)
 
 	require.NoError(t, h.Build())
 	err := h.Build()
@@ -71,10 +84,17 @@ func TestNewHarness_DoubleBuild(t *testing.T) {
 }
 
 func TestNewHarness_NilProviderReturnsError(t *testing.T) {
+	p := &mockPlugin{
+		name:  "test-plugin",
+		tools: []tool.Tool{&mockPluginTool{name: "test.tool"}},
+	}
+
 	h := NewHarness(HarnessConfig{
 		LLM: llm.NewMockProvider(),
 		Agents: []AgentSpec{{ID: "a", Name: "A", Model: "gpt-4o", SystemPrompt: "test"}},
 	})
+	h.Register(p)
+
 	err := h.Build()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Provider")
@@ -92,6 +112,11 @@ func TestNewHarness_AgentFactorySpec(t *testing.T) {
 		}, nil
 	}
 
+	p := &mockPlugin{
+		name:  "test-plugin",
+		tools: []tool.Tool{&mockPluginTool{name: "test.tool"}},
+	}
+
 	h := NewHarness(HarnessConfig{
 		LLM:   llm.NewMockProvider(),
 		Store: StoreConfig{Provider: testStoreProvider{}},
@@ -105,6 +130,7 @@ func TestNewHarness_AgentFactorySpec(t *testing.T) {
 			},
 		},
 	})
+	h.Register(p)
 
 	require.NoError(t, h.Build())
 
@@ -115,6 +141,11 @@ func TestNewHarness_AgentFactorySpec(t *testing.T) {
 }
 
 func TestNewHarness_FirstAgentIsDefault(t *testing.T) {
+	p := &mockPlugin{
+		name:  "test-plugin",
+		tools: []tool.Tool{&mockPluginTool{name: "test.tool"}},
+	}
+
 	h := NewHarness(HarnessConfig{
 		LLM:   llm.NewMockProvider(),
 		Store: StoreConfig{Provider: testStoreProvider{}},
@@ -123,6 +154,7 @@ func TestNewHarness_FirstAgentIsDefault(t *testing.T) {
 			{ID: "second", Name: "Second", Model: "gpt-4o", SystemPrompt: "second"},
 		},
 	})
+	h.Register(p)
 
 	require.NoError(t, h.Build())
 
@@ -132,6 +164,11 @@ func TestNewHarness_FirstAgentIsDefault(t *testing.T) {
 }
 
 func TestNewHarness_DefaultFromFactorySpec(t *testing.T) {
+	p := &mockPlugin{
+		name:  "test-plugin",
+		tools: []tool.Tool{&mockPluginTool{name: "test.tool"}},
+	}
+
 	h := NewHarness(HarnessConfig{
 		LLM:   llm.NewMockProvider(),
 		Store: StoreConfig{Provider: testStoreProvider{}},
@@ -147,127 +184,13 @@ func TestNewHarness_DefaultFromFactorySpec(t *testing.T) {
 			},
 		},
 	})
+	h.Register(p)
 
 	require.NoError(t, h.Build())
 
 	def, err := h.Registry().Default()
 	require.NoError(t, err)
 	assert.Equal(t, "factory-default", def.ID)
-}
-
-func TestNewHarness_WildcardCapabilityExpansion(t *testing.T) {
-	h := NewHarness(HarnessConfig{
-		LLM:   llm.NewMockProvider(),
-		Store: StoreConfig{Provider: testStoreProvider{}},
-		Agents: []AgentSpec{
-			{ID: "wildcard-agent", Name: "Wildcard Agent", Model: "gpt-4o", SystemPrompt: "test",
-				Tools: []string{capabilities.AliasCodeExecutor}, AllowDelegate: false},
-		},
-	})
-
-	require.NoError(t, h.Build())
-
-	def, err := h.Registry().Get("wildcard-agent")
-	require.NoError(t, err)
-	assert.NotNil(t, def.ToolManager)
-
-	tools := def.ToolManager.List()
-	assert.NotEmpty(t, tools, "wildcard tools.* should expand and register tools")
-}
-
-func TestNewHarness_CapabilityDependencyResolution(t *testing.T) {
-	h := NewHarness(HarnessConfig{
-		LLM:   llm.NewMockProvider(),
-		Store: StoreConfig{Provider: testStoreProvider{}},
-		Agents: []AgentSpec{
-			{
-				ID:           "dep-agent",
-				Name:         "Dep Agent",
-				Model:        "gpt-4o",
-				SystemPrompt: "test",
-				Tools:        []string{capabilities.ToolTodo},
-			},
-		},
-	})
-
-	require.NoError(t, h.Build())
-
-	def, err := h.Registry().Get("dep-agent")
-	require.NoError(t, err)
-
-	tools := def.ToolManager.List()
-	found := false
-	for _, ti := range tools {
-		if ti.Name == capabilities.AliasTodoList {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "tools.todo dependency should pull in todolist tool")
-}
-
-func TestNewAgent_QuickConfig(t *testing.T) {
-	engine, registry, err := NewAgent(AgentQuickConfig{
-		Name:         "Quick Agent",
-		Model:        "gpt-4o",
-		SystemPrompt: "You are a quick agent.",
-			Tools:         []string{capabilities.ToolCodeExecutor},
-		LLM:          llm.NewMockProvider(),
-	})
-
-	require.NoError(t, err)
-	assert.NotNil(t, engine)
-	assert.NotNil(t, registry)
-
-	def, err := registry.Default()
-	require.NoError(t, err)
-	assert.Equal(t, "default", def.ID)
-	assert.Equal(t, "Quick Agent", def.Name)
-	assert.Equal(t, "gpt-4o", def.Model)
-}
-
-func TestNewHarness_UnknownCapability(t *testing.T) {
-	h := NewHarness(HarnessConfig{
-		LLM:   llm.NewMockProvider(),
-		Store: StoreConfig{Provider: testStoreProvider{}},
-		Agents: []AgentSpec{
-			{
-				ID:           "bad-agent",
-				Name:         "Bad Agent",
-				Model:        "gpt-4o",
-				SystemPrompt: "test",
-				Tools:        []string{"tools.nonexistent_capability"},
-			},
-		},
-	})
-
-	err := h.Build()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not registered")
-}
-
-func TestNewHarness_AgentSpecModelOverride(t *testing.T) {
-	h := NewHarness(HarnessConfig{
-		LLM:   llm.NewMockProvider(),
-		Store: StoreConfig{Provider: testStoreProvider{}},
-		Agents: []AgentSpec{
-			{
-				ID:            "override-agent",
-				Name:          "Override Agent",
-				Model:         "gpt-4o",
-				SystemPrompt:  "test",
-				Tools:         []string{capabilities.ToolCodeExecutor},
-				AllowDelegate: true,
-			},
-		},
-	})
-
-	require.NoError(t, h.Build())
-
-	def, err := h.Registry().Get("override-agent")
-	require.NoError(t, err)
-	assert.Equal(t, "gpt-4o", def.Model)
-	assert.Equal(t, "test", def.SystemPrompt)
 }
 
 type mockPluginTool struct {
@@ -538,22 +461,4 @@ func TestHarness_BuildFromPlugins_AgentFactorySpec(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, factoryCalled)
 	assert.Equal(t, "Factory Agent", def.Name)
-}
-
-func TestHarness_BuildFromPlugins_NoPluginsFallsBack(t *testing.T) {
-	h := NewHarness(HarnessConfig{
-		LLM:   llm.NewMockProvider(),
-		Store: StoreConfig{Provider: testStoreProvider{}},
-		Agents: []AgentSpec{
-			{
-				ID: "legacy-agent", Name: "Legacy", Model: "gpt-4o", SystemPrompt: "legacy",
-				Tools: []string{capabilities.ToolCodeExecutor},
-			},
-		},
-	})
-
-	require.NoError(t, h.Build())
-	assert.NotNil(t, h.Engine())
-	assert.Nil(t, h.ToolPool(), "ToolPool should be nil for legacy path")
-	assert.Nil(t, h.HookPool(), "HookPool should be nil for legacy path")
 }

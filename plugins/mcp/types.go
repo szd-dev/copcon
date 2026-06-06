@@ -102,3 +102,36 @@ func normalizeName(name string) string {
 
 // Compile-time check that MCPToolWrapper implements tool.Tool.
 var _ tool.Tool = (*MCPToolWrapper)(nil)
+
+func isToolAllowed(name string, config *AllowedToolsConfig) bool {
+	if config == nil {
+		return true
+	}
+	if len(config.Include) > 0 {
+		found := false
+		for _, inc := range config.Include {
+			if inc == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	for _, exc := range config.Exclude {
+		if exc == name {
+			return false
+		}
+	}
+	return true
+}
+
+func convertSchema(schema any) map[string]any {
+	switch v := schema.(type) {
+	case map[string]any:
+		return v
+	default:
+		return map[string]any{"type": "object"}
+	}
+}

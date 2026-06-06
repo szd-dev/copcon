@@ -2,15 +2,11 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 
 	"github.com/copcon/core/agent"
-	"github.com/copcon/core/capabilities"
-	"github.com/copcon/core/capabilities/hooks"
-	"github.com/copcon/core/capabilities/tools"
 	"github.com/copcon/core/chat"
 	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/hook"
@@ -64,17 +60,6 @@ func NewAgent(cfg AgentQuickConfig) (agent.AgentEngine, agent.AgentRegistry, err
 	return h.Engine(), h.Registry(), nil
 }
 
-var builtInHooks = []string{capabilities.HookTodoInjection, capabilities.HookLogging, capabilities.HookTracing}
-
-var builtInTools = []string{capabilities.ToolConfirmAction, capabilities.ToolAskUser, capabilities.ToolTodo, capabilities.ToolAsync}
-
-var toolNameToCap = map[string]string{
-	capabilities.AliasCodeExecutor:  capabilities.ToolCodeExecutor,
-	capabilities.AliasShellExecutor: capabilities.ToolShellExecutor,
-	capabilities.AliasFileOps:       capabilities.ToolFileOps,
-	capabilities.AliasTodoList:      capabilities.ToolTodo,
-}
-
 type StoreConfig struct {
 	Provider storage.StoreProvider
 }
@@ -108,8 +93,7 @@ type HarnessConfig struct {
 	Agents         []AgentSpec
 	AgentFactories []AgentFactorySpec
 	AsyncTracker   tool.AsyncToolTracker
-	Registry       *capabilities.Registry
-	Plugins        []plugin.Plugin // new: plugins registered via Harness.Register()
+	Plugins        []plugin.Plugin
 }
 
 type Harness struct {
@@ -142,315 +126,15 @@ func (h *Harness) AsyncTracker() tool.AsyncToolTracker { return h.asyncTracker }
 func (h *Harness) Store() storage.StoreProvider        { return h.config.Store.Provider }
 func (h *Harness) ActiveSessions() chat.ActiveSessions { return h.sessionStore }
 func (h *Harness) HookRunner() hook.HookRunner         { return h.hookRunner }
-func (h *Harness) CapRegistry() *capabilities.Registry { return h.config.Registry }
 func (h *Harness) ToolPool() *plugin.ToolPool          { return h.toolPool }
 func (h *Harness) HookPool() *plugin.HookPool          { return h.hookPool }
 
-// Build executes the full construction sequence.
-// When plugins have been registered (via Register or HarnessConfig.Plugins),
-// it uses the new plugin-based flow; otherwise it falls back to the legacy
-// capability-based flow.
+// Build executes the full construction sequence using the plugin system.
 func (h *Harness) Build() error {
 	if h.built {
 		return fmt.Errorf("harness already built")
 	}
 
-	if len(h.plugins) > 0 {
-		return h.buildFromPlugins()
-	}
-	return h.buildFromCapabilities()
-}
-
-// buildFromCapabilities is the legacy Build flow using the capabilities system.
-// It is preserved for backward compatibility until Task 10 removes it.
-func (h *Harness) buildFromCapabilities() error {
-
-	h.sessionStore = chat.NewActiveSessions()
-
-	logger := h.config.Logger
-	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
-	}
-
-	if err := h.initStores(); err != nil {
-		return err
-	}
-
-	if h.config.Registry == nil {
-		h.config.Registry = capabilities.NewRegistry()
-	}
-	hooks.RegisterAll(h.config.Registry)
-	tools.RegisterAll(h.config.Registry)
-
-	allCapabilityNames := h.collectCapabilityNames()
-	resolved, err := h.config.Registry.ResolveDependencies(allCapabilityNames)
-	if err != nil {
-		return fmt.Errorf("resolve capabilities: %w", err)
-	}
-
-	toolRegistry := tool.NewToolRegistry()
-	h.hookRunner = hook.NewHookRunner()
-
-	agentKBs := make(map[string][]string)
-	for _, spec := range h.config.Agents {
-		if len(spec.KnowledgeBases) > 0 {
-			agentKBs[spec.ID] = spec.KnowledgeBases
-		}
-	}
-
-	capDeps := capabilities.CapabilityDeps{
-		SessionStore:        h.config.Store.Provider.Sessions(),
-		MessageStore:        h.config.Store.Provider.Messages(),
-		TodoStore:           h.config.Store.Provider.Todos(),
-		AgentKnowledgeBases: agentKBs,
-		Logger:              logger,
-	}
-
-	capToToolName := make(map[string][]string)
-
-	for _, cap := range resolved {
-		if module, ok := cap.(capabilities.ModuleCapability); ok {
-			hooks, err := module.NewHooks(capDeps)
-			if err != nil {
-				if errors.Is(err, capabilities.ErrDependencyUnavailable) {
-					logger.Info("harness: skipping module (dependency unavailable)", "capability", cap.Name(), "reason", err.Error())
-					continue
-				}
-				return fmt.Errorf("create hooks from module %q: %w", cap.Name(), err)
-			}
-			for _, hk := range hooks {
-				h.hookRunner.Register(hk)
-				logger.Info("harness: registered hook", "capability", cap.Name(), "hook", hk.Name())
-			}
-
-			tools, err := module.NewTools(capDeps)
-			if err != nil {
-				return fmt.Errorf("create tools from module %q: %w", cap.Name(), err)
-			}
-			for _, t := range tools {
-				if err := toolRegistry.Register(t); err != nil {
-					return fmt.Errorf("register tool %q from module %q: %w", t.Name(), cap.Name(), err)
-				}
-				capToToolName[cap.Name()] = append(capToToolName[cap.Name()], t.Name())
-				logger.Info("harness: registered tool", "capability", cap.Name(), "tool", t.Name())
-			}
-			continue
-		}
-
-		switch cap.Type() {
-		case capabilities.CapabilityTypeTool:
-			if cap.Name() == capabilities.ToolDelegate || cap.Name() == capabilities.ToolReadSubSession {
-				continue
-			}
-			tc, ok := cap.(capabilities.ToolCapability)
-			if !ok {
-				return fmt.Errorf("capability %q has type tool but does not implement ToolCapability", cap.Name())
-			}
-			t, err := tc.NewTool(capDeps)
-			if err != nil {
-				return fmt.Errorf("create tool from capability %q: %w", cap.Name(), err)
-			}
-			if err := toolRegistry.Register(t); err != nil {
-				return fmt.Errorf("register tool %q: %w", cap.Name(), err)
-			}
-			capToToolName[cap.Name()] = []string{t.Name()}
-			logger.Info("harness: registered tool", "capability", cap.Name(), "tool", t.Name())
-
-		case capabilities.CapabilityTypeHook:
-			hc, ok := cap.(capabilities.HookCapability)
-			if !ok {
-				return fmt.Errorf("capability %q has type hook but does not implement HookCapability", cap.Name())
-			}
-			hk, err := hc.NewHook(capDeps)
-			if err != nil {
-				if errors.Is(err, capabilities.ErrDependencyUnavailable) {
-					logger.Info("harness: skipping hook (dependency unavailable)", "capability", cap.Name(), "reason", err.Error())
-					continue
-				}
-				return fmt.Errorf("create hook from capability %q: %w", cap.Name(), err)
-			}
-			h.hookRunner.Register(hk)
-			logger.Info("harness: registered hook", "capability", cap.Name(), "hook", hk.Name())
-		}
-	}
-
-	defaultAgentID := ""
-	if len(h.config.Agents) > 0 {
-		defaultAgentID = h.config.Agents[0].ID
-	} else if len(h.config.AgentFactories) > 0 {
-		defaultAgentID = h.config.AgentFactories[0].ID
-	}
-	agentRegistry := agent.NewAgentRegistry(defaultAgentID)
-
-	for i := range h.config.Agents {
-		spec := h.config.Agents[i]
-		agentRegistry.RegisterFactory(spec.ID, spec.Name, spec.Model, spec.AllowDelegate,
-			h.makeAgentFactory(spec, toolRegistry, h.hookRunner, logger, capToToolName),
-		)
-		logger.Info("harness: registered agent spec", "id", spec.ID, "name", spec.Name, "model", spec.Model)
-	}
-
-	for _, spec := range h.config.AgentFactories {
-		agentRegistry.RegisterFactory(spec.ID, spec.Name, spec.Model, spec.AllowDelegate, spec.Factory)
-		logger.Info("harness: registered agent factory", "id", spec.ID, "name", spec.Name, "model", spec.Model)
-	}
-
-	var asyncTracker tool.AsyncToolTracker = tool.NewAsyncToolRegistry()
-	if h.config.AsyncTracker != nil {
-		asyncTracker = h.config.AsyncTracker
-	}
-
-	engineOpts := []agent.EngineOption{
-		agent.WithHookRunner(h.hookRunner),
-		agent.WithLogger(logger),
-	}
-	if h.config.LLM != nil {
-		engineOpts = append(engineOpts, agent.WithLLMProvider(h.config.LLM))
-	}
-
-	ctxBuilder := context_builder.New()
-
-	h.engine = agent.NewAgentEngine(agentRegistry, h.config.Store.Provider.Sessions(), h.config.Store.Provider.Messages(), ctxBuilder, asyncTracker, engineOpts...)
-
-	h.asyncTracker = asyncTracker
-
-	capDeps.AgentRegistry = agentRegistry
-	capDeps.Engine = h.engine
-
-	registerCrossAgentTool(h.config.Registry, capabilities.ToolDelegate, capDeps, toolRegistry, logger, capToToolName)
-	registerCrossAgentTool(h.config.Registry, capabilities.ToolReadSubSession, capDeps, toolRegistry, logger, capToToolName)
-
-	h.registry = agentRegistry
-	h.built = true
-
-	logger.Info("harness: build complete",
-		"agents", len(agentRegistry.List()),
-		"tools", len(toolRegistry.List()),
-	)
-
-	return nil
-}
-
-func registerCrossAgentTool(r *capabilities.Registry, capName string, capDeps capabilities.CapabilityDeps, toolRegistry tool.ToolRegistry, logger *slog.Logger, capToToolName map[string][]string) {
-	cap, ok := r.Get(capName)
-	if !ok {
-		return
-	}
-	tc, ok := cap.(capabilities.ToolCapability)
-	if !ok {
-		return
-	}
-	t, err := tc.NewTool(capDeps)
-	if err != nil {
-		logger.Warn("harness: failed to create cross-agent tool", "capability", capName, "error", err)
-		return
-	}
-	if err := toolRegistry.Register(t); err != nil {
-		logger.Warn("harness: failed to register cross-agent tool", "capability", capName, "error", err)
-		return
-	}
-	capToToolName[capName] = []string{t.Name()}
-	logger.Info("harness: registered cross-agent tool", "tool", t.Name())
-}
-
-func (h *Harness) initStores() error {
-	if h.config.Store.Provider == nil {
-		return fmt.Errorf("StoreConfig.Provider is required")
-	}
-	return nil
-}
-
-func (h *Harness) collectCapabilityNames() []string {
-	seen := make(map[string]bool)
-	var names []string
-
-	add := func(n string) {
-		if !seen[n] {
-			seen[n] = true
-			names = append(names, n)
-		}
-	}
-
-	for _, spec := range h.config.Agents {
-		for _, t := range builtInTools {
-			add(t)
-		}
-		for _, hk := range builtInHooks {
-			add(hk)
-		}
-		for _, t := range spec.Tools {
-			if capName, ok := toolNameToCap[t]; ok {
-				add(capName)
-			} else {
-				add(t)
-			}
-		}
-	}
-
-	return names
-}
-
-func (h *Harness) makeAgentFactory(
-	spec AgentSpec,
-	toolRegistry tool.ToolRegistry,
-	_ hook.HookRunner,
-	_ *slog.Logger,
-	capToToolName map[string][]string,
-) agent.AgentFactory {
-	return func(_ context.Context, params agent.CreateParams) (agent.AgentDefinition, error) {
-		toolMgr := tool.NewToolManager()
-
-		capNames := make([]string, 0, len(builtInTools)+len(spec.Tools))
-		capNames = append(capNames, builtInTools...)
-		for _, t := range spec.Tools {
-			if capName, ok := toolNameToCap[t]; ok {
-				capNames = append(capNames, capName)
-			} else {
-				capNames = append(capNames, t)
-			}
-		}
-
-		expandedTools := h.config.Registry.ExpandWildcards(capNames)
-		registeredNames := make(map[string]bool)
-
-		for _, capName := range expandedTools {
-			toolNames, mapped := capToToolName[capName]
-			if !mapped {
-				toolNames = []string{capName}
-			}
-			for _, toolName := range toolNames {
-				if registeredNames[toolName] {
-					continue
-				}
-				if t, err := toolRegistry.Get(toolName); err == nil {
-					_ = toolMgr.Register(t)
-					registeredNames[toolName] = true
-				}
-			}
-		}
-
-		model := spec.Model
-		if params.ModelOverride != "" {
-			model = params.ModelOverride
-		}
-
-		systemPrompt := spec.SystemPrompt
-		if params.Task != "" {
-			systemPrompt = systemPrompt + "\n\nCurrent Task: " + params.Task
-		}
-
-		return agent.AgentDefinition{
-			ID:           spec.ID,
-			Name:         spec.Name,
-			Model:        model,
-			SystemPrompt: systemPrompt,
-			ToolManager:  toolMgr,
-			LLMProvider:  h.config.LLM,
-		}, nil
-	}
-}
-
-func (h *Harness) buildFromPlugins() error {
 	h.sessionStore = chat.NewActiveSessions()
 
 	logger := h.config.Logger
@@ -496,7 +180,7 @@ func (h *Harness) buildFromPlugins() error {
 		agentRegistry.RegisterFactory(spec.ID, spec.Name, spec.Model, spec.AllowDelegate,
 			h.makePluginAgentFactory(spec),
 		)
-		logger.Info("harness: registered agent spec (plugin)", "id", spec.ID, "name", spec.Name, "model", spec.Model)
+		logger.Info("harness: registered agent spec", "id", spec.ID, "name", spec.Name, "model", spec.Model)
 	}
 
 	for _, spec := range h.config.AgentFactories {
@@ -546,11 +230,18 @@ func (h *Harness) buildFromPlugins() error {
 	h.registry = agentRegistry
 	h.built = true
 
-	logger.Info("harness: build complete (plugin mode)",
+	logger.Info("harness: build complete",
 		"agents", len(agentRegistry.List()),
 		"tools", len(h.toolPool.Select([]string{"*"})),
 	)
 
+	return nil
+}
+
+func (h *Harness) initStores() error {
+	if h.config.Store.Provider == nil {
+		return fmt.Errorf("StoreConfig.Provider is required")
+	}
 	return nil
 }
 

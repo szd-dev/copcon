@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/tool"
 )
@@ -27,7 +26,7 @@ func NewCodeExecutor() *CodeExecutor {
 }
 
 func (t *CodeExecutor) Name() string {
-	return capabilities.AliasCodeExecutor
+	return "code_executor"
 }
 
 func (t *CodeExecutor) Description() string {
@@ -115,24 +114,6 @@ var allowedShellCommands = map[string]bool{
 	"grep":   true,
 }
 
-type codeExecutorCapability struct{}
-
-func (c *codeExecutorCapability) Name() string                         { return capabilities.ToolCodeExecutor }
-func (c *codeExecutorCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *codeExecutorCapability) DependsOn() []string                  { return nil }
-func (c *codeExecutorCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewCodeExecutor(), nil
-}
-
-type shellExecutorCapability struct{}
-
-func (c *shellExecutorCapability) Name() string                         { return capabilities.ToolShellExecutor }
-func (c *shellExecutorCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *shellExecutorCapability) DependsOn() []string                  { return nil }
-func (c *shellExecutorCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewShellExecutor(), nil
-}
-
 type ShellExecutor struct {
 	timeout time.Duration
 }
@@ -144,7 +125,7 @@ func NewShellExecutor() *ShellExecutor {
 }
 
 func (t *ShellExecutor) Name() string {
-	return capabilities.AliasShellExecutor
+	return "shell_executor"
 }
 
 func (t *ShellExecutor) Description() string {

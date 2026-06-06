@@ -127,7 +127,7 @@ type todoManagerAdapter struct {
 	store storage.TodoStore
 }
 
-func (a *todoManagerAdapter) CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...tools.TodoOption) (*storage.Todo, error) {
+func (a *todoManagerAdapter) CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...tool.TodoOption) (*storage.Todo, error) {
 	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
 	if err != nil {
 		return nil, fmt.Errorf("invalid session ID: %w", err)

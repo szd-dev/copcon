@@ -3,7 +3,6 @@ package tools
 import (
 	"fmt"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/tool"
 )
@@ -162,22 +161,4 @@ func (t *AskUserTool) Execute(chatCtx iface.ChatContextInterface, args map[strin
 	}
 
 	return &tool.ToolResult{Success: true, Data: resp.Content}, nil
-}
-
-type confirmActionCapability struct{}
-
-func (c *confirmActionCapability) Name() string                      { return capabilities.ToolConfirmAction }
-func (c *confirmActionCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *confirmActionCapability) DependsOn() []string               { return nil }
-func (c *confirmActionCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewConfirmActionTool(), nil
-}
-
-type askUserCapability struct{}
-
-func (c *askUserCapability) Name() string                      { return capabilities.ToolAskUser }
-func (c *askUserCapability) Type() capabilities.CapabilityType { return capabilities.CapabilityTypeTool }
-func (c *askUserCapability) DependsOn() []string               { return nil }
-func (c *askUserCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewAskUserTool(), nil
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/tool"
 )
@@ -41,12 +40,12 @@ func (t *GetToolStatusTool) InputSchema() map[string]any {
 func (t *GetToolStatusTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	callID, ok := args["call_id"].(string)
 	if !ok || callID == "" {
-		return errorResult("call_id is required")
+		return tool.ErrorResult("call_id is required")
 	}
 
 	state, err := t.asyncRegistry.GetStatus(callID)
 	if err != nil {
-		return errorResult(fmt.Sprintf("tool call not found: %s", callID))
+		return tool.ErrorResult(fmt.Sprintf("tool call not found: %s", callID))
 	}
 
 	response := map[string]any{
@@ -69,7 +68,7 @@ func (t *GetToolStatusTool) Execute(chatCtx iface.ChatContextInterface, args map
 		response["error"] = state.Error
 	}
 
-	return successResult(response)
+	return tool.SuccessResult(response)
 }
 
 type GetToolResultTool struct {
@@ -163,15 +162,15 @@ func (t *CancelToolTool) InputSchema() map[string]any {
 func (t *CancelToolTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	callID, ok := args["call_id"].(string)
 	if !ok || callID == "" {
-		return errorResult("call_id is required")
+		return tool.ErrorResult("call_id is required")
 	}
 
 	cancelled := t.asyncRegistry.Cancel(callID)
 	if !cancelled {
-		return errorResult(fmt.Sprintf("could not cancel tool (not running or not found): %s", callID))
+		return tool.ErrorResult(fmt.Sprintf("could not cancel tool (not running or not found): %s", callID))
 	}
 
-	return successResult(map[string]any{
+	return tool.SuccessResult(map[string]any{
 		"call_id":   callID,
 		"cancelled": true,
 	})
@@ -217,18 +216,8 @@ func (t *ListAsyncToolsTool) Execute(chatCtx iface.ChatContextInterface, args ma
 		}
 	}
 
-	return successResult(map[string]any{
+	return tool.SuccessResult(map[string]any{
 		"tools": result,
 		"count": len(result),
 	})
-}
-
-type asyncCapability struct{}
-
-func (c *asyncCapability) Name() string                         { return capabilities.ToolAsync }
-func (c *asyncCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *asyncCapability) DependsOn() []string                  { return nil }
-func (c *asyncCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	registry := tool.NewAsyncToolRegistry()
-	return NewGetToolStatusTool(registry), nil
 }

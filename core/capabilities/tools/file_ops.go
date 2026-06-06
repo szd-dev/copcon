@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/tool"
 )
@@ -38,7 +37,7 @@ func NewFileOps(workDir string) *FileOps {
 }
 
 func (t *FileOps) Name() string {
-	return capabilities.AliasFileOps
+	return "file_ops"
 }
 
 func (t *FileOps) Description() string {
@@ -183,13 +182,4 @@ func (t *FileOps) listDir(path string) (*tool.ToolResult, error) {
 			"count": len(files),
 		},
 	}, nil
-}
-
-type fileOpsCapability struct{}
-
-func (c *fileOpsCapability) Name() string                         { return capabilities.ToolFileOps }
-func (c *fileOpsCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *fileOpsCapability) DependsOn() []string                  { return nil }
-func (c *fileOpsCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewFileOps(""), nil
 }

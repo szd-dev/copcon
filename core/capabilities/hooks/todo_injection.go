@@ -1,13 +1,11 @@
 package hooks
 
 import (
-	"fmt"
 	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/storage"
 )
@@ -107,16 +105,4 @@ func formatTodoState(todos []*storage.Todo) string {
 	}
 
 	return "Current todo list: [" + strings.Join(parts, ", ") + "]"
-}
-
-type todoInjectionHookCapability struct{}
-
-func (c *todoInjectionHookCapability) Name() string                         { return capabilities.HookTodoInjection }
-func (c *todoInjectionHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
-func (c *todoInjectionHookCapability) DependsOn() []string                  { return nil }
-func (c *todoInjectionHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	if deps.TodoStore == nil {
-		return nil, fmt.Errorf("%w: TodoStore not configured", capabilities.ErrDependencyUnavailable)
-	}
-	return NewTodoInjectionHook(deps.TodoStore), nil
 }

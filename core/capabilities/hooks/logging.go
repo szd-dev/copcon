@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
 	"github.com/copcon/core/tool"
 )
@@ -117,12 +116,3 @@ func truncateString(s string, maxLen int) string {
 var _ hook.Hook = (*LoggingPlugin)(nil)
 
 var _ = tool.ToolResult{}
-
-type loggingHookCapability struct{}
-
-func (c *loggingHookCapability) Name() string                         { return capabilities.HookLogging }
-func (c *loggingHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
-func (c *loggingHookCapability) DependsOn() []string                  { return nil }
-func (c *loggingHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	return NewLoggingPlugin(), nil
-}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
 )
 
@@ -103,13 +102,4 @@ func (p *TracingPlugin) Execute(ctx *hook.HookContext) error {
 	}
 
 	return nil
-}
-
-type tracingHookCapability struct{}
-
-func (c *tracingHookCapability) Name() string                         { return capabilities.HookTracing }
-func (c *tracingHookCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeHook }
-func (c *tracingHookCapability) DependsOn() []string                  { return nil }
-func (c *tracingHookCapability) NewHook(deps capabilities.CapabilityDeps) (hook.Hook, error) {
-	return NewTracingPlugin(nil), nil
 }

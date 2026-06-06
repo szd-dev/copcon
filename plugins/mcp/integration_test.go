@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	gmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/iface"
+	"github.com/copcon/core/plugin"
 	"github.com/copcon/core/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,10 +104,10 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	_, err := mgr.ConnectWithTransport(ctx, "integration-server", transport)
 	require.NoError(t, err)
 
-	module := NewMCPModuleWithManager([]MCPServerConfig{{Name: "integration-server"}}, mgr)
+	p := NewPluginWithManager([]MCPServerConfig{{Name: "integration-server"}}, mgr)
+	require.NoError(t, p.Init(plugin.PluginDeps{}))
 
-	tools, err := module.NewTools(capabilities.CapabilityDeps{})
-	require.NoError(t, err)
+	tools := p.Tools()
 	assert.Len(t, tools, 3)
 
 	toolMap := make(map[string]tool.Tool)
@@ -115,11 +115,11 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		toolMap[tl.Name()] = tl
 	}
 
-	greetTool, ok := toolMap["mcp__integration-server__greet"]
+	greetTool, ok := toolMap["mcp.tool.integration-server__greet"]
 	require.True(t, ok, "greet tool should exist")
-	addTool, ok := toolMap["mcp__integration-server__add"]
+	addTool, ok := toolMap["mcp.tool.integration-server__add"]
 	require.True(t, ok, "add tool should exist")
-	upperTool, ok := toolMap["mcp__integration-server__uppercase"]
+	upperTool, ok := toolMap["mcp.tool.integration-server__uppercase"]
 	require.True(t, ok, "uppercase tool should exist")
 
 	chatCtx := &mockChatContext{ctx: ctx}
@@ -142,17 +142,58 @@ func TestIntegration_EndToEnd(t *testing.T) {
 
 func TestIntegration_MCPWithBuiltins(t *testing.T) {
 	mgr := NewConnectionManager()
-	transport := setupMockServerForModule(t, "test",
+	transport := setupMockServerForPlugin(t, "test",
 		mockToolDef{name: "echo", desc: "Echo tool"},
 		mockToolDef{name: "add", desc: "Add tool"},
 	)
 	connectMockToManager(t, mgr, "test", transport)
 
-	module := NewMCPModuleWithManager([]MCPServerConfig{{Name: "test"}}, mgr)
-	tools, err := module.NewTools(capabilities.CapabilityDeps{})
+	p := NewPluginWithManager([]MCPServerConfig{{Name: "test"}}, mgr)
+	require.NoError(t, p.Init(plugin.PluginDeps{}))
+
+	tools := p.Tools()
+	for _, tc := range tools {
+		assert.True(t, strings.HasPrefix(tc.Name(), "mcp.tool."), "all MCP tools should have mcp.tool. prefix, got: %s", tc.Name())
+	}
+}
+
+func setupMockServerForPlugin(t *testing.T, name string, tools ...mockToolDef) gmcp.Transport {
+	t.Helper()
+	ctx := context.Background()
+
+	server := gmcp.NewServer(&gmcp.Implementation{Name: name, Version: "1.0.0"}, nil)
+
+	for _, td := range tools {
+		td := td
+		gmcp.AddTool(server, &gmcp.Tool{
+			Name:        td.name,
+			Description: td.desc,
+		}, func(_ context.Context, _ *gmcp.CallToolRequest, args map[string]any) (*gmcp.CallToolResult, any, error) {
+			msg, _ := args["message"].(string)
+			if msg == "" {
+				msg = "ok"
+			}
+			return &gmcp.CallToolResult{
+				Content: []gmcp.Content{&gmcp.TextContent{Text: msg}},
+			}, nil, nil
+		})
+	}
+
+	serverTransport, clientTransport := gmcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
 	require.NoError(t, err)
 
-	for _, tc := range tools {
-		assert.True(t, strings.HasPrefix(tc.Name(), "mcp__"), "all MCP tools should have mcp__ prefix, got: %s", tc.Name())
-	}
+	return clientTransport
+}
+
+type mockToolDef struct {
+	name string
+	desc string
+}
+
+func connectMockToManager(t *testing.T, mgr *ConnectionManager, name string, transport gmcp.Transport) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := mgr.ConnectWithTransport(ctx, name, transport)
+	require.NoError(t, err)
 }

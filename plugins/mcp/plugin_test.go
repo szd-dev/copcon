@@ -49,7 +49,7 @@ func TestNewPlugin_InitDefaultLogger(t *testing.T) {
 
 func TestNewPlugin_ToolsAfterInit(t *testing.T) {
 	mgr := NewConnectionManager()
-	transport := setupMockServerForModule(t, "myserver",
+	transport := setupMockServerForPlugin(t, "myserver",
 		mockToolDef{name: "echo", desc: "Echo tool"},
 		mockToolDef{name: "add", desc: "Add tool"},
 	)
@@ -73,7 +73,7 @@ func TestNewPlugin_ToolsAfterInit(t *testing.T) {
 
 func TestNewPlugin_ToolNamingConvention(t *testing.T) {
 	mgr := NewConnectionManager()
-	transport := setupMockServerForModule(t, "github",
+	transport := setupMockServerForPlugin(t, "github",
 		mockToolDef{name: "list_repos", desc: "List repos"},
 	)
 	connectMockToManager(t, mgr, "github", transport)
@@ -89,7 +89,7 @@ func TestNewPlugin_ToolNamingConvention(t *testing.T) {
 
 func TestNewPlugin_AllowedToolsFiltering(t *testing.T) {
 	mgr := NewConnectionManager()
-	transport := setupMockServerForModule(t, "filtered",
+	transport := setupMockServerForPlugin(t, "filtered",
 		mockToolDef{name: "echo", desc: "Echo tool"},
 		mockToolDef{name: "delete", desc: "Delete tool"},
 	)
@@ -112,7 +112,7 @@ func TestNewPlugin_AllowedToolsFiltering(t *testing.T) {
 
 func TestNewPlugin_PartialFailure(t *testing.T) {
 	mgr := NewConnectionManager()
-	transport := setupMockServerForModule(t, "good-server",
+	transport := setupMockServerForPlugin(t, "good-server",
 		mockToolDef{name: "echo", desc: "Echo tool"},
 	)
 	connectMockToManager(t, mgr, "good-server", transport)

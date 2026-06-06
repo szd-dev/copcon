@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/hook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,16 +37,6 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		}
 		assert.True(t, skillNames["code-review"])
 		assert.True(t, skillNames["deploy"])
-	})
-
-	t.Run("Registry", func(t *testing.T) {
-		reg := capabilities.NewRegistry()
-		RegisterCapabilities(reg, Config{
-			ExtraPaths: []string{tmpDir},
-		})
-		cap, ok := reg.Get("modules.skills")
-		require.True(t, ok, "modules.skills should be registered")
-		assert.Equal(t, capabilities.CapabilityTypeModule, cap.Type(), "must be CapabilityTypeModule")
 	})
 
 	t.Run("Hook_SystemPrompt", func(t *testing.T) {

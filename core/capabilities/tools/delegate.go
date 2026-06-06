@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/copcon/core/agent"
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/chatcontext"
 	"github.com/copcon/core/context_builder"
 	"github.com/copcon/core/entity"
@@ -38,7 +37,7 @@ func NewDelegateToTool(
 }
 
 func (t *DelegateToTool) Name() string {
-	return capabilities.AliasDelegateTo
+	return "delegate_to"
 }
 
 func (t *DelegateToTool) Description() string {
@@ -189,7 +188,7 @@ func NewReadSubSessionTool(sessionStore storage.SessionStore, messageStore stora
 }
 
 func (t *ReadSubSessionTool) Name() string {
-	return capabilities.AliasReadSubSession
+	return "read_sub_session"
 }
 
 func (t *ReadSubSessionTool) Description() string {
@@ -331,16 +330,3 @@ func storageMsgToLegacy(msg *storage.Message) context_builder.LegacyMessage {
 }
 
 var _ tool.Tool = (*ReadSubSessionTool)(nil)
-
-type delegateCapability struct{}
-
-func (c *delegateCapability) Name() string                         { return capabilities.ToolDelegate }
-func (c *delegateCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *delegateCapability) DependsOn() []string                  { return nil }
-func (c *delegateCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	engine, ok := deps.Engine.(agent.AgentEngine)
-	if !ok {
-		return nil, fmt.Errorf("tools.delegate: Engine dependency not available or wrong type")
-	}
-	return NewDelegateToTool(deps.AgentRegistry, deps.SessionStore, deps.MessageStore, engine), nil
-}

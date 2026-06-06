@@ -3,24 +3,21 @@ package tools
 import (
 	"fmt"
 
-	"github.com/google/uuid"
-
-	"github.com/copcon/core/capabilities"
 	"github.com/copcon/core/iface"
 	"github.com/copcon/core/storage"
 	"github.com/copcon/core/tool"
 )
 
 type TodoTool struct {
-	todoMgr TodoManager
+	todoMgr tool.TodoManager
 }
 
-func NewTodoTool(todoMgr TodoManager) *TodoTool {
+func NewTodoTool(todoMgr tool.TodoManager) *TodoTool {
 	return &TodoTool{todoMgr: todoMgr}
 }
 
 func (t *TodoTool) Name() string {
-	return capabilities.AliasTodoList
+	return "todolist"
 }
 
 func (t *TodoTool) Description() string {
@@ -92,7 +89,7 @@ func (t *TodoTool) InputSchema() map[string]any {
 func (t *TodoTool) Execute(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	action, ok := args["action"].(string)
 	if !ok {
-		return errorResult("action is required")
+		return tool.ErrorResult("action is required")
 	}
 
 	switch action {
@@ -109,20 +106,20 @@ func (t *TodoTool) Execute(chatCtx iface.ChatContextInterface, args map[string]a
 	case "replan":
 		return t.handleReplan(chatCtx, args)
 	default:
-		return errorResult(fmt.Sprintf("unknown action: %s", action))
+		return tool.ErrorResult(fmt.Sprintf("unknown action: %s", action))
 	}
 }
 
 func (t *TodoTool) handleCreate(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	content, ok := args["content"].(string)
 	if !ok || content == "" {
-		return errorResult("content is required for create action")
+		return tool.ErrorResult("content is required for create action")
 	}
 
-	var opts []TodoOption
+	var opts []tool.TodoOption
 
 	if validation, ok := args["validation"].(string); ok && validation != "" {
-		opts = append(opts, WithValidation(validation))
+		opts = append(opts, tool.WithValidation(validation))
 	}
 
 	if depsRaw, ok := args["depends_on"].([]any); ok && len(depsRaw) > 0 {
@@ -133,55 +130,55 @@ func (t *TodoTool) handleCreate(chatCtx iface.ChatContextInterface, args map[str
 			}
 		}
 		if len(deps) > 0 {
-			opts = append(opts, WithDependsOn(deps...))
+			opts = append(opts, tool.WithDependsOn(deps...))
 		}
 	}
 
 	todoItem, err := t.todoMgr.CreateTodo(chatCtx, content, opts...)
 	if err != nil {
-		return errorResult(fmt.Sprintf("failed to create todo during replan: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to create todo during replan: %v", err))
 	}
 
-	return successResult(todoToMap(todoItem))
+	return tool.SuccessResult(todoToMap(todoItem))
 }
 
 func (t *TodoTool) handleStart(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	todoID, ok := args["todo_id"].(string)
 	if !ok || todoID == "" {
-		return errorResult("todo_id is required for start action")
+		return tool.ErrorResult("todo_id is required for start action")
 	}
 
 	todoItem, err := t.todoMgr.Start(chatCtx, todoID)
 	if err != nil {
-		return errorResult(fmt.Sprintf("failed to start todo: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to start todo: %v", err))
 	}
 
-	return successResult(todoToMap(todoItem))
+	return tool.SuccessResult(todoToMap(todoItem))
 }
 
 func (t *TodoTool) handleComplete(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	todoID, ok := args["todo_id"].(string)
 	if !ok || todoID == "" {
-		return errorResult("todo_id is required for complete action")
+		return tool.ErrorResult("todo_id is required for complete action")
 	}
 
 	result, ok := args["result"].(string)
 	if !ok || result == "" {
-		return errorResult("result is required for complete action")
+		return tool.ErrorResult("result is required for complete action")
 	}
 
 	todoItem, err := t.todoMgr.Complete(chatCtx, todoID, result)
 	if err != nil {
-		return errorResult(fmt.Sprintf("failed to complete todo: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to complete todo: %v", err))
 	}
 
-	return successResult(todoToMap(todoItem))
+	return tool.SuccessResult(todoToMap(todoItem))
 }
 
 func (t *TodoTool) handleFail(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	todoID, ok := args["todo_id"].(string)
 	if !ok || todoID == "" {
-		return errorResult("todo_id is required for fail action")
+		return tool.ErrorResult("todo_id is required for fail action")
 	}
 
 	reason, _ := args["reason"].(string)
@@ -191,16 +188,16 @@ func (t *TodoTool) handleFail(chatCtx iface.ChatContextInterface, args map[strin
 
 	todoItem, err := t.todoMgr.Fail(chatCtx, todoID, reason)
 	if err != nil {
-		return errorResult(fmt.Sprintf("failed to mark todo as failed: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to mark todo as failed: %v", err))
 	}
 
-	return successResult(todoToMap(todoItem))
+	return tool.SuccessResult(todoToMap(todoItem))
 }
 
 func (t *TodoTool) handleList(chatCtx iface.ChatContextInterface) (*tool.ToolResult, error) {
 	todos, err := t.todoMgr.ListTodos(chatCtx)
 	if err != nil {
-		return errorResult(fmt.Sprintf("failed to list todos: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to list todos: %v", err))
 	}
 
 	todoList := make([]map[string]any, 0, len(todos))
@@ -208,7 +205,7 @@ func (t *TodoTool) handleList(chatCtx iface.ChatContextInterface) (*tool.ToolRes
 		todoList = append(todoList, todoToMap(todoItem))
 	}
 
-	return successResult(map[string]any{
+	return tool.SuccessResult(map[string]any{
 		"todos": todoList,
 		"count": len(todoList),
 	})
@@ -217,17 +214,17 @@ func (t *TodoTool) handleList(chatCtx iface.ChatContextInterface) (*tool.ToolRes
 func (t *TodoTool) handleReplan(chatCtx iface.ChatContextInterface, args map[string]any) (*tool.ToolResult, error) {
 	todosRaw, ok := args["todos"].([]any)
 	if !ok {
-		return errorResult("todos array is required for replan action")
+		return tool.ErrorResult("todos array is required for replan action")
 	}
 
 	existingTodos, err := t.todoMgr.ListTodos(chatCtx)
 	if err != nil {
-		return errorResult(fmt.Sprintf("failed to list existing todos: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to list existing todos: %v", err))
 	}
 
 	for _, existing := range existingTodos {
 		if err := t.todoMgr.Delete(chatCtx, existing.ID.String()); err != nil {
-			return errorResult(fmt.Sprintf("failed to delete existing todo: %v", err))
+			return tool.ErrorResult(fmt.Sprintf("failed to delete existing todo: %v", err))
 		}
 	}
 
@@ -243,10 +240,10 @@ func (t *TodoTool) handleReplan(chatCtx iface.ChatContextInterface, args map[str
 			continue
 		}
 
-		var opts []TodoOption
+		var opts []tool.TodoOption
 
 		if validation, ok := todoMap["validation"].(string); ok && validation != "" {
-			opts = append(opts, WithValidation(validation))
+			opts = append(opts, tool.WithValidation(validation))
 		}
 
 		if depsRaw, ok := todoMap["depends_on"].([]any); ok && len(depsRaw) > 0 {
@@ -257,19 +254,19 @@ func (t *TodoTool) handleReplan(chatCtx iface.ChatContextInterface, args map[str
 				}
 			}
 			if len(deps) > 0 {
-				opts = append(opts, WithDependsOn(deps...))
+				opts = append(opts, tool.WithDependsOn(deps...))
 			}
 		}
 
 		todoItem, err := t.todoMgr.CreateTodo(chatCtx, content, opts...)
 		if err != nil {
-			return errorResult(fmt.Sprintf("failed to create todo during replan: %v", err))
+		return tool.ErrorResult(fmt.Sprintf("failed to create todo during replan: %v", err))
 		}
 
 		createdTodos = append(createdTodos, todoToMap(todoItem))
 	}
 
-	return successResult(map[string]any{
+	return tool.SuccessResult(map[string]any{
 		"todos":   createdTodos,
 		"count":   len(createdTodos),
 		"message": "Todos replanned successfully",
@@ -312,81 +309,3 @@ func todoToMap(todoItem *storage.Todo) map[string]any {
 }
 
 var _ tool.Tool = (*TodoTool)(nil)
-
-type todoCapability struct{}
-
-func (c *todoCapability) Name() string                         { return capabilities.ToolTodo }
-func (c *todoCapability) Type() capabilities.CapabilityType    { return capabilities.CapabilityTypeTool }
-func (c *todoCapability) DependsOn() []string                  { return []string{capabilities.HookTodoInjection} }
-func (c *todoCapability) NewTool(deps capabilities.CapabilityDeps) (tool.Tool, error) {
-	return NewTodoTool(newTodoManagerFromDeps(deps)), nil
-}
-
-// newTodoManagerFromDeps wraps CapabilityDeps.TodoStore as a TodoManager.
-func newTodoManagerFromDeps(deps capabilities.CapabilityDeps) TodoManager {
-	return &todoManagerAdapter{store: deps.TodoStore}
-}
-
-type todoManagerAdapter struct {
-	store storage.TodoStore
-}
-
-func (a *todoManagerAdapter) CreateTodo(chatCtx iface.ChatContextInterface, content string, opts ...TodoOption) (*storage.Todo, error) {
-	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
-	if err != nil {
-		return nil, fmt.Errorf("invalid session ID: %w", err)
-	}
-	todo := &storage.Todo{
-		SessionID: sessionUUID,
-		Content:   content,
-		Status:    storage.TodoStatusPending,
-	}
-	for _, opt := range opts {
-		opt(todo)
-	}
-	return a.store.Create(chatCtx.Context(), todo)
-}
-
-func (a *todoManagerAdapter) GetTodo(chatCtx iface.ChatContextInterface, id string) (*storage.Todo, error) {
-	todoID, err := uuid.Parse(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid todo ID: %w", err)
-	}
-	return a.store.Get(chatCtx.Context(), todoID)
-}
-
-func (a *todoManagerAdapter) ListTodos(chatCtx iface.ChatContextInterface) ([]*storage.Todo, error) {
-	sessionUUID, err := uuid.Parse(chatCtx.SessionID())
-	if err != nil {
-		return nil, fmt.Errorf("invalid session ID: %w", err)
-	}
-	return a.store.List(chatCtx.Context(), sessionUUID)
-}
-
-func (a *todoManagerAdapter) Delete(chatCtx iface.ChatContextInterface, id string) error {
-	return fmt.Errorf("delete by ID not supported via TodoStore adapter")
-}
-
-func (a *todoManagerAdapter) Start(chatCtx iface.ChatContextInterface, id string) (*storage.Todo, error) {
-	todoID, err := uuid.Parse(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid todo ID: %w", err)
-	}
-	return a.store.UpdateStatus(chatCtx.Context(), todoID, storage.TodoStatusInProgress)
-}
-
-func (a *todoManagerAdapter) Complete(chatCtx iface.ChatContextInterface, id string, result string) (*storage.Todo, error) {
-	todoID, err := uuid.Parse(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid todo ID: %w", err)
-	}
-	return a.store.UpdateStatus(chatCtx.Context(), todoID, storage.TodoStatusCompleted)
-}
-
-func (a *todoManagerAdapter) Fail(chatCtx iface.ChatContextInterface, id string, reason string) (*storage.Todo, error) {
-	todoID, err := uuid.Parse(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid todo ID: %w", err)
-	}
-	return a.store.UpdateStatus(chatCtx.Context(), todoID, storage.TodoStatusFailed)
-}

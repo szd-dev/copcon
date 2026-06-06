@@ -24,6 +24,12 @@ type hookNameWrapper struct {
 
 func (w *hookNameWrapper) Name() string { return w.newName }
 
+// Config is the configuration for the Skill plugin.
+type Config struct {
+	ProjectRoot string   // project root directory
+	ExtraPaths  []string // additional search paths (high priority, before defaults)
+}
+
 // SkillPlugin implements plugin.Plugin for the skill capability.
 type SkillPlugin struct {
 	cfg        Config
