@@ -134,6 +134,52 @@ func TestToolPool_SelectNonExistent(t *testing.T) {
 	assert.Len(t, result, 0)
 }
 
+func TestToolPool_SetEnabled_DisableAndReEnable(t *testing.T) {
+	p := newPopulatedPool()
+
+	assert.True(t, p.IsEnabled("memory.tool.memory_store"))
+
+	p.SetEnabled("memory.tool.memory_store", false)
+	assert.False(t, p.IsEnabled("memory.tool.memory_store"))
+
+	result := p.Select([]string{"memory.tool.memory_store"})
+	assert.Len(t, result, 0)
+
+	result = p.Select([]string{"memory.*"})
+	assert.Len(t, result, 2)
+	assert.ElementsMatch(t, []string{
+		"memory.tool.memory_recall",
+		"memory.tool.memory_forget",
+	}, toolNames(result))
+
+	p.SetEnabled("memory.tool.memory_store", true)
+	assert.True(t, p.IsEnabled("memory.tool.memory_store"))
+
+	result = p.Select([]string{"memory.tool.memory_store"})
+	require.Len(t, result, 1)
+	assert.Equal(t, "memory.tool.memory_store", result[0].Name())
+}
+
+func TestToolPool_IsEnabled_Unregistered(t *testing.T) {
+	p := NewToolPool()
+	assert.False(t, p.IsEnabled("nonexistent"))
+}
+
+func TestToolPool_SetEnabled_GlobalWildcard(t *testing.T) {
+	p := newPopulatedPool()
+
+	p.SetEnabled("mcp.tool.github__list_repos", false)
+	p.SetEnabled("mcp.tool.slack__send_message", false)
+
+	result := p.Select([]string{"*"})
+	assert.Len(t, result, 3)
+	assert.ElementsMatch(t, []string{
+		"memory.tool.memory_store",
+		"memory.tool.memory_recall",
+		"memory.tool.memory_forget",
+	}, toolNames(result))
+}
+
 func TestToolPool_ConcurrentAccess(t *testing.T) {
 	p := NewToolPool()
 	var wg sync.WaitGroup

@@ -32,6 +32,8 @@ type Handler struct {
 	agent          agent.AgentEngine
 	agentRegistry  agent.AgentRegistry
 	chatStore      chat.ActiveSessions
+	skillProvider  SkillProvider
+	mcpProvider    MCPProvider
 }
 
 func NewHandler(cfg *config.Config, h core.APIProvider, opts ...HandlerOption) *Handler {
@@ -372,6 +374,24 @@ func SetupRoutes(r *gin.Engine, cfg *config.Config, h core.APIProvider, opts ...
 			kb.GET("/:kbId/docs/:docId", handler.GetDocument)
 			kb.DELETE("/:kbId/docs/:docId", handler.DeleteDocument)
 			kb.POST("/:kbId/search", handler.SearchKB)
+		}
+
+		skills := api.Group("/skills")
+		{
+			skills.GET("", handler.ListSkills)
+			skills.GET("/:name", handler.GetSkill)
+			skills.POST("/:name/enable", handler.EnableSkill)
+			skills.POST("/:name/disable", handler.DisableSkill)
+		}
+
+		mcpServers := api.Group("/mcp/servers")
+		{
+			mcpServers.GET("", handler.ListMCPServers)
+			mcpServers.GET("/:name", handler.GetMCPServer)
+			mcpServers.POST("", handler.AddMCPServer)
+			mcpServers.DELETE("/:name", handler.RemoveMCPServer)
+			mcpServers.POST("/:name/enable", handler.EnableMCPServer)
+			mcpServers.POST("/:name/disable", handler.DisableMCPServer)
 		}
 	}
 }

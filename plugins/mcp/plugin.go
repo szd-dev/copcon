@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/copcon/core/hook"
@@ -9,61 +10,99 @@ import (
 	"github.com/copcon/core/tool"
 )
 
-// mcpPlugin implements plugin.Plugin for the MCP subsystem.
-type mcpPlugin struct {
-	configs []MCPServerConfig
-	mgr     *ConnectionManager
-	logger  *slog.Logger
-	tools   []tool.Tool
+// MCPPlugin implements plugin.Plugin for the MCP subsystem.
+type MCPPlugin struct {
+	configs        []MCPServerConfig
+	enabledServers map[string]bool
+	mgr            *ConnectionManager
+	logger         *slog.Logger
+	tools          []tool.Tool
 }
 
-var _ plugin.Plugin = (*mcpPlugin)(nil)
+var _ plugin.Plugin = (*MCPPlugin)(nil)
 
-// NewPlugin creates a new MCP plugin with the given server configurations.
 func NewPlugin(configs []MCPServerConfig) plugin.Plugin {
-	return &mcpPlugin{
+	return &MCPPlugin{
 		configs: configs,
 		mgr:     NewConnectionManager(),
 	}
 }
 
-// NewPluginWithManager creates a new MCP plugin with a pre-configured
-// ConnectionManager (useful for testing).
 func NewPluginWithManager(configs []MCPServerConfig, mgr *ConnectionManager) plugin.Plugin {
-	return &mcpPlugin{
+	return &MCPPlugin{
 		configs: configs,
 		mgr:     mgr,
 	}
 }
 
-func (p *mcpPlugin) Name() string { return "mcp" }
+func (p *MCPPlugin) Name() string { return "mcp" }
 
-// Tools returns discovered MCP tools. Returns an empty slice before Init is called.
-func (p *mcpPlugin) Tools() []tool.Tool {
+func (p *MCPPlugin) Tools() []tool.Tool {
 	return p.tools
 }
 
-// Hooks returns nil — MCP plugins produce only tools.
-func (p *mcpPlugin) Hooks() []hook.Hook {
+func (p *MCPPlugin) Hooks() []hook.Hook {
 	return nil
 }
 
-// Init injects dependencies and discovers MCP tools from all configured servers.
-func (p *mcpPlugin) Init(deps plugin.PluginDeps) error {
+func (p *MCPPlugin) Init(deps plugin.PluginDeps) error {
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	p.logger = logger
 
+	p.enabledServers = make(map[string]bool, len(p.configs))
+	for _, cfg := range p.configs {
+		p.enabledServers[cfg.Name] = true
+	}
+
 	p.tools = p.discoverTools()
 	return nil
 }
 
-func (p *mcpPlugin) discoverTools() []tool.Tool {
+func (p *MCPPlugin) Servers() []MCPServerConfig {
+	result := make([]MCPServerConfig, len(p.configs))
+	copy(result, p.configs)
+	return result
+}
+
+func (p *MCPPlugin) SetServerEnabled(name string, enabled bool) {
+	p.enabledServers[name] = enabled
+}
+
+func (p *MCPPlugin) IsServerEnabled(name string) bool {
+	return p.enabledServers[name]
+}
+
+func (p *MCPPlugin) AddServer(cfg MCPServerConfig) {
+	p.configs = append(p.configs, cfg)
+	p.enabledServers[cfg.Name] = true
+}
+
+func (p *MCPPlugin) RemoveServer(name string) error {
+	for i, cfg := range p.configs {
+		if cfg.Name == name {
+			p.configs = append(p.configs[:i], p.configs[i+1:]...)
+			delete(p.enabledServers, name)
+			return nil
+		}
+	}
+	return fmt.Errorf("mcp server %q not found", name)
+}
+
+func (p *MCPPlugin) RefreshTools() {
+	p.tools = p.discoverTools()
+}
+
+func (p *MCPPlugin) discoverTools() []tool.Tool {
 	var allTools []tool.Tool
 
 	for _, cfg := range p.configs {
+		if !p.enabledServers[cfg.Name] {
+			continue
+		}
+
 		session, err := p.mgr.GetSession(cfg.Name)
 		if err != nil {
 			p.logger.Warn("mcp session not connected", "server", cfg.Name, "error", err)
@@ -101,9 +140,7 @@ func (p *mcpPlugin) discoverTools() []tool.Tool {
 	return allTools
 }
 
-// ConnectionManager returns the underlying ConnectionManager so callers
-// can establish MCP sessions before Init is called.
-func (p *mcpPlugin) ConnectionManager() *ConnectionManager {
+func (p *MCPPlugin) ConnectionManager() *ConnectionManager {
 	return p.mgr
 }
 

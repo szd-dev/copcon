@@ -1,4 +1,4 @@
-import type { Session, Agent, CopConMessage, Todo, KnowledgeBase, Document, Chunk, SearchResult, Memory } from './types';
+import type { Session, Agent, CopConMessage, Todo, KnowledgeBase, Document, Chunk, SearchResult, Memory, SkillInfo, SkillDetail, MCPServerInfo, MCPServerConfig } from './types';
 
 export interface AgentClientConfig {
   baseUrl: string;
@@ -260,5 +260,77 @@ export class AgentClient {
       method: 'DELETE',
     });
     if (!response.ok) throw new Error(`Failed to delete agent memory: ${response.statusText}`);
+  }
+
+  async listSkills(): Promise<{ skills: SkillInfo[] }> {
+    const response = await fetch(`${this.baseUrl}/api/skills`);
+    if (!response.ok) throw new Error(`Failed to list skills: ${response.statusText}`);
+    return response.json();
+  }
+
+  async getSkill(name: string, includeContent?: boolean): Promise<SkillDetail> {
+    const url = includeContent
+      ? `${this.baseUrl}/api/skills/${name}?include_content=true`
+      : `${this.baseUrl}/api/skills/${name}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to get skill: ${response.statusText}`);
+    return response.json();
+  }
+
+  async enableSkill(name: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/skills/${name}/enable`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error(`Failed to enable skill: ${response.statusText}`);
+  }
+
+  async disableSkill(name: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/skills/${name}/disable`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error(`Failed to disable skill: ${response.statusText}`);
+  }
+
+  async listMCPServers(): Promise<{ servers: MCPServerInfo[] }> {
+    const response = await fetch(`${this.baseUrl}/api/mcp/servers`);
+    if (!response.ok) throw new Error(`Failed to list MCP servers: ${response.statusText}`);
+    return response.json();
+  }
+
+  async getMCPServer(name: string): Promise<MCPServerInfo> {
+    const response = await fetch(`${this.baseUrl}/api/mcp/servers/${name}`);
+    if (!response.ok) throw new Error(`Failed to get MCP server: ${response.statusText}`);
+    return response.json();
+  }
+
+  async addMCPServer(config: MCPServerConfig): Promise<MCPServerInfo> {
+    const response = await fetch(`${this.baseUrl}/api/mcp/servers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (!response.ok) throw new Error(`Failed to add MCP server: ${response.statusText}`);
+    return response.json();
+  }
+
+  async removeMCPServer(name: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/mcp/servers/${name}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error(`Failed to remove MCP server: ${response.statusText}`);
+  }
+
+  async enableMCPServer(name: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/mcp/servers/${name}/enable`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error(`Failed to enable MCP server: ${response.statusText}`);
+  }
+
+  async disableMCPServer(name: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/mcp/servers/${name}/disable`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error(`Failed to disable MCP server: ${response.statusText}`);
   }
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
 	"github.com/copcon/server/internal/kbworker"
+	"github.com/copcon/server/internal/manager"
 	stor "github.com/copcon/server/internal/store"
 )
 
@@ -99,16 +100,20 @@ func main() {
 		h.Register(knowledgebase.NewPlugin(ks, emb))
 	}
 
+	var skillPlugin *skill.SkillPlugin
 	if cfg.Skills.Enabled {
-		h.Register(skill.NewPlugin(skill.Config{
+		skillPlugin = skill.NewPlugin(skill.Config{
 			ProjectRoot: projectRoot(),
 			ExtraPaths:  cfg.Skills.ExtraPaths,
-		}))
+		}).(*skill.SkillPlugin)
+		h.Register(skillPlugin)
 	}
 
+	var mcpPlugin *mcp.MCPPlugin
 	if cfg.MCP.Enabled && len(cfg.MCP.Servers) > 0 {
 		mcpConfigs := convertMCPServerConfigs(cfg.MCP.Servers)
-		h.Register(mcp.NewPlugin(mcpConfigs))
+		mcpPlugin = mcp.NewPlugin(mcpConfigs).(*mcp.MCPPlugin)
+		h.Register(mcpPlugin)
 	}
 
 	chk(log, h.Build())
@@ -118,6 +123,13 @@ func main() {
 		apiOpts = append(apiOpts, api.WithMemoryStore(fmStore))
 	}
 	apiOpts = append(apiOpts, api.BuildKnowledgeOptions(ks, emb)...)
+
+	if skillPlugin != nil {
+		apiOpts = append(apiOpts, api.WithSkillProvider(manager.NewSkillManager(skillPlugin)))
+	}
+	if mcpPlugin != nil {
+		apiOpts = append(apiOpts, api.WithMCPProvider(manager.NewMCPManager(mcpPlugin, "config.yaml")))
+	}
 
 	r := gin.Default()
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })

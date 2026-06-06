@@ -33,7 +33,7 @@ func TestNewPlugin_InitInjectsLogger(t *testing.T) {
 	err := p.Init(plugin.PluginDeps{Logger: logger})
 	require.NoError(t, err)
 
-	impl := p.(*mcpPlugin)
+	impl := p.(*MCPPlugin)
 	assert.Equal(t, logger, impl.logger)
 }
 
@@ -43,7 +43,7 @@ func TestNewPlugin_InitDefaultLogger(t *testing.T) {
 	err := p.Init(plugin.PluginDeps{Logger: nil})
 	require.NoError(t, err)
 
-	impl := p.(*mcpPlugin)
+	impl := p.(*MCPPlugin)
 	assert.NotNil(t, impl.logger)
 }
 
@@ -133,7 +133,7 @@ func TestNewPlugin_PartialFailure(t *testing.T) {
 func TestNewPlugin_ConnectionManager(t *testing.T) {
 	mgr := NewConnectionManager()
 	p := NewPluginWithManager(nil, mgr)
-	assert.Equal(t, mgr, p.(*mcpPlugin).ConnectionManager())
+	assert.Equal(t, mgr, p.(*MCPPlugin).ConnectionManager())
 }
 
 func TestPluginToolName(t *testing.T) {

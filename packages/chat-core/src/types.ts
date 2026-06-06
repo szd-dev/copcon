@@ -262,3 +262,53 @@ export interface Memory {
   score: number;
   importance: number;
 }
+
+// --- Skill Management Types ---
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  enabled: boolean;
+  source: string;
+  metadata?: Record<string, string>;
+  allowed_tools?: string;
+}
+
+export interface SkillDetail extends SkillInfo {
+  instructions: string;
+  resource_files?: Array<{
+    name: string;
+    path: string;
+    category: string;
+  }>;
+}
+
+// --- MCP Management Types ---
+
+export type MCPServerStatus = 'connected' | 'disconnected' | 'error';
+
+export interface MCPServerInfo {
+  name: string;
+  type: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  enabled: boolean;
+  tools?: string[];
+  allowed_tools?: {
+    include?: string[];
+    exclude?: string[];
+  };
+}
+
+export interface MCPServerConfig {
+  name: string;
+  type: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  allowed_tools?: {
+    include?: string[];
+    exclude?: string[];
+  };
+}

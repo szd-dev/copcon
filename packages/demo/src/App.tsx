@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
 import { XProvider } from '@ant-design/x';
 import { Tabs, theme } from 'antd';
-import { MessageOutlined, BookOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { MessageOutlined, BookOutlined, DatabaseOutlined, CodeOutlined, ApiOutlined } from '@ant-design/icons';
 import { AgentClient } from '@copcon/chat-core';
 import { ClientProvider } from './context/ClientContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import ChatPage from './pages/ChatPage';
 import KnowledgePage from './pages/KnowledgePage';
 import MemoryPage from './pages/MemoryPage';
+import SkillPage from './pages/SkillPage';
+import MCPPage from './pages/MCPPage';
 import './App.css';
 
 const { useToken } = theme;
 
 const client = new AgentClient({ baseUrl: '' });
 
-type TabKey = 'chat' | 'knowledge' | 'memory';
+type TabKey = 'chat' | 'knowledge' | 'memory' | 'skills' | 'mcp';
 
 const App: React.FC = () => {
   const { token } = useToken();
@@ -48,6 +50,26 @@ const App: React.FC = () => {
       children: (
         <ErrorBoundary>
           <MemoryPage />
+        </ErrorBoundary>
+      ),
+    },
+    {
+      key: 'skills' as TabKey,
+      label: 'Skills',
+      icon: <CodeOutlined aria-hidden="true" />,
+      children: (
+        <ErrorBoundary>
+          <SkillPage />
+        </ErrorBoundary>
+      ),
+    },
+    {
+      key: 'mcp' as TabKey,
+      label: 'MCP',
+      icon: <ApiOutlined aria-hidden="true" />,
+      children: (
+        <ErrorBoundary>
+          <MCPPage />
         </ErrorBoundary>
       ),
     },

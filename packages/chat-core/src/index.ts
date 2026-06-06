@@ -49,4 +49,9 @@ export type {
   SearchResult,
   MemoryType,
   Memory,
+  SkillInfo,
+  SkillDetail,
+  MCPServerStatus,
+  MCPServerInfo,
+  MCPServerConfig,
 } from './types';

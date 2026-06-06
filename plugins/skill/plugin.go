@@ -32,10 +32,11 @@ type Config struct {
 
 // SkillPlugin implements plugin.Plugin for the skill capability.
 type SkillPlugin struct {
-	cfg        Config
-	discoverer *Discoverer
-	skills     []*skilltypes.Skill
-	logger     *slog.Logger
+	cfg          Config
+	discoverer   *Discoverer
+	skills       []*skilltypes.Skill
+	enabledSkills map[string]bool
+	logger       *slog.Logger
 }
 
 var _ plugin.Plugin = (*SkillPlugin)(nil)
@@ -48,14 +49,26 @@ func NewPlugin(cfg Config) plugin.Plugin {
 func (p *SkillPlugin) Name() string { return "skill" }
 
 func (p *SkillPlugin) Tools() []tool.Tool {
+	var enabled []*skilltypes.Skill
+	for _, s := range p.skills {
+		if p.enabledSkills[s.Name] {
+			enabled = append(enabled, s)
+		}
+	}
 	return []tool.Tool{
-		&toolNameWrapper{Tool: NewSkillTool(p.skills), newName: "skill.tool.skill"},
+		&toolNameWrapper{Tool: NewSkillTool(enabled), newName: "skill.tool.skill"},
 	}
 }
 
 func (p *SkillPlugin) Hooks() []hook.Hook {
+	var enabled []*skilltypes.Skill
+	for _, s := range p.skills {
+		if p.enabledSkills[s.Name] {
+			enabled = append(enabled, s)
+		}
+	}
 	return []hook.Hook{
-		&hookNameWrapper{Hook: NewSkillInfoHook(p.skills), newName: "skill.hook.skill_info"},
+		&hookNameWrapper{Hook: NewSkillInfoHook(enabled), newName: "skill.hook.skill_info"},
 	}
 }
 
@@ -71,10 +84,26 @@ func (p *SkillPlugin) Init(deps plugin.PluginDeps) error {
 		return fmt.Errorf("discover skills: %w", err)
 	}
 	p.skills = skills
+	p.enabledSkills = make(map[string]bool, len(p.skills))
+	for _, s := range p.skills {
+		p.enabledSkills[s.Name] = true
+	}
 	return nil
 }
 
 // GetConfig returns the plugin configuration.
 func (p *SkillPlugin) GetConfig() Config {
 	return p.cfg
+}
+
+func (p *SkillPlugin) Skills() []*skilltypes.Skill {
+	return p.skills
+}
+
+func (p *SkillPlugin) SetSkillEnabled(name string, enabled bool) {
+	p.enabledSkills[name] = enabled
+}
+
+func (p *SkillPlugin) IsSkillEnabled(name string) bool {
+	return p.enabledSkills[name]
 }
