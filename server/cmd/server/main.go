@@ -27,6 +27,7 @@ import (
 	"github.com/copcon/plugins/knowledge-base/store/bruteforce"
 	"github.com/copcon/plugins/knowledge-base/store/sqlitevec"
 	memoryfile "github.com/copcon/plugins/memory-file"
+	"github.com/copcon/plugins/mcp"
 	"github.com/copcon/plugins/skill"
 	"github.com/copcon/server/internal/api"
 	"github.com/copcon/server/internal/config"
@@ -102,6 +103,11 @@ func main() {
 		})
 	}
 
+	if cfg.MCP.Enabled && len(cfg.MCP.Servers) > 0 {
+		mcpConfigs := convertMCPServerConfigs(cfg.MCP.Servers)
+		mcp.RegisterCapabilities(reg, mcpConfigs)
+	}
+
 	h := core.NewHarness(core.HarnessConfig{
 		Registry: reg,
 		Store:    core.StoreConfig{Provider: storeProvider},
@@ -146,6 +152,9 @@ func agentSpecs(cfg *config.Config, fmStore *memoryfile.FileMemoryStore, ks *sql
 		if cfg.Skills.Enabled {
 			tools = append(tools, capabilities.CapSkillsModule)
 		}
+		if cfg.MCP.Enabled && len(cfg.MCP.Servers) > 0 {
+			tools = append(tools, mcp.CapabilityName)
+		}
 
 		out = append(out, core.AgentSpec{
 			ID: a.ID, Name: a.Name, Model: a.Model, SystemPrompt: a.SystemPrompt,
@@ -162,6 +171,29 @@ func projectRoot() string {
 		return "."
 	}
 	return root
+}
+
+func convertMCPServerConfigs(servers []config.MCPServerConfig) []mcp.MCPServerConfig {
+	out := make([]mcp.MCPServerConfig, 0, len(servers))
+	for _, s := range servers {
+		var allowed *mcp.AllowedToolsConfig
+		if s.AllowedTools != nil {
+			allowed = &mcp.AllowedToolsConfig{
+				Include: s.AllowedTools.Include,
+				Exclude: s.AllowedTools.Exclude,
+			}
+		}
+		out = append(out, mcp.MCPServerConfig{
+			Name:         s.Name,
+			Type:         mcp.TransportType(s.Type),
+			Command:      s.Command,
+			Args:         s.Args,
+			Env:          s.Env,
+			URL:          s.URL,
+			AllowedTools: allowed,
+		})
+	}
+	return out
 }
 
 func defaultMemoryBasePath() string {

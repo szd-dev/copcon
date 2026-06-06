@@ -20,6 +20,7 @@ type Config struct {
 	Knowledge      KnowledgeConfig `yaml:"knowledge,omitempty"`
 	Memory         MemoryConfig    `yaml:"memory,omitempty"`
 	Skills         SkillConfig     `yaml:"skills,omitempty"`
+	MCP            MCPConfig       `yaml:"mcp,omitempty"`
 }
 
 type AgentConfig struct {
@@ -69,6 +70,26 @@ type MemoryConfig struct {
 type SkillConfig struct {
 	Enabled    bool     `yaml:"enabled"`
 	ExtraPaths []string `yaml:"extra_paths,omitempty"`
+}
+
+type MCPConfig struct {
+	Enabled bool              `yaml:"enabled"`
+	Servers []MCPServerConfig `yaml:"servers,omitempty"`
+}
+
+type MCPServerConfig struct {
+	Name         string            `yaml:"name"`
+	Type         string            `yaml:"type"`
+	Command      string            `yaml:"command,omitempty"`
+	Args         []string          `yaml:"args,omitempty"`
+	Env          map[string]string `yaml:"env,omitempty"`
+	URL          string            `yaml:"url,omitempty"`
+	AllowedTools *MCPAllowedTools  `yaml:"allowed_tools,omitempty"`
+}
+
+type MCPAllowedTools struct {
+	Include []string `yaml:"include,omitempty"`
+	Exclude []string `yaml:"exclude,omitempty"`
 }
 
 type MemorySummarizationConfig struct {
