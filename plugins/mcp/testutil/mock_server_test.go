@@ -2,6 +2,7 @@ package testutil_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -38,9 +39,14 @@ func setupMockServer(t *testing.T) (*mcp.ClientSession, func()) {
 		Description: "Add two numbers and return the result",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, args addArgs) (*mcp.CallToolResult, any, error) {
 		result := args.A + args.B
+		var text string
+		if args.A == float64(int64(args.A)) && args.B == float64(int64(args.B)) {
+			text = fmt.Sprintf("%d", int64(result))
+		} else {
+			text = fmt.Sprintf("%g", result)
+		}
 		return &mcp.CallToolResult{
-			// Format the number without unnecessary decimals
-			Content: []mcp.Content{&mcp.TextContent{Text: formatSum(args.A, args.B, result)}},
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
 		}, nil, nil
 	})
 
@@ -58,77 +64,6 @@ func setupMockServer(t *testing.T) (*mcp.ClientSession, func()) {
 	}
 
 	return session, cleanup
-}
-
-// formatSum formats a sum result as a string, using integer format when
-// both operands are whole numbers.
-func formatSum(a, b, result float64) string {
-	if a == float64(int64(a)) && b == float64(int64(b)) {
-		return formatInt(int64(result))
-	}
-	return formatFloat(result)
-}
-
-func formatInt(n int64) string {
-	return string(itoa(n)) // using simplified conversion
-}
-
-func formatFloat(f float64) string {
-	s := ftoa(f)
-	// Trim trailing zeros
-	for len(s) > 0 && s[len(s)-1] == '0' {
-		s = s[:len(s)-1]
-	}
-	if len(s) > 0 && s[len(s)-1] == '.' {
-		s = s[:len(s)-1]
-	}
-	return s
-}
-
-// Simplified integer-to-string conversion to avoid strconv import.
-func itoa(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
-}
-
-// Simplified float-to-string conversion to avoid strconv import.
-func ftoa(f float64) string {
-	// Handle integer values
-	if f == float64(int64(f)) {
-		return itoa(int64(f))
-	}
-	// Simple approach: build from integer and fractional parts
-	intPart := int64(f)
-	fracPart := f - float64(intPart)
-	result := itoa(intPart) + "."
-	// Add up to 6 decimal places
-	for i := 0; i < 6; i++ {
-		fracPart *= 10
-		digit := int64(fracPart)
-		result += string(byte('0' + digit))
-		fracPart -= float64(digit)
-		if fracPart == 0 {
-			break
-		}
-	}
-	return result
 }
 
 // extractText is a helper to extract text content from a CallToolResult.

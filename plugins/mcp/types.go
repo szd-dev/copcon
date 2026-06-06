@@ -83,9 +83,6 @@ func parseMCPToolName(qualifiedName string) (serverName, toolName string, ok boo
 	if !ok || serverName == "" || toolName == "" {
 		return "", "", false
 	}
-	if serverName == "" || toolName == "" {
-		return "", "", false
-	}
 	return serverName, toolName, true
 }
 

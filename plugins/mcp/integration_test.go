@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -64,7 +65,12 @@ func setupIntegrationServer(t *testing.T, name string) gmcp.Transport {
 		Description: "Add two numbers",
 	}, func(_ context.Context, _ *gmcp.CallToolRequest, args addArgs) (*gmcp.CallToolResult, any, error) {
 		result := args.A + args.B
-		text := formatIntegrationSum(args.A, args.B, result)
+		var text string
+		if args.A == float64(int64(args.A)) && args.B == float64(int64(args.B)) {
+			text = fmt.Sprintf("%d", int64(result))
+		} else {
+			text = fmt.Sprintf("%g", result)
+		}
 		return &gmcp.CallToolResult{
 			Content: []gmcp.Content{&gmcp.TextContent{Text: text}},
 		}, nil, nil
@@ -87,50 +93,6 @@ func setupIntegrationServer(t *testing.T, name string) gmcp.Transport {
 	require.NoError(t, err)
 
 	return clientTransport
-}
-
-func formatIntegrationSum(a, b, result float64) string {
-	if a == float64(int64(a)) && b == float64(int64(b)) {
-		n := int64(result)
-		if n < 0 {
-			n = -n
-			buf := []byte{'-'}
-			buf = appendInt64(buf, n)
-			return string(buf)
-		}
-		return string(appendInt64(nil, n))
-	}
-	return formatIntegrationFloat(result)
-}
-
-func appendInt64(buf []byte, n int64) []byte {
-	if n == 0 {
-		return append(buf, '0')
-	}
-	var tmp [20]byte
-	i := len(tmp)
-	for n > 0 {
-		i--
-		tmp[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return append(buf, tmp[i:]...)
-}
-
-func formatIntegrationFloat(f float64) string {
-	intPart := int64(f)
-	fracPart := f - float64(intPart)
-	result := string(appendInt64(nil, intPart)) + "."
-	for i := 0; i < 6; i++ {
-		fracPart *= 10
-		digit := int64(fracPart)
-		result += string(byte('0' + digit))
-		fracPart -= float64(digit)
-		if fracPart == 0 {
-			break
-		}
-	}
-	return result
 }
 
 func TestIntegration_EndToEnd(t *testing.T) {

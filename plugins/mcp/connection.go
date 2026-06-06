@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync"
 
@@ -66,8 +67,11 @@ func createTransport(cfg MCPServerConfig) (gmcp.Transport, error) {
 			return nil, fmt.Errorf("stdio transport requires command")
 		}
 		cmd := exec.Command(cfg.Command, cfg.Args...)
-		for k, v := range cfg.Env {
-			cmd.Env = append(cmd.Env, k+"="+v)
+		if len(cfg.Env) > 0 {
+			cmd.Env = os.Environ()
+			for k, v := range cfg.Env {
+				cmd.Env = append(cmd.Env, k+"="+v)
+			}
 		}
 		return &gmcp.CommandTransport{Command: cmd}, nil
 	case TransportSSE:
