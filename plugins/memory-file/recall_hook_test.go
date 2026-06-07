@@ -9,8 +9,8 @@ import (
 
 	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/iface"
 	"github.com/copcon/core/llm"
+	"github.com/copcon/plugins/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -356,7 +356,7 @@ func TestMemoryRecallHook_CapsAtFive(t *testing.T) {
 	assert.Len(t, *ctx.Messages, 6)
 }
 
-func TestMemoryRecallHook_PriorityAndName(t *testing.T) {
+func TestMemoryRecallHook_Metadata(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := NewFileMemoryStore(tmpDir, 200, 25*1024)
 	require.NoError(t, err)
@@ -367,24 +367,4 @@ func TestMemoryRecallHook_PriorityAndName(t *testing.T) {
 	assert.Equal(t, []hook.HookPoint{hook.AfterContextBuild}, h.Points())
 }
 
-// mockChatCtx satisfies iface.ChatContextInterface for testing.
-type mockChatCtx struct{}
-
-func (m *mockChatCtx) Context() context.Context                           { return context.Background() }
-func (m *mockChatCtx) SessionID() string                                   { return "" }
-func (m *mockChatCtx) AgentID() string                                     { return "" }
-func (m *mockChatCtx) Events() <-chan entity.Event                         { return nil }
-func (m *mockChatCtx) Emit(event entity.Event)                             {}
-func (m *mockChatCtx) Close()                                              {}
-func (m *mockChatCtx) Closed() <-chan struct{}                             { return nil }
-func (m *mockChatCtx) Depth() int                                          { return 0 }
-func (m *mockChatCtx) Subscribe(fromSeq int64) (*iface.Subscriber, bool)   { return nil, false }
-func (m *mockChatCtx) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
-	return nil, nil
-}
-func (m *mockChatCtx) ResolveInput(interruptID string, resp *iface.InputResponse) error {
-	return nil
-}
-func (m *mockChatCtx) PendingInputs() []iface.InputRequest                 { return nil }
-func (m *mockChatCtx) SetPartLocator(messageID string, stepIndex, partIndex int) {}
-func (m *mockChatCtx) ClearPartLocator()                                   {}
+type mockChatCtx = testutil.MockChatContext

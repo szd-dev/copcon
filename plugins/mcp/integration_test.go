@@ -7,36 +7,14 @@ import (
 	"testing"
 
 	gmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/copcon/core/entity"
-	"github.com/copcon/core/iface"
 	"github.com/copcon/core/plugin"
 	"github.com/copcon/core/tool"
+	"github.com/copcon/plugins/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type mockChatContext struct {
-	ctx context.Context
-}
-
-func (m *mockChatContext) Context() context.Context                          { return m.ctx }
-func (m *mockChatContext) SessionID() string                                 { return "" }
-func (m *mockChatContext) AgentID() string                                   { return "" }
-func (m *mockChatContext) Events() <-chan entity.Event                       { return nil }
-func (m *mockChatContext) Emit(event entity.Event)                           {}
-func (m *mockChatContext) Close()                                            {}
-func (m *mockChatContext) Closed() <-chan struct{}                           { return nil }
-func (m *mockChatContext) Depth() int                                        { return 0 }
-func (m *mockChatContext) Subscribe(fromSeq int64) (*iface.Subscriber, bool) { return nil, false }
-func (m *mockChatContext) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
-	return nil, nil
-}
-func (m *mockChatContext) ResolveInput(id string, resp *iface.InputResponse) error {
-	return nil
-}
-func (m *mockChatContext) PendingInputs() []iface.InputRequest { return nil }
-func (m *mockChatContext) SetPartLocator(string, int, int)     {}
-func (m *mockChatContext) ClearPartLocator()                   {}
+type mockChatContext = testutil.MockChatContext
 
 func setupIntegrationServer(t *testing.T, name string) gmcp.Transport {
 	t.Helper()
@@ -122,7 +100,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	upperTool, ok := toolMap["mcp.tool.integration-server__uppercase"]
 	require.True(t, ok, "uppercase tool should exist")
 
-	chatCtx := &mockChatContext{ctx: ctx}
+	chatCtx := &mockChatContext{Ctx: ctx}
 
 	greetResult, err := greetTool.Execute(chatCtx, map[string]any{"name": "World"})
 	require.NoError(t, err)

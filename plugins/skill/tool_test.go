@@ -148,8 +148,8 @@ func TestSkillTool_Execute_MissingAction(t *testing.T) {
 	assert.Equal(t, "action is required", result.Error)
 }
 
-func TestSkillTool_Name(t *testing.T) {
-	st := NewSkillTool(newTestSkills())
+func TestSkillTool_Metadata(t *testing.T) {
+	st := NewSkillTool(nil)
 	assert.Equal(t, "skill", st.Name())
 }
 

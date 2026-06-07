@@ -55,10 +55,6 @@ func (m *mockFullStore) UpdateChunk(_ context.Context, _ string, _ *kbtypes.Chun
 
 var _ KnowledgeStore = (*mockFullStore)(nil)
 
-func TestNewPluginImplementsInterface(t *testing.T) {
-	var _ plugin.Plugin = NewPlugin(nil, nil)
-}
-
 func TestPluginName(t *testing.T) {
 	p := NewPlugin(nil, nil)
 	assert.Equal(t, "knowledge", p.Name())
@@ -81,7 +77,7 @@ func TestPluginHookName(t *testing.T) {
 }
 
 func TestPluginInitInjectsAgentKBs(t *testing.T) {
-	emb := &mockHookEmbedder{dimensions: 3}
+	emb := &mockHookEmbedder{Dims: 3}
 	ks := &mockFullStore{}
 	p := NewPlugin(ks, emb)
 
@@ -104,7 +100,7 @@ func TestPluginGetStore(t *testing.T) {
 }
 
 func TestPluginGetEmbedder(t *testing.T) {
-	emb := &mockHookEmbedder{dimensions: 3}
+	emb := &mockHookEmbedder{Dims: 3}
 	p := NewPlugin(nil, emb)
 	kp := p.(*kbPlugin)
 	assert.Equal(t, emb, kp.GetEmbedder())

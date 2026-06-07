@@ -8,9 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/copcon/core/entity"
 	"github.com/copcon/core/hook"
-	"github.com/copcon/core/iface"
 	"github.com/copcon/core/storage"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -425,7 +423,7 @@ func TestFactExtractionHook_CodeBlockJSON(t *testing.T) {
 	assert.NotEmpty(t, entries)
 }
 
-func TestFactExtractionHook_PriorityAndName(t *testing.T) {
+func TestFactExtractionHook_Metadata(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := NewFileMemoryStore(tmpDir, 200, 25*1024)
 	require.NoError(t, err)
@@ -501,25 +499,3 @@ func TestFactExtractionHook_EmptyMessages(t *testing.T) {
 	entries, _ := os.ReadDir(knowledgeDir)
 	assert.Empty(t, entries)
 }
-
-// extractionMockChatCtx satisfies iface.ChatContextInterface.
-type extractionMockChatCtx struct{}
-
-func (m *extractionMockChatCtx) Context() context.Context                           { return context.Background() }
-func (m *extractionMockChatCtx) SessionID() string                                   { return "" }
-func (m *extractionMockChatCtx) AgentID() string                                     { return "" }
-func (m *extractionMockChatCtx) Events() <-chan entity.Event                         { return nil }
-func (m *extractionMockChatCtx) Emit(event entity.Event)                             {}
-func (m *extractionMockChatCtx) Close()                                              {}
-func (m *extractionMockChatCtx) Closed() <-chan struct{}                             { return nil }
-func (m *extractionMockChatCtx) Depth() int                                          { return 0 }
-func (m *extractionMockChatCtx) Subscribe(fromSeq int64) (*iface.Subscriber, bool)   { return nil, false }
-func (m *extractionMockChatCtx) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
-	return nil, nil
-}
-func (m *extractionMockChatCtx) ResolveInput(interruptID string, resp *iface.InputResponse) error {
-	return nil
-}
-func (m *extractionMockChatCtx) PendingInputs() []iface.InputRequest                 { return nil }
-func (m *extractionMockChatCtx) SetPartLocator(messageID string, stepIndex, partIndex int) {}
-func (m *extractionMockChatCtx) ClearPartLocator()                                   {}

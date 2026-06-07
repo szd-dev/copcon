@@ -212,7 +212,7 @@ func TestNewPlugin_IntegrationExecution(t *testing.T) {
 	require.Len(t, tools, 1)
 	assert.Equal(t, "mcp.tool.exec-server__echo", tools[0].Name())
 
-	chatCtx := &mockChatContext{ctx: ctx}
+	chatCtx := &mockChatContext{Ctx: ctx}
 	result, err := tools[0].Execute(chatCtx, map[string]any{"message": "hello"})
 	require.NoError(t, err)
 	assert.True(t, result.Success)

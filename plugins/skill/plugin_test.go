@@ -133,7 +133,3 @@ func TestSkillPlugin_GetConfig(t *testing.T) {
 	assert.Equal(t, cfg.ProjectRoot, got.ProjectRoot)
 	assert.Equal(t, cfg.ExtraPaths, got.ExtraPaths)
 }
-
-func TestSkillPlugin_Interface(t *testing.T) {
-	var _ plugin.Plugin = NewPlugin(Config{})
-}

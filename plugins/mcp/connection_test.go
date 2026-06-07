@@ -10,31 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestServerAndTransport(t *testing.T) (*gmcp.ClientSession, gmcp.Transport) {
-	t.Helper()
-	ctx := context.Background()
-
-	server := gmcp.NewServer(&gmcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
-
-	type echoArgs struct {
-		Message string `json:"message"`
-	}
-	gmcp.AddTool(server, &gmcp.Tool{
-		Name:        "echo",
-		Description: "Echo the message back",
-	}, func(_ context.Context, _ *gmcp.CallToolRequest, args echoArgs) (*gmcp.CallToolResult, any, error) {
-		return &gmcp.CallToolResult{
-			Content: []gmcp.Content{&gmcp.TextContent{Text: args.Message}},
-		}, nil, nil
-	})
-
-	serverTransport, clientTransport := gmcp.NewInMemoryTransports()
-	_, err := server.Connect(ctx, serverTransport, nil)
-	require.NoError(t, err)
-
-	return nil, clientTransport
-}
-
 func setupConnectedSession(t *testing.T, mgr *ConnectionManager, name string) *gmcp.ClientSession {
 	t.Helper()
 	ctx := context.Background()

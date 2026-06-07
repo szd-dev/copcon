@@ -64,7 +64,6 @@ func TestConsistencyCheck_MarksUnavailable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, false, got.Config["available"])
 	assert.Contains(t, got.Config["unavailable_reason"], "mismatch")
-	_ = ks // suppress unused warning
 }
 
 func TestConsistencyCheck_MarksAvailable(t *testing.T) {

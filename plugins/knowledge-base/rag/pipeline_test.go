@@ -11,41 +11,12 @@ import (
 
 	kbtypes "github.com/copcon/plugins/knowledge-base/types"
 	knowledgebase "github.com/copcon/plugins/knowledge-base"
+	kbtestutil "github.com/copcon/plugins/knowledge-base/testutil"
 )
 
 var errEmptyText = fmt.Errorf("empty text provided for embedding")
 
-type mockEmbedder struct {
-	dimensions int
-}
-
-func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	if text == "" {
-		return nil, errEmptyText
-	}
-	vec := make([]float32, m.dimensions)
-	vec[0] = 1.0
-	return vec, nil
-}
-
-func (m *mockEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	if len(texts) == 0 {
-		return nil, errEmptyText
-	}
-	results := make([][]float32, len(texts))
-	for i, text := range texts {
-		if text == "" {
-			return nil, errEmptyText
-		}
-		vec := make([]float32, m.dimensions)
-		vec[0] = float32(i) / float32(len(texts))
-		results[i] = vec
-	}
-	return results, nil
-}
-
-func (m *mockEmbedder) Dimensions() int { return m.dimensions }
-func (m *mockEmbedder) Name() string    { return "mock" }
+type mockEmbedder = kbtestutil.MockEmbedder
 
 type mockPipelineStore struct {
 	documents map[string]*kbtypes.Document
@@ -148,7 +119,7 @@ func (s *mockPipelineStore) ClaimDocumentStatus(ctx context.Context, docID strin
 
 func TestPipelineIngest(t *testing.T) {
 	parser := NewDefaultParser()
-	embedder := &mockEmbedder{dimensions: 3}
+	embedder := &mockEmbedder{Dims: 3}
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
@@ -175,7 +146,7 @@ func TestPipelineIngest(t *testing.T) {
 
 func TestPipelineIngestMarkdown(t *testing.T) {
 	parser := NewDefaultParser()
-	embedder := &mockEmbedder{dimensions: 3}
+	embedder := &mockEmbedder{Dims: 3}
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
@@ -193,7 +164,7 @@ func TestPipelineIngestMarkdown(t *testing.T) {
 
 func TestPipelineIngestParseError(t *testing.T) {
 	parser := NewDefaultParser()
-	embedder := &mockEmbedder{dimensions: 3}
+	embedder := &mockEmbedder{Dims: 3}
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
@@ -210,7 +181,7 @@ func TestPipelineIngestParseError(t *testing.T) {
 
 func TestPipelineIngestNoProgress(t *testing.T) {
 	parser := NewDefaultParser()
-	embedder := &mockEmbedder{dimensions: 3}
+	embedder := &mockEmbedder{Dims: 3}
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
@@ -226,7 +197,7 @@ func TestPipelineIngestNoProgress(t *testing.T) {
 
 func TestPipelineIngestEmptyContent(t *testing.T) {
 	parser := NewDefaultParser()
-	embedder := &mockEmbedder{dimensions: 3}
+	embedder := &mockEmbedder{Dims: 3}
 	store := newMockPipelineStore()
 	pipeline := NewPipeline(parser, embedder, store)
 
@@ -259,7 +230,7 @@ func TestIsMarkdownMimetype(t *testing.T) {
 
 func TestNewMarkdownPipeline(t *testing.T) {
 	parser := NewDefaultParser()
-	embedder := &mockEmbedder{dimensions: 3}
+	embedder := &mockEmbedder{Dims: 3}
 	store := newMockPipelineStore()
 	pipeline := NewMarkdownPipeline(parser, embedder, store)
 	assert.NotNil(t, pipeline)

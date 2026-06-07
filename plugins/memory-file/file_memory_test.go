@@ -17,18 +17,10 @@ type mockFileMemoryStore struct {
 
 func (m *mockFileMemoryStore) BasePath() string { return m.basePath }
 
-func TestFileMemoryHook_Name(t *testing.T) {
+func TestFileMemoryHook_Metadata(t *testing.T) {
 	h := NewFileMemoryHook(&mockFileMemoryStore{basePath: t.TempDir()})
 	assert.Equal(t, "file_memory", h.Name())
-}
-
-func TestFileMemoryHook_Points(t *testing.T) {
-	h := NewFileMemoryHook(&mockFileMemoryStore{basePath: t.TempDir()})
 	assert.Equal(t, []hook.HookPoint{hook.OnSystemPrompt}, h.Points())
-}
-
-func TestFileMemoryHook_Priority(t *testing.T) {
-	h := NewFileMemoryHook(&mockFileMemoryStore{basePath: t.TempDir()})
 	assert.Equal(t, 80, h.Priority())
 }
 

@@ -82,17 +82,9 @@ func TestMemorySummaryHook_NoopWithEmptyAgentID(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestMemorySummaryHook_Name(t *testing.T) {
+func TestMemorySummaryHook_Metadata(t *testing.T) {
 	h := NewMemorySummaryHook(nil)
 	assert.Equal(t, "memory_summary", h.Name())
-}
-
-func TestMemorySummaryHook_Points(t *testing.T) {
-	h := NewMemorySummaryHook(nil)
 	assert.Equal(t, []hook.HookPoint{hook.OnSystemPrompt}, h.Points())
-}
-
-func TestMemorySummaryHook_Priority(t *testing.T) {
-	h := NewMemorySummaryHook(nil)
 	assert.Equal(t, 90, h.Priority())
 }

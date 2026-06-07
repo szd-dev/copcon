@@ -84,17 +84,9 @@ func TestSkillInfoHook_Execute_Alphabetical(t *testing.T) {
 	assert.Greater(t, idxZulu, idxMiddle, "zulu should appear after middle")
 }
 
-func TestSkillInfoHook_Name(t *testing.T) {
+func TestSkillInfoHook_Metadata(t *testing.T) {
 	h := NewSkillInfoHook(nil)
 	assert.Equal(t, "skill_info", h.Name())
-}
-
-func TestSkillInfoHook_Points(t *testing.T) {
-	h := NewSkillInfoHook(nil)
 	assert.Equal(t, []hook.HookPoint{hook.OnSystemPrompt}, h.Points())
-}
-
-func TestSkillInfoHook_Priority(t *testing.T) {
-	h := NewSkillInfoHook(nil)
 	assert.Equal(t, 60, h.Priority())
 }

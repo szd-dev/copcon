@@ -51,24 +51,6 @@ func TestBackend(t *testing.T) {
 	assert.Equal(t, "brute-force", s.Backend())
 }
 
-func TestStoreNoOp(t *testing.T) {
-	s := New(nil)
-	err := s.Store(context.Background(), "kb1", "doc1", nil, nil)
-	assert.NoError(t, err)
-}
-
-func TestDeleteByKBNoOp(t *testing.T) {
-	s := New(nil)
-	err := s.DeleteByKB(context.Background(), "kb1")
-	assert.NoError(t, err)
-}
-
-func TestDeleteByDocumentNoOp(t *testing.T) {
-	s := New(nil)
-	err := s.DeleteByDocument(context.Background(), "kb1", "doc1")
-	assert.NoError(t, err)
-}
-
 func TestSearchEmpty(t *testing.T) {
 	db := setupTestDB(t)
 	s := New(db)

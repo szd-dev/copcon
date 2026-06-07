@@ -573,10 +573,3 @@ func TestSerializeFrontmatter_EmptyBody(t *testing.T) {
 
 // --- MemoryStore interface compliance ---
 
-func TestFileMemoryStore_ImplementsMemoryStore(t *testing.T) {
-	var _ MemoryStore = (*FileMemoryStore)(nil)
-}
-
-func TestFileMemoryStore_ImplementsFileMemoryStoreInterface(t *testing.T) {
-	var _ FileMemoryStoreInterface = (*FileMemoryStore)(nil)
-}

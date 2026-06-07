@@ -7,32 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/copcon/core/entity"
-	"github.com/copcon/core/iface"
+	"github.com/copcon/plugins/testutil"
 )
 
-type mockChatContext struct {
-	ctx       context.Context
-	agentID   string
-	sessionID string
-}
-
-func (m *mockChatContext) Context() context.Context                          { return m.ctx }
-func (m *mockChatContext) SessionID() string                                 { return m.sessionID }
-func (m *mockChatContext) AgentID() string                                   { return m.agentID }
-func (m *mockChatContext) Events() <-chan entity.Event                       { return nil }
-func (m *mockChatContext) Emit(event entity.Event)                           {}
-func (m *mockChatContext) Close()                                            {}
-func (m *mockChatContext) Closed() <-chan struct{}                           { return nil }
-func (m *mockChatContext) Depth() int                                        { return 0 }
-func (m *mockChatContext) Subscribe(fromSeq int64) (*iface.Subscriber, bool) { return nil, false }
-func (m *mockChatContext) RequestInput(req iface.InputRequest) (*iface.InputResponse, error) {
-	return nil, nil
-}
-func (m *mockChatContext) ResolveInput(id string, resp *iface.InputResponse) error { return nil }
-func (m *mockChatContext) PendingInputs() []iface.InputRequest { return nil }
-func (m *mockChatContext) SetPartLocator(string, int, int)     {}
-func (m *mockChatContext) ClearPartLocator()                   {}
+type mockChatContext = testutil.MockChatContext
 
 func setupTestStore(t *testing.T) *FileMemoryStore {
 	t.Helper()
@@ -42,10 +20,12 @@ func setupTestStore(t *testing.T) *FileMemoryStore {
 	return store
 }
 
-func TestMemoryStoreTool_Name(t *testing.T) {
+func TestMemoryTools_Metadata(t *testing.T) {
 	store := setupTestStore(t)
-	tool := NewMemoryStoreTool(store)
-	assert.Equal(t, "memory_store", tool.Name())
+
+	assert.Equal(t, "memory_store", NewMemoryStoreTool(store).Name())
+	assert.Equal(t, "memory_recall", NewMemoryRecallTool(store, nil).Name())
+	assert.Equal(t, "memory_forget", NewMemoryForgetTool(store).Name())
 }
 
 func TestMemoryStoreTool_Execute(t *testing.T) {
@@ -53,8 +33,8 @@ func TestMemoryStoreTool_Execute(t *testing.T) {
 	tool := NewMemoryStoreTool(store)
 
 	chatCtx := &mockChatContext{
-		ctx:     context.Background(),
-		agentID: "agent-1",
+		Ctx:     context.Background(),
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{
@@ -77,20 +57,14 @@ func TestMemoryStoreTool_Execute_MissingContent(t *testing.T) {
 	tool := NewMemoryStoreTool(store)
 
 	chatCtx := &mockChatContext{
-		ctx:     context.Background(),
-		agentID: "agent-1",
+		Ctx:     context.Background(),
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{})
 	require.NoError(t, err)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "content is required")
-}
-
-func TestMemoryRecallTool_Name(t *testing.T) {
-	store := setupTestStore(t)
-	tool := NewMemoryRecallTool(store, nil)
-	assert.Equal(t, "memory_recall", tool.Name())
 }
 
 func TestMemoryRecallTool_Execute(t *testing.T) {
@@ -102,8 +76,8 @@ func TestMemoryRecallTool_Execute(t *testing.T) {
 
 	tool := NewMemoryRecallTool(store, nil)
 	chatCtx := &mockChatContext{
-		ctx:     ctx,
-		agentID: "agent-1",
+		Ctx:     ctx,
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{
@@ -127,8 +101,8 @@ func TestMemoryRecallTool_Execute_NoMatch(t *testing.T) {
 
 	tool := NewMemoryRecallTool(store, nil)
 	chatCtx := &mockChatContext{
-		ctx:     ctx,
-		agentID: "agent-1",
+		Ctx:     ctx,
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{
@@ -147,20 +121,14 @@ func TestMemoryRecallTool_Execute_MissingQuery(t *testing.T) {
 	tool := NewMemoryRecallTool(store, nil)
 
 	chatCtx := &mockChatContext{
-		ctx:     context.Background(),
-		agentID: "agent-1",
+		Ctx:     context.Background(),
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{})
 	require.NoError(t, err)
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "query is required")
-}
-
-func TestMemoryForgetTool_Name(t *testing.T) {
-	store := setupTestStore(t)
-	tool := NewMemoryForgetTool(store)
-	assert.Equal(t, "memory_forget", tool.Name())
 }
 
 func TestMemoryForgetTool_Execute_ByPath(t *testing.T) {
@@ -172,8 +140,8 @@ func TestMemoryForgetTool_Execute_ByPath(t *testing.T) {
 
 	tool := NewMemoryForgetTool(store)
 	chatCtx := &mockChatContext{
-		ctx:     ctx,
-		agentID: "agent-1",
+		Ctx:     ctx,
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{
@@ -195,8 +163,8 @@ func TestMemoryForgetTool_Execute_ByName(t *testing.T) {
 
 	tool := NewMemoryForgetTool(store)
 	chatCtx := &mockChatContext{
-		ctx:     ctx,
-		agentID: "agent-1",
+		Ctx:     ctx,
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{
@@ -211,8 +179,8 @@ func TestMemoryForgetTool_Execute_MissingBothNameAndPath(t *testing.T) {
 	tool := NewMemoryForgetTool(store)
 
 	chatCtx := &mockChatContext{
-		ctx:     context.Background(),
-		agentID: "agent-1",
+		Ctx:     context.Background(),
+		Agent:   "agent-1",
 	}
 
 	result, err := tool.Execute(chatCtx, map[string]any{})
@@ -224,8 +192,8 @@ func TestMemoryForgetTool_Execute_MissingBothNameAndPath(t *testing.T) {
 func TestMemoryToolIntegration_StoreRecallForget(t *testing.T) {
 	store := setupTestStore(t)
 	chatCtx := &mockChatContext{
-		ctx:     context.Background(),
-		agentID: "agent-1",
+		Ctx:     context.Background(),
+		Agent:   "agent-1",
 	}
 
 	storeTool := NewMemoryStoreTool(store)
