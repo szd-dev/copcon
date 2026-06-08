@@ -364,29 +364,7 @@ func (e *engineImpl) handleStreaming(
 		*persistedMsgUUID = messageID
 	}
 
-	if result.Usage != nil {
-		e.logger.Info("llm_response",
-			"session_id", chatCtx.SessionID(),
-			"reasoning_len", len(result.ReasoningContent),
-			"content_len", len(result.Content),
-			"tool_calls", len(result.ToolCalls),
-			"prompt_tokens", result.Usage.PromptTokens,
-			"completion_tokens", result.Usage.CompletionTokens,
-			"total_tokens", result.Usage.TotalTokens,
-		)
-	}
-
 	return result, nil
-}
-
-func (e *engineImpl) logLLMRequest(agentDef *AgentDefinition, messages []entity.MessageForLLM, tools []llm.ToolDef, sessionID string) {
-	e.logger.Info("llm_request",
-		"session_id", sessionID,
-		"agent", agentDef.Name,
-		"model", agentDef.Model,
-		"message_count", len(messages),
-		"tool_count", len(tools),
-	)
 }
 
 func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput string) error {
@@ -465,8 +443,6 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 		llmMessages := e.convertToLLMMessages(messages)
 		llmTools := tools
 
-		e.logLLMRequest(agentDef, messages, llmTools, chatCtx.SessionID())
-
 		if composedHooks != nil {
 			runComposedHooks(composedHooks, hook.BeforeLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
 		} else {
@@ -478,10 +454,21 @@ func (e *engineImpl) runAgentLoop(chatCtx iface.ChatContextInterface, userInput 
 			return err
 		}
 
+		llmResp := &hook.LLMResponseExtra{
+			Content:          result.Content,
+			ReasoningContent: result.ReasoningContent,
+			ToolCallCount:    len(result.ToolCalls),
+		}
+		if result.Usage != nil {
+			llmResp.PromptTokens = result.Usage.PromptTokens
+			llmResp.CompletionTokens = result.Usage.CompletionTokens
+			llmResp.TotalTokens = result.Usage.TotalTokens
+		}
+
 		if composedHooks != nil {
-			runComposedHooks(composedHooks, hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+			runComposedHooks(composedHooks, hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages, LLMResponse: llmResp})
 		} else {
-			e.hookRunner.On(hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages})
+			e.hookRunner.On(hook.AfterLLMCall, chatCtx, e.logger, hook.HookExtra{Messages: &messages, LLMResponse: llmResp})
 		}
 
 		shouldContinue, err := e.handleToolCalls(chatCtx, agentDef.ToolManager, result, &persistedMsgUUID, &accumulatedParts, &accumulatedToolCalls)
@@ -778,6 +765,9 @@ func runComposedHooks(hooks []hook.Hook, point hook.HookPoint, chatCtx iface.Cha
 			}
 			if e.Messages != nil {
 				ctx.Messages = e.Messages
+			}
+			if e.LLMResponse != nil {
+				ctx.LLMResponse = e.LLMResponse
 			}
 		}
 

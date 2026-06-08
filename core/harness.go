@@ -149,16 +149,7 @@ func (h *Harness) Build() error {
 	h.toolPool = plugin.NewToolPool()
 	h.hookPool = plugin.NewHookPool()
 
-	for _, p := range h.plugins {
-		for _, t := range p.Tools() {
-			h.toolPool.Register(t)
-			logger.Info("harness: registered plugin tool", "plugin", p.Name(), "tool", t.Name())
-		}
-		for _, hk := range p.Hooks() {
-			h.hookPool.Register(hk)
-			logger.Info("harness: registered plugin hook", "plugin", p.Name(), "hook", hk.Name())
-		}
-	}
+	h.hookRunner = hook.NewHookRunner()
 
 	agentKBs := make(map[string][]string)
 	for _, spec := range h.config.Agents {
@@ -188,11 +179,6 @@ func (h *Harness) Build() error {
 		logger.Info("harness: registered agent factory", "id", spec.ID, "name", spec.Name, "model", spec.Model)
 	}
 
-	h.hookRunner = hook.NewHookRunner()
-	for _, hk := range h.hookPool.All() {
-		h.hookRunner.Register(hk)
-	}
-
 	var asyncTracker tool.AsyncToolTracker = tool.NewAsyncToolRegistry()
 	if h.config.AsyncTracker != nil {
 		asyncTracker = h.config.AsyncTracker
@@ -211,6 +197,7 @@ func (h *Harness) Build() error {
 	h.engine = agent.NewAgentEngine(agentRegistry, h.config.Store.Provider.Sessions(), h.config.Store.Provider.Messages(), ctxBuilder, asyncTracker, engineOpts...)
 	h.asyncTracker = asyncTracker
 
+	// Init plugins first so Tools()/Hooks() have access to discovered data.
 	for _, p := range h.plugins {
 		deps := plugin.PluginDeps{
 			SessionStore:        h.config.Store.Provider.Sessions(),
@@ -225,6 +212,19 @@ func (h *Harness) Build() error {
 			return fmt.Errorf("init plugin %s: %w", p.Name(), err)
 		}
 		logger.Info("harness: initialized plugin", "plugin", p.Name())
+	}
+
+	// Collect tools and hooks after Init so dynamic plugins have their data.
+	for _, p := range h.plugins {
+		for _, t := range p.Tools() {
+			h.toolPool.Register(t)
+			logger.Info("harness: registered plugin tool", "plugin", p.Name(), "tool", t.Name())
+		}
+		for _, hk := range p.Hooks() {
+			h.hookPool.Register(hk)
+			h.hookRunner.Register(hk)
+			logger.Info("harness: registered plugin hook", "plugin", p.Name(), "hook", hk.Name())
+		}
 	}
 
 	h.registry = agentRegistry
