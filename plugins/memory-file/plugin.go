@@ -59,9 +59,9 @@ func (p *memoryPlugin) Hooks() []hook.Hook {
 		&hookNameWrapper{Hook: NewMemoryRecallHook(p.store, p.llm), newName: "memory.hook.memory_recall"},
 	}
 
-	// FactExtractionHook is created with nil messageStore; Init() injects it later.
-	p.factHook = NewFactExtractionHook(p.store, p.llm, nil, "")
-	hooks = append(hooks, &hookNameWrapper{Hook: p.factHook, newName: "memory.hook.fact_extraction"})
+	if p.factHook != nil {
+		hooks = append(hooks, &hookNameWrapper{Hook: p.factHook, newName: "memory.hook.fact_extraction"})
+	}
 
 	if p.summaryLLM != nil {
 		summarizer := NewFileSummarizer(p.store, p.summaryLLM, DefaultSummarizerConfig())
@@ -72,9 +72,7 @@ func (p *memoryPlugin) Hooks() []hook.Hook {
 }
 
 func (p *memoryPlugin) Init(deps plugin.PluginDeps) error {
-	if deps.MessageStore != nil && p.factHook != nil {
-		p.factHook.messageStore = deps.MessageStore
-	}
+	p.factHook = NewFactExtractionHook(p.store, p.llm, deps.MessageStore, "")
 	return nil
 }
 
