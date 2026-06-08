@@ -44,13 +44,41 @@ CopCon 读作"卡普空"——企业协作的 AI Agent 引擎。
 git clone https://github.com/copcon/copcon.git
 cd copcon
 
-# 启动依赖服务
-docker compose up -d postgres qdrant
+# 安装依赖
+pnpm install                    # 前端依赖
+sudo npm install -g pm2         # 进程管理器
 
-# 配置 API Key（编辑 server/config.yaml，可从 config.yaml.template 复制）
-# 启动后端服务
-cd server
-go run cmd/server/main.go
+# 配置 API Key
+cp server/config.yaml.template server/config.yaml
+# 编辑 server/config.yaml，填入 OpenAI 兼容的 API Key
+
+# 一键启动前后端
+make dev
+```
+
+启动后访问 http://localhost:5173 即可使用 Demo 应用。
+
+### 服务管理
+
+```bash
+make dev              # 启动所有服务，自动打开日志
+make restart          # 重启所有服务
+make restart-server   # 仅重启后端
+make restart-demo     # 仅重启前端
+make logs             # 查看实时日志
+make status           # 查看运行状态
+make stop             # 停止所有服务
+make clean            # 彻底清理
+```
+
+### 单独启动
+
+```bash
+# 仅后端（不依赖 PM2）
+cd server && go run cmd/server/main.go
+
+# 仅前端
+cd packages/demo && pnpm dev
 ```
 
 完整文档请查看 [docs/backend/](docs/backend/README.md)
