@@ -192,14 +192,16 @@ type builtin struct {
 	todoTool      *todoToolWrapper
 	todoInjection *todoInjectionWrapper
 	readSubTool   *readSubSessionToolWrapper
+	loggingCfg    hooks.LoggingPluginConfig
 }
 
-func NewBuiltin() Plugin {
+func NewBuiltin(loggingCfg hooks.LoggingPluginConfig) Plugin {
 	b := &builtin{
 		delegateTool:  &delegateToToolWrapper{inner: nil},
 		todoTool:      &todoToolWrapper{inner: newPlaceholderTodoTool()},
 		todoInjection: &todoInjectionWrapper{inner: newPlaceholderTodoInjectionHook()},
 		readSubTool:   &readSubSessionToolWrapper{inner: nil},
+		loggingCfg:    loggingCfg,
 	}
 	return b
 }
@@ -222,7 +224,7 @@ func (b *builtin) Tools() []tool.Tool {
 
 func (b *builtin) Hooks() []hook.Hook {
 	return []hook.Hook{
-		&hookNameWrapper{Hook: hooks.NewLoggingPlugin(), newName: "builtin.hook.logging"},
+		&hookNameWrapper{Hook: hooks.NewLoggingPlugin(b.loggingCfg), newName: "builtin.hook.logging"},
 		&hookNameWrapper{Hook: b.todoInjection, newName: "builtin.hook.todo_injection"},
 		&hookNameWrapper{Hook: hooks.NewTracingPlugin(nil), newName: "builtin.hook.tracing"},
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/copcon/core/capabilities/hooks"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,24 +110,24 @@ func (m *mockTodoStore) UpdateStatus(_ context.Context, id uuid.UUID, status sto
 func (m *mockTodoStore) DeleteBySession(_ context.Context, _ uuid.UUID) error { return nil }
 
 func TestBuiltin_Name(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	assert.Equal(t, "builtin", p.Name())
 }
 
 func TestBuiltin_ToolsCount(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	tools := p.Tools()
 	assert.Len(t, tools, 9)
 }
 
 func TestBuiltin_HooksCount(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	hooks := p.Hooks()
 	assert.Len(t, hooks, 3)
 }
 
 func TestBuiltin_ToolNames(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	ts := p.Tools()
 	expected := []string{
 		"builtin.tool.code_executor",
@@ -152,7 +153,7 @@ func TestBuiltin_ToolNames(t *testing.T) {
 }
 
 func TestBuiltin_HookNames(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	hs := p.Hooks()
 	expected := []string{
 		"builtin.hook.logging",
@@ -172,7 +173,7 @@ func TestBuiltin_HookNames(t *testing.T) {
 }
 
 func TestBuiltin_InitInjectsDeps(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 
 	deps := PluginDeps{
 		Engine:        &mockAgentEngine{},
@@ -199,7 +200,7 @@ func TestBuiltin_InitInjectsDeps(t *testing.T) {
 }
 
 func TestBuiltin_InitRequiresEngine(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 
 	deps := PluginDeps{
 		Engine:        nil,
@@ -215,7 +216,7 @@ func TestBuiltin_InitRequiresEngine(t *testing.T) {
 }
 
 func TestBuiltin_InitWithWrongEngineType(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 
 	deps := PluginDeps{
 		Engine:        "not-an-engine",
@@ -231,7 +232,7 @@ func TestBuiltin_InitWithWrongEngineType(t *testing.T) {
 }
 
 func TestBuiltin_InitWithoutTodoStore(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 
 	deps := PluginDeps{
 		Engine:        &mockAgentEngine{},
@@ -252,7 +253,7 @@ func TestBuiltin_InitWithoutTodoStore(t *testing.T) {
 }
 
 func TestBuiltin_DelegateToolIsDelegationTool(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	ts := p.Tools()
 
 	var delegateTool tool.Tool
@@ -270,7 +271,7 @@ func TestBuiltin_DelegateToolIsDelegationTool(t *testing.T) {
 }
 
 func TestBuiltin_ToolsAreFunctional(t *testing.T) {
-	p := NewBuiltin()
+	p := NewBuiltin(hooks.LoggingPluginConfig{})
 	ts := p.Tools()
 
 	for _, t2 := range ts {
