@@ -37,8 +37,13 @@ func (a *OpenAIAdapter) Stream(ctx context.Context, params StreamParams) (<-chan
 	openAIMsgs := convertMessages(params.Messages)
 	openAITools := convertTools(params.Tools)
 
+	model := params.Model
+	if model == "" {
+		model = a.model
+	}
+
 	req := openai.ChatCompletionNewParams{
-		Model:             shared.ChatModel(params.Model),
+		Model:             shared.ChatModel(model),
 		Messages:          openAIMsgs,
 		Tools:             openAITools,
 		ParallelToolCalls: openai.Bool(true),
