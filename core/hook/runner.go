@@ -141,6 +141,9 @@ func (r *hookRunner) On(point HookPoint, chatCtx iface.ChatContextInterface, log
 		if e.Messages != nil {
 			ctx.Messages = e.Messages
 		}
+		if e.LLMResponse != nil {
+			ctx.LLMResponse = e.LLMResponse
+		}
 	}
 	r.Run(point, ctx)
 }

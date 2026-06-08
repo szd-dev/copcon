@@ -99,6 +99,10 @@ type HookContext struct {
 	// BeforeLLMCall, AfterLLMCall.
 	Messages *[]entity.MessageForLLM
 
+	// LLMResponse carries the LLM response data received after the
+	// call completes. Populated for: AfterLLMCall.
+	LLMResponse *LLMResponseExtra
+
 	// ToolName is the name of the tool being executed. Populated
 	// for: BeforeToolExecute, AfterToolExecute, OnToolError.
 	ToolName string
@@ -132,6 +136,17 @@ type HookExtra struct {
 	ToolResult   *tool.ToolResult
 	SystemPrompt *string
 	Messages     *[]entity.MessageForLLM
+	LLMResponse  *LLMResponseExtra
+}
+
+// LLMResponseExtra carries LLM response data for AfterLLMCall hooks.
+type LLMResponseExtra struct {
+	Content          string
+	ReasoningContent string
+	ToolCallCount    int
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
 }
 
 // Hook defines a piece of logic that executes at one or more points
