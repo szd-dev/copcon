@@ -17,6 +17,7 @@ import (
 	_ "modernc.org/sqlite/vec" // enable vec0 extension in modernc SQLite driver
 
 	"github.com/copcon/core"
+	"github.com/copcon/core/capabilities/hooks"
 	"github.com/copcon/core/llm"
 	"github.com/copcon/core/plugin"
 	kbembedding "github.com/copcon/plugins/knowledge-base/embedding"
@@ -79,7 +80,7 @@ func main() {
 		Agents: agentSpecs(cfg),
 	})
 
-	h.Register(plugin.NewBuiltin())
+	h.Register(plugin.NewBuiltin(createLoggingConfig(cfg)))
 
 	var summaryLLM llm.LLMProvider
 	if cfg.Memory.Summarization.Enabled {
@@ -110,7 +111,7 @@ func main() {
 	}
 
 	var mcpPlugin *mcp.MCPPlugin
-	if cfg.MCP.Enabled && len(cfg.MCP.Servers) > 0 {
+	if cfg.MCP.Enabled {
 		mcpConfigs := convertMCPServerConfigs(cfg.MCP.Servers)
 		mcpPlugin = mcp.NewPlugin(mcpConfigs).(*mcp.MCPPlugin)
 		h.Register(mcpPlugin)
@@ -247,4 +248,26 @@ func createKnowledgeStore(cfg *config.Config, log *slog.Logger) (*sqlitevec.Know
 	}
 
 	return sqlitevec.NewKnowledgeStore(gormDB, vec)
+}
+
+func createLoggingConfig(cfg *config.Config) hooks.LoggingPluginConfig {
+	lc := cfg.Logging
+	logCfg := hooks.LoggingPluginConfig{
+		Enabled:       lc.Enabled,
+		SystemPrompt:  lc.SystemPrompt,
+		DetailContext: lc.DetailContext,
+		LLMResponse:   lc.LLMResponse,
+		Writer:        os.Stdout,
+	}
+
+	if lc.Target == "file" && lc.LogDir != "" {
+		if err := os.MkdirAll(lc.LogDir, 0755); err == nil {
+			f, err := os.OpenFile(filepath.Join(lc.LogDir, "copcon.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err == nil {
+				logCfg.Writer = f
+			}
+		}
+	}
+
+	return logCfg
 }

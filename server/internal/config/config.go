@@ -21,6 +21,7 @@ type Config struct {
 	Memory         MemoryConfig    `yaml:"memory,omitempty"`
 	Skills         SkillConfig     `yaml:"skills,omitempty"`
 	MCP            MCPConfig       `yaml:"mcp,omitempty"`
+	Logging        LoggingConfig   `yaml:"logging,omitempty"`
 }
 
 type AgentConfig struct {
@@ -125,6 +126,15 @@ type KnowledgeEmbedConfig struct {
 	APIKey  string `yaml:"api_key,omitempty"`
 	BaseURL string `yaml:"base_url,omitempty"`
 	Model   string `yaml:"model,omitempty"`
+}
+
+type LoggingConfig struct {
+	Enabled       bool   `yaml:"enabled"`
+	Target        string `yaml:"target"`         // "stdout" | "file"
+	LogDir        string `yaml:"log_dir"`        // target=file 时生效
+	SystemPrompt  bool   `yaml:"system_prompt"`  // 输出 system prompt
+	DetailContext bool   `yaml:"detail_context"` // 输出完整 context
+	LLMResponse   bool   `yaml:"llm_response"`   // 输出 LLM 返回明细
 }
 
 func Load() (*Config, error) {
